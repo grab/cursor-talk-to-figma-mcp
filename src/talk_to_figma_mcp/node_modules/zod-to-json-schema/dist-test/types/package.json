@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "file://../../dist/types/"
+  },
+  "scripts": {
+    "test": "npm i && tsc --noEmit"
+  }
+}

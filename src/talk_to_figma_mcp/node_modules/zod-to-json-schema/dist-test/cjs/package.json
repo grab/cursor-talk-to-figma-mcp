@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "file://../../dist/cjs/"
+  },
+  "scripts": {
+    "test": "npm i && node index.js"
+  }
+}
