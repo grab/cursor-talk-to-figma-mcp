@@ -108,25 +108,29 @@ async function handleCommand(command, params) {
 // Command implementations
 
 async function getDocumentInfo() {
+  await figma.currentPage.loadAsync();
+  const page = figma.currentPage;
   return {
-    name: figma.root.name,
-    id: figma.root.id,
-    type: figma.root.type,
-    children: figma.root.children.map((node) => ({
+    name: page.name,
+    id: page.id,
+    type: page.type,
+    children: page.children.map((node) => ({
       id: node.id,
       name: node.name,
       type: node.type,
     })),
     currentPage: {
-      id: figma.currentPage.id,
-      name: figma.currentPage.name,
-      childCount: figma.currentPage.children.length,
-    },
-    pages: figma.root.children.map((page) => ({
       id: page.id,
       name: page.name,
-      childCount: (page.children && page.children.length) || 0,
-    })),
+      childCount: page.children.length,
+    },
+    pages: [
+      {
+        id: page.id,
+        name: page.name,
+        childCount: page.children.length,
+      },
+    ],
   };
 }
 
