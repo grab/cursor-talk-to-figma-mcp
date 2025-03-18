@@ -2,6 +2,8 @@
 
 This project implements a Model Context Protocol (MCP) integration between Cursor AI and Figma, allowing Cursor to communicate with Figma for reading designs and modifying them programmatically.
 
+https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
+
 ## Project Structure
 
 - `src/talk_to_figma_mcp/` - TypeScript MCP server for Figma integration
