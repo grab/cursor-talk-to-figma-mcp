@@ -10,19 +10,35 @@ https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 - `src/cursor_mcp_plugin/` - Figma plugin for communicating with Cursor
 - `src/socket.ts` - WebSocket server that facilitates communication between the MCP server and Figma plugin
 
-## Setup and Installation
-
-### MCP Server: Integration with Cursor
+## Get Started
 
 1. Install Bun if you haven't already:
 
-   ```
-   curl -fsSL https://bun.sh/install | bash
-   ```
-
-2. Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
-
+```bash
+curl -fsSL https://bun.sh/install | bash
 ```
+
+2. Run setup, this will also install MCP in your Cursor's active project
+
+```bash
+bun setup
+```
+
+3. Start the Websocket server
+
+```bash
+bun start
+```
+
+4. Install [Figma Plugin](#figma-plugin)
+
+## Manual Setup and Installation
+
+### MCP Server: Integration with Cursor
+
+Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
+
+```json
 {
   "mcpServers": {
     "TalkToFigma": {
@@ -39,7 +55,7 @@ https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 
 Start the WebSocket server:
 
-```
+```bash
 bun run src/socket.ts
 ```
 

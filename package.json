@@ -1,0 +1,20 @@
+{
+  "name": "cursor-talk-to-figma-mcp",
+  "version": "1.0.0",
+  "description": "Cursor Talk to Figma MCP",
+  "main": "src/socket.ts",
+  "scripts": {
+    "setup": "./scripts/setup.sh",
+    "start": "bun run src/socket.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "bun": "latest",
+    "uuid": "latest",
+    "ws": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.0"
+  }
+}
