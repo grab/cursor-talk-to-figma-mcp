@@ -165,12 +165,28 @@ server.tool(
     width: z.number().describe("Width of the frame"),
     height: z.number().describe("Height of the frame"),
     name: z.string().optional().describe("Optional name for the frame"),
-    parentId: z.string().optional().describe("Optional parent node ID to append the frame to")
+    parentId: z.string().optional().describe("Optional parent node ID to append the frame to"),
+    fillColor: z.object({
+      r: z.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)")
+    }).optional().describe("Fill color in RGBA format"),
+    strokeColor: z.object({
+      r: z.number().min(0).max(1).describe("Red component (0-1)"),
+      g: z.number().min(0).max(1).describe("Green component (0-1)"),
+      b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+      a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)")
+    }).optional().describe("Stroke color in RGBA format"),
+    strokeWeight: z.number().positive().optional().describe("Stroke weight")
   },
-  async ({ x, y, width, height, name, parentId }) => {
+  async ({ x, y, width, height, name, parentId, fillColor, strokeColor, strokeWeight }) => {
     try {
       const result = await sendCommandToFigma('create_frame', {
-        x, y, width, height, name: name || 'Frame', parentId
+        x, y, width, height, name: name || 'Frame', parentId,
+        fillColor: fillColor || { r: 1, g: 1, b: 1, a: 1 },
+        strokeColor: strokeColor,
+        strokeWeight: strokeWeight
       });
       const typedResult = result as { name: string, id: string };
       return {
@@ -210,7 +226,7 @@ server.tool(
       b: z.number().min(0).max(1).describe("Blue component (0-1)"),
       a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)")
     }).optional().describe("Font color in RGBA format"),
-    name: z.string().optional().describe("Optional name for the text node"),
+    name: z.string().optional().describe("Optional name for the text node by default following text"),
     parentId: z.string().optional().describe("Optional parent node ID to append the text to")
   },
   async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }) => {
@@ -483,33 +499,33 @@ server.tool(
 );
 
 // Get Team Components Tool
-server.tool(
-  "get_team_components",
-  "Get all team library components available in Figma",
-  {},
-  async () => {
-    try {
-      const result = await sendCommandToFigma('get_team_components');
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting team components: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
+// server.tool(
+//   "get_team_components",
+//   "Get all team library components available in Figma",
+//   {},
+//   async () => {
+//     try {
+//       const result = await sendCommandToFigma('get_team_components');
+//       return {
+//         content: [
+//           {
+//             type: "text",
+//             text: JSON.stringify(result, null, 2)
+//           }
+//         ]
+//       };
+//     } catch (error) {
+//       return {
+//         content: [
+//           {
+//             type: "text",
+//             text: `Error getting team components: ${error instanceof Error ? error.message : String(error)}`
+//           }
+//         ]
+//       };
+//     }
+//   }
+// );
 
 // Create Component Instance Tool
 server.tool(
@@ -667,21 +683,70 @@ server.prompt(
             type: "text",
             text: `When working with Figma designs, follow these best practices:
 
-1. First, get an overview of the document using get_document_info()
-2. When modifying elements, always check the current selection with get_selection()
-3. When creating new elements:
-   - Use create_frame() for containers
-   - Use create_rectangle() for basic shapes
-   - Use create_text() for text elements
-4. When modifying elements:
-   - Use set_fill_color() and set_stroke_color() for styling
-   - Use move_node() and resize_node() for positioning and sizing
-5. For reusable elements:
-   - Check available components with get_local_components() or get_team_components()
-   - Create instances with create_component_instance()
-6. For advanced operations, use execute_figma_code() with custom code
-  
-Always verify changes by getting updated node information with get_node_info()`
+1. Start with Document Structure:
+   - First use get_document_info() to understand the current document
+   - Plan your layout hierarchy before creating elements
+   - Create a main container frame for each screen/section
+
+2. Naming Conventions:
+   - Use descriptive, semantic names for all elements
+   - Follow a consistent naming pattern (e.g., "Login Screen", "Logo Container", "Email Input")
+   - Group related elements with meaningful names
+
+3. Layout Hierarchy:
+   - Create parent frames first, then add child elements
+   - For forms/login screens:
+     * Start with the main screen container frame
+     * Create a logo container at the top
+     * Group input fields in their own containers
+     * Place action buttons (login, submit) after inputs
+     * Add secondary elements (forgot password, signup links) last
+
+4. Input Fields Structure:
+   - Create a container frame for each input field
+   - Include a label text above or inside the input
+   - Group related inputs (e.g., username/password) together
+
+5. Element Creation:
+   - Use create_frame() for containers and input fields
+   - Use create_text() for labels, buttons text, and links
+   - Set appropriate colors and styles:
+     * Use fillColor for backgrounds
+     * Use strokeColor for borders
+     * Set proper fontWeight for different text elements
+
+6. Visual Hierarchy:
+   - Position elements in logical reading order (top to bottom)
+   - Maintain consistent spacing between elements
+   - Use appropriate font sizes for different text types:
+     * Larger for headings/welcome text
+     * Medium for input labels
+     * Standard for button text
+     * Smaller for helper text/links
+
+7. Best Practices:
+   - Verify each creation with get_node_info()
+   - Use parentId to maintain proper hierarchy
+   - Group related elements together in frames
+   - Keep consistent spacing and alignment
+
+Example Login Screen Structure:
+- Login Screen (main frame)
+  - Logo Container (frame)
+    - Logo (image/text)
+  - Welcome Text (text)
+  - Input Container (frame)
+    - Email Input (frame)
+      - Email Label (text)
+      - Email Field (frame)
+    - Password Input (frame)
+      - Password Label (text)
+      - Password Field (frame)
+  - Login Button (frame)
+    - Button Text (text)
+  - Helper Links (frame)
+    - Forgot Password (text)
+    - Don't have account (text)`
           }
         }
       ],

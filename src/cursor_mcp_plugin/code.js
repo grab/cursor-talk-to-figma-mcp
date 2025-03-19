@@ -253,6 +253,9 @@ async function createFrame(params) {
     height = 100,
     name = "Frame",
     parentId,
+    fillColor,
+    strokeColor,
+    strokeWeight,
   } = params || {};
 
   const frame = figma.createFrame();
@@ -260,6 +263,39 @@ async function createFrame(params) {
   frame.y = y;
   frame.resize(width, height);
   frame.name = name;
+
+  // Set fill color if provided
+  if (fillColor) {
+    const paintStyle = {
+      type: "SOLID",
+      color: {
+        r: parseFloat(fillColor.r) || 0,
+        g: parseFloat(fillColor.g) || 0,
+        b: parseFloat(fillColor.b) || 0,
+      },
+      opacity: parseFloat(fillColor.a) || 1,
+    };
+    frame.fills = [paintStyle];
+  }
+
+  // Set stroke color and weight if provided
+  if (strokeColor) {
+    const strokeStyle = {
+      type: "SOLID",
+      color: {
+        r: parseFloat(strokeColor.r) || 0,
+        g: parseFloat(strokeColor.g) || 0,
+        b: parseFloat(strokeColor.b) || 0,
+      },
+      opacity: parseFloat(strokeColor.a) || 1,
+    };
+    frame.strokes = [strokeStyle];
+  }
+
+  // Set stroke weight if provided
+  if (strokeWeight !== undefined) {
+    frame.strokeWeight = strokeWeight;
+  }
 
   // If parentId is provided, append to that node, otherwise append to current page
   if (parentId) {
@@ -282,6 +318,9 @@ async function createFrame(params) {
     y: frame.y,
     width: frame.width,
     height: frame.height,
+    fills: frame.fills,
+    strokes: frame.strokes,
+    strokeWeight: frame.strokeWeight,
     parentId: frame.parent ? frame.parent.id : undefined,
   };
 }
