@@ -100,6 +100,8 @@ async function handleCommand(command, params) {
       return await executeCode(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
+    case "set_text_content":
+      return await setTextContent(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -856,6 +858,42 @@ async function setCornerRadius(params) {
     bottomLeftRadius:
       "bottomLeftRadius" in node ? node.bottomLeftRadius : undefined,
   };
+}
+
+async function setTextContent(params) {
+  const { nodeId, text } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (text === undefined) {
+    throw new Error("Missing text parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  try {
+    await figma.loadFontAsync(node.fontName);
+    
+    await setCharacters(node, text);
+
+    return {
+      id: node.id,
+      name: node.name,
+      characters: node.characters,
+      fontName: node.fontName
+    };
+  } catch (error) {
+    throw new Error(`Error setting text content: ${error.message}`);
+  }
 }
 
 // Initialize settings on load
