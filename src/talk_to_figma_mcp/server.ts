@@ -11,6 +11,15 @@ interface FigmaResponse {
   error?: string;
 }
 
+// Custom logging functions that write to stderr instead of stdout to avoid being captured
+const logger = {
+  info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
+  debug: (message: string) => process.stderr.write(`[DEBUG] ${message}\n`),
+  warn: (message: string) => process.stderr.write(`[WARN] ${message}\n`),
+  error: (message: string) => process.stderr.write(`[ERROR] ${message}\n`),
+  log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
+};
+
 // WebSocket connection and request tracking
 let ws: WebSocket | null = null;
 const pendingRequests = new Map<string, {
@@ -824,14 +833,14 @@ function processFigmaNodeResponse(result: unknown): any {
   const resultObj = result as Record<string, unknown>;
   if ('id' in resultObj && typeof resultObj.id === 'string') {
     // It appears to be a node response, log the details
-    console.info(`Processed Figma node: ${resultObj.name || 'Unknown'} (ID: ${resultObj.id})`);
+    logger.info(`Processed Figma node: ${resultObj.name || 'Unknown'} (ID: ${resultObj.id})`);
 
     if ('x' in resultObj && 'y' in resultObj) {
-      console.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
+      logger.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
     }
 
     if ('width' in resultObj && 'height' in resultObj) {
-      console.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
+      logger.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
     }
   }
 
@@ -842,15 +851,15 @@ function processFigmaNodeResponse(result: unknown): any {
 function connectToFigma(port: number = 3055) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.info('Already connected to Figma');
+    logger.info('Already connected to Figma');
     return;
   }
 
-  console.info(`Connecting to Figma socket server on port ${port}...`);
+  logger.info(`Connecting to Figma socket server on port ${port}...`);
   ws = new WebSocket(`ws://localhost:${port}`);
 
   ws.on('open', () => {
-    console.info('Connected to Figma socket server');
+    logger.info('Connected to Figma socket server');
     // Reset channel on new connection
     currentChannel = null;
   });
@@ -859,8 +868,8 @@ function connectToFigma(port: number = 3055) {
     try {
       const json = JSON.parse(data) as { message: FigmaResponse };
       const myResponse = json.message;
-      console.debug(`Received message: ${JSON.stringify(myResponse)}`);
-      console.log('myResponse', myResponse);
+      logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
+      logger.log('myResponse' + JSON.stringify(myResponse));
 
       // Handle response to a request
       if (myResponse.id && pendingRequests.has(myResponse.id) && myResponse.result) {
@@ -868,7 +877,7 @@ function connectToFigma(port: number = 3055) {
         clearTimeout(request.timeout);
 
         if (myResponse.error) {
-          console.error(`Error from Figma: ${myResponse.error}`);
+          logger.error(`Error from Figma: ${myResponse.error}`);
           request.reject(new Error(myResponse.error));
         } else {
           if (myResponse.result) {
@@ -879,19 +888,19 @@ function connectToFigma(port: number = 3055) {
         pendingRequests.delete(myResponse.id);
       } else {
         // Handle broadcast messages or events
-        console.info(`Received broadcast message: ${JSON.stringify(myResponse)}`);
+        logger.info(`Received broadcast message: ${JSON.stringify(myResponse)}`);
       }
     } catch (error) {
-      console.error(`Error parsing message: ${error instanceof Error ? error.message : String(error)}`);
+      logger.error(`Error parsing message: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
   ws.on('error', (error) => {
-    console.error(`Socket error: ${error}`);
+    logger.error(`Socket error: ${error}`);
   });
 
   ws.on('close', () => {
-    console.info('Disconnected from Figma socket server');
+    logger.info('Disconnected from Figma socket server');
     ws = null;
 
     // Reject all pending requests
@@ -902,7 +911,7 @@ function connectToFigma(port: number = 3055) {
     }
 
     // Attempt to reconnect
-    console.info('Attempting to reconnect in 2 seconds...');
+    logger.info('Attempting to reconnect in 2 seconds...');
     setTimeout(() => connectToFigma(port), 2000);
   });
 }
@@ -916,9 +925,9 @@ async function joinChannel(channelName: string): Promise<void> {
   try {
     await sendCommandToFigma('join', { channel: channelName });
     currentChannel = channelName;
-    console.info(`Joined channel: ${channelName}`);
+    logger.info(`Joined channel: ${channelName}`);
   } catch (error) {
-    console.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
+    logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -958,7 +967,7 @@ function sendCommandToFigma(command: FigmaCommand, params: unknown = {}): Promis
     const timeout = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        console.error(`Request ${id} to Figma timed out after 30 seconds`);
+        logger.error(`Request ${id} to Figma timed out after 30 seconds`);
         reject(new Error('Request to Figma timed out'));
       }
     }, 30000); // 30 second timeout
@@ -967,8 +976,8 @@ function sendCommandToFigma(command: FigmaCommand, params: unknown = {}): Promis
     pendingRequests.set(id, { resolve, reject, timeout });
 
     // Send the request
-    console.info(`Sending command to Figma: ${command}`);
-    console.debug(`Request details: ${JSON.stringify(request)}`);
+    logger.info(`Sending command to Figma: ${command}`);
+    logger.debug(`Request details: ${JSON.stringify(request)}`);
     ws.send(JSON.stringify(request));
   });
 }
@@ -1026,18 +1035,18 @@ async function main() {
     // Try to connect to Figma socket server
     connectToFigma();
   } catch (error) {
-    console.warn(`Could not connect to Figma initially: ${error instanceof Error ? error.message : String(error)}`);
-    console.warn('Will try to connect when the first command is sent');
+    logger.warn(`Could not connect to Figma initially: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn('Will try to connect when the first command is sent');
   }
 
   // Start the MCP server with stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.info('FigmaMCP server running on stdio');
+  logger.info('FigmaMCP server running on stdio');
 }
 
 // Run the server
 main().catch(error => {
-  console.error(`Error starting FigmaMCP server: ${error instanceof Error ? error.message : String(error)}`);
+  logger.error(`Error starting FigmaMCP server: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });
