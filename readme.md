@@ -32,6 +32,10 @@ bun start
 
 4. Install [Figma Plugin](#figma-plugin)
 
+# Quick Video Tutorial
+
+[![image](images/tutorial.jpg)](https://www.linkedin.com/posts/sonnylazuardi_just-wanted-to-share-my-latest-experiment-activity-7307821553654657024-yrh8)
+
 ## Manual Setup and Installation
 
 ### MCP Server: Integration with Cursor
