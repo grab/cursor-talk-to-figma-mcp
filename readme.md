@@ -90,6 +90,10 @@ The MCP server provides the following tools for interacting with Figma:
 - `create_frame` - Create a new frame with position, size, and optional name
 - `create_text` - Create a new text node with customizable font properties
 
+### Modifying text content
+
+- `set_text_content` - Set the text content of an existing text node
+
 ### Styling
 
 - `set_fill_color` - Set the fill color of a node (RGBA)

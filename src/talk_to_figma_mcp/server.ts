@@ -670,6 +670,39 @@ server.tool(
   }
 );
 
+// Set Text Content Tool
+server.tool(
+  "set_text_content",
+  "Set the text content of an existing text node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the text node to modify"),
+    text: z.string().describe("New text content")
+  },
+  async ({ nodeId, text }) => {
+    try {
+      const result = await sendCommandToFigma('set_text_content', { nodeId, text });
+      const typedResult = result as { name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Updated text content of node "${typedResult.name}" to "${text}"`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Define design strategy prompt
 server.prompt(
   "design_strategy",
@@ -715,7 +748,10 @@ server.prompt(
      * Use strokeColor for borders
      * Set proper fontWeight for different text elements
 
-6. Visual Hierarchy:
+6. Mofifying existing elements:
+  - use set_text_content() to modify text content.
+
+7. Visual Hierarchy:
    - Position elements in logical reading order (top to bottom)
    - Maintain consistent spacing between elements
    - Use appropriate font sizes for different text types:
@@ -724,7 +760,7 @@ server.prompt(
      * Standard for button text
      * Smaller for helper text/links
 
-7. Best Practices:
+8. Best Practices:
    - Verify each creation with get_node_info()
    - Use parentId to maintain proper hierarchy
    - Group related elements together in frames
@@ -775,7 +811,8 @@ type FigmaCommand =
   | 'export_node_as_image'
   | 'execute_code'
   | 'join'
-  | 'set_corner_radius';
+  | 'set_corner_radius'
+  | 'set_text_content';
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
