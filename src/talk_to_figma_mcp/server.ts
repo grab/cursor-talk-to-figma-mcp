@@ -39,6 +39,11 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+// Add command line argument parsing
+const args = process.argv.slice(2);
+const useLocalhost = args.includes('--localhost');
+const WS_URL = useLocalhost ? 'ws://localhost' : 'wss://vps.sonnylab.com';
+
 // Document Info Tool
 server.tool(
   "get_document_info",
@@ -849,7 +854,7 @@ function processFigmaNodeResponse(result: unknown): any {
   return result;
 }
 
-// Simple function to connect to Figma WebSocket server
+// Update the connectToFigma function
 function connectToFigma(port: number = 3055) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -857,8 +862,9 @@ function connectToFigma(port: number = 3055) {
     return;
   }
 
-  logger.info(`Connecting to Figma socket server on port ${port}...`);
-  ws = new WebSocket(`ws://localhost:${port}`);
+  const wsUrl = `${WS_URL}:${port}`;
+  logger.info(`Connecting to Figma socket server at ${wsUrl}...`);
+  ws = new WebSocket(wsUrl);
 
   ws.on('open', () => {
     logger.info('Connected to Figma socket server');
