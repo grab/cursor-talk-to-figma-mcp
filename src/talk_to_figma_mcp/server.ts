@@ -25,7 +25,7 @@ let ws: WebSocket | null = null;
 const pendingRequests = new Map<string, {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
-  timeout: NodeJS.Timeout;
+  timeout: ReturnType<typeof setTimeout>;
 }>();
 
 // Track which channel each client is in
