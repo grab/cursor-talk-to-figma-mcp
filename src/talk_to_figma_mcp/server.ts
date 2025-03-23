@@ -43,7 +43,7 @@ const server = new McpServer({
 const args = process.argv.slice(2);
 const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
-const WS_URL = `ws://${serverUrl}`;
+const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
 
 // Document Info Tool
 server.tool(
