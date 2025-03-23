@@ -1,7 +1,7 @@
 {
   "name": "cursor-talk-to-figma-mcp",
   "description": "Cursor Talk to Figma MCP",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {

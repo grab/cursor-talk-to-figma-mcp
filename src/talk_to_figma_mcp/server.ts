@@ -41,8 +41,9 @@ const server = new McpServer({
 
 // Add command line argument parsing
 const args = process.argv.slice(2);
-const useLocalhost = args.includes('--localhost');
-const WS_URL = useLocalhost ? 'ws://localhost' : 'wss://vps.sonnylab.com';
+const serverArg = args.find(arg => arg.startsWith('--server='));
+const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
+const WS_URL = `ws://${serverUrl}`;
 
 // Document Info Tool
 server.tool(

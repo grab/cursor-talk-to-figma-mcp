@@ -34,7 +34,7 @@ bun socket
 4. MCP server
 
 ```bash
-bunx cursor-talk-to-figma-mcp --localhost
+bunx cursor-talk-to-figma-mcp
 ```
 
 4. Install [Figma Plugin](#figma-plugin)
@@ -55,7 +55,7 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
     "TalkToFigma": {
       "command": "bunx",
       "args": [
-        "cursor-talk-to-figma-mcp", "--localhost"
+        "cursor-talk-to-figma-mcp"
       ]
     }
   }
