@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -25,7 +27,7 @@ let ws: WebSocket | null = null;
 const pendingRequests = new Map<string, {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
-  timeout: NodeJS.Timeout;
+  timeout: ReturnType<typeof setTimeout>;
 }>();
 
 // Track which channel each client is in
@@ -36,6 +38,12 @@ const server = new McpServer({
   name: "TalkToFigmaMCP",
   version: "1.0.0",
 });
+
+// Add command line argument parsing
+const args = process.argv.slice(2);
+const serverArg = args.find(arg => arg.startsWith('--server='));
+const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
+const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
 
 // Document Info Tool
 server.tool(
@@ -847,7 +855,7 @@ function processFigmaNodeResponse(result: unknown): any {
   return result;
 }
 
-// Simple function to connect to Figma WebSocket server
+// Update the connectToFigma function
 function connectToFigma(port: number = 3055) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
@@ -855,8 +863,9 @@ function connectToFigma(port: number = 3055) {
     return;
   }
 
-  logger.info(`Connecting to Figma socket server on port ${port}...`);
-  ws = new WebSocket(`ws://localhost:${port}`);
+  const wsUrl = `${WS_URL}:${port}`;
+  logger.info(`Connecting to Figma socket server at ${wsUrl}...`);
+  ws = new WebSocket(wsUrl);
 
   ws.on('open', () => {
     logger.info('Connected to Figma socket server');
