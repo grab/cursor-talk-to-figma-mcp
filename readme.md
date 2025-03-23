@@ -37,7 +37,7 @@ bun socket
 bunx cursor-talk-to-figma-mcp
 ```
 
-4. Install [Figma Plugin](#figma-plugin)
+5. Install [Figma Plugin](#figma-plugin)
 
 # Quick Video Tutorial
 
