@@ -1,7 +1,7 @@
 {
   "name": "cursor-talk-to-figma-mcp",
   "description": "Cursor Talk to Figma MCP",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {
@@ -13,6 +13,7 @@
   ],
   "type": "module",
   "scripts": {
+    "start": "bun run dist/server.js",
     "build": "tsup",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
