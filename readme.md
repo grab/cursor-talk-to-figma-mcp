@@ -24,10 +24,17 @@ curl -fsSL https://bun.sh/install | bash
 bun setup
 ```
 
+
 3. Start the Websocket server
 
 ```bash
-bun start
+bun socket
+```
+
+4. MCP server
+
+```bash
+bunx cursor-talk-to-figma-mcp --localhost
 ```
 
 4. Install [Figma Plugin](#figma-plugin)
@@ -46,9 +53,9 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "TalkToFigma": {
-      "command": "bun",
+      "command": "bunx",
       "args": [
-        "/path/to/cursor-talk-to-figma-mcp/src/talk_to_figma_mcp/server.ts"
+        "cursor-talk-to-figma-mcp", "--localhost"
       ]
     }
   }
@@ -60,7 +67,7 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
 Start the WebSocket server:
 
 ```bash
-bun run src/socket.ts
+bun socket
 ```
 
 ### Figma Plugin
