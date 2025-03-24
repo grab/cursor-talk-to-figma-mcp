@@ -116,6 +116,7 @@ The MCP server provides the following tools for interacting with Figma:
 - `move_node` - Move a node to a new position
 - `resize_node` - Resize a node with new dimensions
 - `delete_node` - Delete a node
+- `clone_node` - Create a copy of an existing node with optional position offset
 
 ### Components & Styles
 
