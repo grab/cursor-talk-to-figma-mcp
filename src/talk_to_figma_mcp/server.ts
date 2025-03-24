@@ -392,6 +392,40 @@ server.tool(
   }
 );
 
+// Clone Node Tool
+server.tool(
+  "clone_node",
+  "Clone an existing node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the node to clone"),
+    x: z.number().optional().describe("New X position for the clone"),
+    y: z.number().optional().describe("New Y position for the clone")
+  },
+  async ({ nodeId, x, y }) => {
+    try {
+      const result = await sendCommandToFigma('clone_node', { nodeId, x, y });
+      const typedResult = result as { name: string, id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cloned node "${typedResult.name}" with new ID: ${typedResult.id}${x !== undefined && y !== undefined ? ` at position (${x}, ${y})` : ''}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error cloning node: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Resize Node Tool
 server.tool(
   "resize_node",
@@ -829,7 +863,8 @@ type FigmaCommand =
   | 'execute_code'
   | 'join'
   | 'set_corner_radius'
-  | 'set_text_content';
+  | 'set_text_content'
+  | 'clone_node';
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {

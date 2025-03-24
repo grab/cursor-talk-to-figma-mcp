@@ -102,6 +102,8 @@ async function handleCommand(command, params) {
       return await setCornerRadius(params);
     case "set_text_content":
       return await setTextContent(params);
+    case "clone_node":
+      return await cloneNode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -155,55 +157,11 @@ async function getNodeInfo(nodeId) {
     throw new Error(`Node not found with ID: ${nodeId}`);
   }
 
-  // Base node information
-  const nodeInfo = {
-    id: node.id,
-    name: node.name,
-    type: node.type,
-    visible: node.visible,
-  };
+  const response = await node.exportAsync({
+    format: "JSON_REST_V1",
+  });
 
-  // Add position and size for SceneNode
-  if ("x" in node && "y" in node) {
-    nodeInfo.x = node.x;
-    nodeInfo.y = node.y;
-  }
-
-  if ("width" in node && "height" in node) {
-    nodeInfo.width = node.width;
-    nodeInfo.height = node.height;
-  }
-
-  // Add fills for nodes with fills
-  if ("fills" in node) {
-    nodeInfo.fills = node.fills;
-  }
-
-  // Add strokes for nodes with strokes
-  if ("strokes" in node) {
-    nodeInfo.strokes = node.strokes;
-    if ("strokeWeight" in node) {
-      nodeInfo.strokeWeight = node.strokeWeight;
-    }
-  }
-
-  // Add children for parent nodes
-  if ("children" in node) {
-    nodeInfo.children = node.children.map((child) => ({
-      id: child.id,
-      name: child.name,
-      type: child.type,
-    }));
-  }
-
-  // Add text-specific properties
-  if (node.type === "TEXT") {
-    nodeInfo.characters = node.characters;
-    nodeInfo.fontSize = node.fontSize;
-    nodeInfo.fontName = node.fontName;
-  }
-
-  return nodeInfo;
+  return response.document;
 }
 
 async function createRectangle(params) {
@@ -882,14 +840,14 @@ async function setTextContent(params) {
 
   try {
     await figma.loadFontAsync(node.fontName);
-    
+
     await setCharacters(node, text);
 
     return {
       id: node.id,
       name: node.name,
       characters: node.characters,
-      fontName: node.fontName
+      fontName: node.fontName,
     };
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
@@ -1133,3 +1091,45 @@ const setCharactersWithSmartMatchFont = async (
   });
   return true;
 };
+
+// Add the cloneNode function implementation
+async function cloneNode(params) {
+  const { nodeId, x, y } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Clone the node
+  const clone = node.clone();
+
+  // If x and y are provided, move the clone to that position
+  if (x !== undefined && y !== undefined) {
+    if (!("x" in clone) || !("y" in clone)) {
+      throw new Error(`Cloned node does not support position: ${nodeId}`);
+    }
+    clone.x = x;
+    clone.y = y;
+  }
+
+  // Add the clone to the same parent as the original node
+  if (node.parent) {
+    node.parent.appendChild(clone);
+  } else {
+    figma.currentPage.appendChild(clone);
+  }
+
+  return {
+    id: clone.id,
+    name: clone.name,
+    x: "x" in clone ? clone.x : undefined,
+    y: "y" in clone ? clone.y : undefined,
+    width: "width" in clone ? clone.width : undefined,
+    height: "height" in clone ? clone.height : undefined,
+  };
+}
