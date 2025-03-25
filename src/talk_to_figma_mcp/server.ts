@@ -57,7 +57,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2)
+            text: JSON.stringify(result)
           }
         ]
       };
@@ -86,7 +86,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2)
+            text: JSON.stringify(result)
           }
         ]
       };
@@ -117,7 +117,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2)
+            text: JSON.stringify(result)
           }
         ]
       };
@@ -153,7 +153,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(results, null, 2)
+            text: JSON.stringify(results)
           }
         ]
       };
@@ -539,7 +539,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2)
+            text: JSON.stringify(result)
           }
         ]
       };
@@ -568,7 +568,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2)
+            text: JSON.stringify(result)
           }
         ]
       };
@@ -664,17 +664,25 @@ server.tool(
         format: format || 'PNG',
         scale: scale || 1
       });
-      const typedResult = result as { imageData: string, mimeType: string };
+      const typedResult = result as any;
 
+      // return {
+      //   content: [
+      //     {
+      //       type: "image",
+      //       data: typedResult.imageData,
+      //       mimeType: typedResult.mimeType || "image/png"
+      //     }
+      //   ]
+      // };
       return {
         content: [
           {
-            type: "image",
-            data: typedResult.imageData,
-            mimeType: typedResult.mimeType || "image/png"
+            type: "text",
+            text: JSON.stringify(typedResult),
           }
         ]
-      };
+      }
     } catch (error) {
       return {
         content: [
@@ -901,30 +909,6 @@ type FigmaCommand =
   | 'set_corner_radius'
   | 'set_text_content'
   | 'clone_node';
-
-// Helper function to process Figma node responses
-function processFigmaNodeResponse(result: unknown): any {
-  if (!result || typeof result !== 'object') {
-    return result;
-  }
-
-  // Check if this looks like a node response
-  const resultObj = result as Record<string, unknown>;
-  if ('id' in resultObj && typeof resultObj.id === 'string') {
-    // It appears to be a node response, log the details
-    logger.info(`Processed Figma node: ${resultObj.name || 'Unknown'} (ID: ${resultObj.id})`);
-
-    if ('x' in resultObj && 'y' in resultObj) {
-      logger.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
-    }
-
-    if ('width' in resultObj && 'height' in resultObj) {
-      logger.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
-    }
-  }
-
-  return result;
-}
 
 // Update the connectToFigma function
 function connectToFigma(port: number = 3055) {

@@ -372,9 +372,6 @@
 
         // If it's a response to a previous request
         if (data.id && state.pendingRequests.has(data.id)) {
-          console.log("go inside", data);
-
-          console.log("nice", data);
           const { resolve, reject } = state.pendingRequests.get(data.id);
           state.pendingRequests.delete(data.id);
 

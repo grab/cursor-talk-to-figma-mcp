@@ -101,8 +101,6 @@ async function handleCommand(command, params) {
       return await createComponentInstance(params);
     case "export_node_as_image":
       return await exportNodeAsImage(params);
-    case "execute_code":
-      return await executeCode(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
     case "set_text_content":
@@ -707,7 +705,9 @@ async function createComponentInstance(params) {
 }
 
 async function exportNodeAsImage(params) {
-  const { nodeId, format = "PNG", scale = 1 } = params || {};
+  const { nodeId, scale = 1 } = params || {};
+
+  const format = "PNG";
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -748,57 +748,71 @@ async function exportNodeAsImage(params) {
         mimeType = "application/octet-stream";
     }
 
-    // Convert to base64
-    const uint8Array = new Uint8Array(bytes);
-    let binary = "";
-    for (let i = 0; i < uint8Array.length; i++) {
-      binary += String.fromCharCode(uint8Array[i]);
-    }
-    const base64 = btoa(binary);
-    const imageData = `data:${mimeType};base64,${base64}`;
+    // Proper way to convert Uint8Array to base64
+    const base64 = customBase64Encode(bytes);
+    // const imageData = `data:${mimeType};base64,${base64}`;
 
     return {
       nodeId,
       format,
       scale,
       mimeType,
-      imageData,
+      imageData: base64,
     };
   } catch (error) {
     throw new Error(`Error exporting node as image: ${error.message}`);
   }
 }
+function customBase64Encode(bytes) {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let base64 = "";
 
-async function executeCode(params) {
-  const { code } = params || {};
+  const byteLength = bytes.byteLength;
+  const byteRemainder = byteLength % 3;
+  const mainLength = byteLength - byteRemainder;
 
-  if (!code) {
-    throw new Error("Missing code parameter");
+  let a, b, c, d;
+  let chunk;
+
+  // Main loop deals with bytes in chunks of 3
+  for (let i = 0; i < mainLength; i = i + 3) {
+    // Combine the three bytes into a single integer
+    chunk = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+
+    // Use bitmasks to extract 6-bit segments from the triplet
+    a = (chunk & 16515072) >> 18; // 16515072 = (2^6 - 1) << 18
+    b = (chunk & 258048) >> 12; // 258048 = (2^6 - 1) << 12
+    c = (chunk & 4032) >> 6; // 4032 = (2^6 - 1) << 6
+    d = chunk & 63; // 63 = 2^6 - 1
+
+    // Convert the raw binary segments to the appropriate ASCII encoding
+    base64 += chars[a] + chars[b] + chars[c] + chars[d];
   }
 
-  try {
-    // Execute the provided code
-    // Note: This is potentially unsafe, but matches the Blender MCP functionality
-    const executeFn = new Function(
-      "figma",
-      "selection",
-      `
-      try {
-        const result = (async () => {
-          ${code}
-        })();
-        return result;
-      } catch (error) {
-        throw new Error('Error executing code: ' + error.message);
-      }
-    `
-    );
+  // Deal with the remaining bytes and padding
+  if (byteRemainder === 1) {
+    chunk = bytes[mainLength];
 
-    const result = await executeFn(figma, figma.currentPage.selection);
-    return { result };
-  } catch (error) {
-    throw new Error(`Error executing code: ${error.message}`);
+    a = (chunk & 252) >> 2; // 252 = (2^6 - 1) << 2
+
+    // Set the 4 least significant bits to zero
+    b = (chunk & 3) << 4; // 3 = 2^2 - 1
+
+    base64 += chars[a] + chars[b] + "==";
+  } else if (byteRemainder === 2) {
+    chunk = (bytes[mainLength] << 8) | bytes[mainLength + 1];
+
+    a = (chunk & 64512) >> 10; // 64512 = (2^6 - 1) << 10
+    b = (chunk & 1008) >> 4; // 1008 = (2^6 - 1) << 4
+
+    // Set the 2 least significant bits to zero
+    c = (chunk & 15) << 2; // 15 = 2^4 - 1
+
+    base64 += chars[a] + chars[b] + chars[c] + "=";
   }
+
+  return base64;
 }
 
 async function setCornerRadius(params) {
