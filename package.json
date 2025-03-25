@@ -5,7 +5,8 @@
   "main": "src/socket.ts",
   "scripts": {
     "setup": "./scripts/setup.sh",
-    "start": "bun run src/socket.ts"
+    "start": "bun run src/socket.ts",
+    "watch": "bun --watch watch-plugin.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",

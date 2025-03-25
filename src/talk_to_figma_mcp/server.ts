@@ -755,6 +755,231 @@ Example Login Screen Structure:
   }
 );
 
+// 텍스트 노드 스캐닝 도구 추가
+server.tool(
+  "scan_text_nodes",
+  "Scan all text nodes in the selected Figma node",
+  {
+    nodeId: z.string().describe("ID of the node to scan")
+  },
+  async ({ nodeId }) => {
+    try {
+      const result = await sendCommandToFigma('scan_text_nodes', { nodeId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// 텍스트 노드 주석 추가 도구
+server.tool(
+  "add_text_annotations",
+  "Add annotations to text nodes",
+  {
+    nodeId: z.string().describe("ID of the parent node containing text nodes"),
+    annotationStyle: z.enum(["speech_bubble", "side_note", "highlight"]).optional().describe("Style of annotations to add"),
+    includeFrames: z.boolean().optional().describe("Whether to create a report frame")
+  },
+  async ({ nodeId, annotationStyle, includeFrames }) => {
+    try {
+      const result = await sendCommandToFigma('add_text_annotations', { 
+        nodeId, 
+        annotationStyle: annotationStyle || "speech_bubble",
+        includeFrames: includeFrames !== false
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error adding text annotations: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// UX 텍스트 분석 도구
+server.tool(
+  "analyze_ux_text",
+  "Analyze UX text for quality and consistency",
+  {
+    nodeId: z.string().describe("ID of the parent node containing text to analyze"),
+    criteria: z.array(z.string()).optional().describe("Specific criteria to analyze (e.g., ['clarity', 'consistency', 'tone'])")
+  },
+  async ({ nodeId, criteria }) => {
+    try {
+      const result = await sendCommandToFigma('analyze_ux_text', { 
+        nodeId,
+        criteria: criteria || ["clarity", "consistency", "tone", "action-oriented", "accessibility"]
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error analyzing UX text: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// UX 리포트 생성 도구
+server.tool(
+  "generate_ux_report",
+  "Generate a UX writing report as a Figma frame",
+  {
+    nodeId: z.string().describe("ID of the node to generate report for"),
+    reportTitle: z.string().optional().describe("Title of the report"),
+    includeScreenshots: z.boolean().optional().describe("Whether to include screenshots in the report"),
+    reportStyle: z.enum(["minimal", "detailed", "visual"]).optional().describe("Style of the report"),
+    position: z.object({
+      x: z.number().describe("X position for the report frame"),
+      y: z.number().describe("Y position for the report frame")
+    }).optional().describe("Position of the report frame")
+  },
+  async ({ nodeId, reportTitle, includeScreenshots, reportStyle, position }) => {
+    try {
+      const result = await sendCommandToFigma('generate_ux_report', { 
+        nodeId,
+        reportTitle: reportTitle || "UX Writing Analysis Report",
+        includeScreenshots: includeScreenshots !== false,
+        reportStyle: reportStyle || "detailed",
+        position: position || { x: 100, y: 100 }
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error generating UX report: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// 텍스트 최적화 도구
+server.tool(
+  "optimize_ux_text",
+  "Optimize UX writing for selected text nodes",
+  {
+    nodeId: z.string().describe("ID of the text node to optimize"),
+    optimizationType: z.enum(["clarity", "conciseness", "friendliness", "technical", "persuasive"]).optional().describe("Type of optimization to apply"),
+    customInstructions: z.string().optional().describe("Custom instructions for optimization"),
+    applyChanges: z.boolean().optional().describe("Whether to apply changes directly")
+  },
+  async ({ nodeId, optimizationType, customInstructions, applyChanges }) => {
+    try {
+      const result = await sendCommandToFigma('optimize_ux_text', { 
+        nodeId, 
+        optimizationType: optimizationType || "clarity",
+        customInstructions: customInstructions || "",
+        applyChanges: applyChanges !== false
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error optimizing UX text: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// 로컬라이징 도구
+server.tool(
+  "localize_text",
+  "Localize text nodes to different languages",
+  {
+    nodeId: z.string().describe("ID of the node containing text to localize"),
+    languages: z.array(z.string()).describe("Array of language codes to translate to"),
+    createVisualFrame: z.boolean().optional().describe("Whether to create a visual frame with translations"),
+    adaptLayout: z.boolean().optional().describe("Whether to adapt layout for localized text")
+  },
+  async ({ nodeId, languages, createVisualFrame, adaptLayout }) => {
+    try {
+      const result = await sendCommandToFigma('localize_text', { 
+        nodeId, 
+        languages,
+        createVisualFrame: createVisualFrame !== false,
+        adaptLayout: adaptLayout === true
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error localizing text: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Define command types and parameters
 type FigmaCommand =
   | 'get_document_info'
@@ -775,7 +1000,13 @@ type FigmaCommand =
   | 'export_node_as_image'
   | 'execute_code'
   | 'join'
-  | 'set_corner_radius';
+  | 'set_corner_radius'
+  | 'scan_text_nodes'
+  | 'add_text_annotations'
+  | 'analyze_ux_text'
+  | 'generate_ux_report'
+  | 'optimize_ux_text'
+  | 'localize_text';
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {

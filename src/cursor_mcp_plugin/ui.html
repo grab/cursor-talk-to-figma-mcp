@@ -531,6 +531,37 @@
         const message = event.data.pluginMessage;
         if (!message) return;
 
+        if (message.type === "disconnect") {
+          console.log("Disconnected from plugin");
+          state.connected = false;
+          state.socket = null;
+          updateConnectionStatus(false, "Disconnected from server");
+          return;
+        }
+        
+        if (message.type === "scan-text-nodes-result") {
+          // 스캔 결과 처리
+          console.log("Received scan result:", message.result);
+          displayScanResults(message.result);
+          return;
+        }
+        
+        if (message.type === "command-result") {
+          if (state.socket) {
+            // 결과를 서버로 전송
+            sendSuccessResponse(message.id, message.result);
+          }
+          return;
+        }
+        
+        if (message.type === "command-error") {
+          if (state.socket) {
+            // 에러를 서버로 전송
+            sendErrorResponse(message.id, message.error);
+          }
+          return;
+        }
+
         switch (message.type) {
           case "connection-status":
             updateConnectionStatus(message.connected, message.message);
