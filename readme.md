@@ -77,6 +77,27 @@ bun socket
 3. Select the `src/cursor_mcp_plugin/manifest.json` file
 4. The plugin should now be available in your Figma development plugins
 
+## Windows + WSL Guide
+
+1. Install bun via powershell
+
+```bash
+powershell -c "irm bun.sh/install.ps1|iex"
+```
+
+2. Uncomment the hostname `0.0.0.0` in `src/socket.ts`
+
+```typescript
+// uncomment this to allow connections in windows wsl
+hostname: "0.0.0.0",
+```
+ 
+3. Start the websocket
+
+```bash
+bun socket
+```
+
 ## Usage
 
 1. Start the WebSocket server
