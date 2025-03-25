@@ -70,6 +70,11 @@ async function handleCommand(command, params) {
         throw new Error("Missing nodeId parameter");
       }
       return await getNodeInfo(params.nodeId);
+    case "get_nodes_info":
+      if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
+        throw new Error("Missing or invalid nodeIds parameter");
+      }
+      return await getNodesInfo(params.nodeIds);
     case "create_rectangle":
       return await createRectangle(params);
     case "create_frame":
@@ -162,6 +167,35 @@ async function getNodeInfo(nodeId) {
   });
 
   return response.document;
+}
+
+async function getNodesInfo(nodeIds) {
+  try {
+    // Load all nodes in parallel
+    const nodes = await Promise.all(
+      nodeIds.map((id) => figma.getNodeByIdAsync(id))
+    );
+
+    // Filter out any null values (nodes that weren't found)
+    const validNodes = nodes.filter((node) => node !== null);
+
+    // Export all valid nodes in parallel
+    const responses = await Promise.all(
+      validNodes.map(async (node) => {
+        const response = await node.exportAsync({
+          format: "JSON_REST_V1",
+        });
+        return {
+          nodeId: node.id,
+          document: response.document,
+        };
+      })
+    );
+
+    return responses;
+  } catch (error) {
+    throw new Error(`Error getting nodes info: ${error.message}`);
+  }
 }
 
 async function createRectangle(params) {

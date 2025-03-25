@@ -134,6 +134,42 @@ server.tool(
   }
 );
 
+// Nodes Info Tool
+server.tool(
+  "get_nodes_info",
+  "Get detailed information about multiple nodes in Figma",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
+  },
+  async ({ nodeIds }) => {
+    try {
+      const results = await Promise.all(
+        nodeIds.map(async (nodeId) => {
+          const result = await sendCommandToFigma('get_node_info', { nodeId });
+          return { nodeId, info: result };
+        })
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(results, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Create Rectangle Tool
 server.tool(
   "create_rectangle",

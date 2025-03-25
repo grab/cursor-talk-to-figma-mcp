@@ -24,7 +24,6 @@ curl -fsSL https://bun.sh/install | bash
 bun setup
 ```
 
-
 3. Start the Websocket server
 
 ```bash
@@ -54,9 +53,7 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
   "mcpServers": {
     "TalkToFigma": {
       "command": "bunx",
-      "args": [
-        "cursor-talk-to-figma-mcp"
-      ]
+      "args": ["cursor-talk-to-figma-mcp"]
     }
   }
 }
@@ -91,7 +88,7 @@ powershell -c "irm bun.sh/install.ps1|iex"
 // uncomment this to allow connections in windows wsl
 hostname: "0.0.0.0",
 ```
- 
+
 3. Start the websocket
 
 ```bash
@@ -115,6 +112,7 @@ The MCP server provides the following tools for interacting with Figma:
 - `get_document_info` - Get information about the current Figma document
 - `get_selection` - Get information about the current selection
 - `get_node_info` - Get detailed information about a specific node
+- `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
 
 ### Creating Elements
 
