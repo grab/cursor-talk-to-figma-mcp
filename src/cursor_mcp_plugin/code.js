@@ -96,6 +96,8 @@ async function handleCommand(command, params) {
       return await createComponentInstance(params);
     case "export_node_as_image":
       return await exportNodeAsImage(params);
+    case "export_node_as_image_to_server":
+      return await exportNodeAsImageToServer(params);
     case "execute_code":
       return await executeCode(params);
     case "set_corner_radius":
@@ -104,14 +106,6 @@ async function handleCommand(command, params) {
       return await scanTextNodes(params.nodeId);
     case "add_text_annotations":
       return await addTextAnnotations(params.nodeId, params.annotationStyle, params.includeFrames);
-    case "analyze_ux_text":
-      return await analyzeUXText(params.nodeId, params.criteria);
-    case "generate_ux_report":
-      return await generateUXReport(params);
-    case "optimize_ux_text":
-      return await optimizeUXText(params);
-    case "localize_text":
-      return await localizeText(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -725,7 +719,9 @@ async function createComponentInstance(params) {
 }
 
 async function exportNodeAsImage(params) {
-  const { nodeId, format = "PNG", scale = 1 } = params || {};
+  const { nodeId, scale = 1 } = params || {};
+
+  const format = "PNG";
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -766,24 +762,140 @@ async function exportNodeAsImage(params) {
         mimeType = "application/octet-stream";
     }
 
-    // Convert to base64
-    const uint8Array = new Uint8Array(bytes);
-    let binary = "";
-    for (let i = 0; i < uint8Array.length; i++) {
-      binary += String.fromCharCode(uint8Array[i]);
-    }
-    const base64 = btoa(binary);
-    const imageData = `data:${mimeType};base64,${base64}`;
+    // Proper way to convert Uint8Array to base64
+    const base64 = customBase64Encode(bytes);
+    // const imageData = `data:${mimeType};base64,${base64}`;
 
     return {
       nodeId,
       format,
       scale,
       mimeType,
-      imageData,
+      imageData: base64,
     };
   } catch (error) {
     throw new Error(`Error exporting node as image: ${error.message}`);
+  }
+}
+
+// 서버에 이미지 업로드 함수로 이름 변경 및 기능 수정
+async function exportNodeAsImageToServer(params) {
+  const { nodeId, format = "PNG", scale = 1 } = params || {};
+  
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  console.log(`[SERVER] Starting image export and upload for node ${nodeId} with format ${format} at scale ${scale}`);
+
+  try {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      console.error(`[SERVER] Node not found with ID: ${nodeId}`);
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+  
+    if (!("exportAsync" in node)) {
+      console.error(`[SERVER] Node does not support exporting: ${nodeId}`);
+      throw new Error(`Node does not support exporting: ${nodeId}`);
+    }
+
+    const settings = {
+      format: format,
+      constraint: { type: "SCALE", value: scale },
+    };
+
+    console.log(`[SERVER] Exporting node with settings:`, settings);
+    
+    // 내보내기 수행
+    const bytes = await node.exportAsync(settings);
+    console.log(`[SERVER] Successfully exported ${bytes.length} bytes`);
+
+    // MIME 타입 설정
+    let mimeType;
+    switch (format) {
+      case "PNG":
+        mimeType = "image/png";
+        break;
+      case "JPG":
+        mimeType = "image/jpeg";
+        break;
+      case "SVG":
+        mimeType = "image/svg+xml";
+        break;
+      case "PDF":
+        mimeType = "application/pdf";
+        break;
+      default:
+        mimeType = "application/octet-stream";
+    }
+
+    // UI를 통해 서버에 업로드
+    console.log(`[SERVER] Sending to UI for upload to server...`);
+    
+    // UI가 열려있지 않으면 열기
+    if (!figma.ui) {
+      // 작은 창으로 열어두기 (사용자에게 보이지 않게)
+      figma.showUI(__html__, { visible: false, width: 10, height: 10 });
+    }
+    
+    // UI를 통한 업로드 요청 및 응답을 기다리기 위한 프로미스
+    return new Promise((resolve, reject) => {
+      // 요청 ID 생성
+      const messageId = Date.now().toString();
+      
+      // 메시지 핸들러 등록
+      const messageHandler = (msg) => {
+        // 현재 요청에 대한 응답인지 확인
+        if (msg.messageId !== messageId) return;
+        
+        // 완료 메시지인 경우
+        if (msg.type === 'upload-complete' && msg.success) {
+          figma.ui.off('message', messageHandler);
+          console.log(`[SERVER] Upload completed via UI, imageId: ${msg.imageId}`);
+          
+          resolve({
+            nodeId,
+            format,
+            scale,
+            mimeType,
+            success: true,
+            imageId: msg.imageId,
+            imageUrl: msg.imageUrl
+          });
+        } 
+        // 에러 메시지인 경우
+        else if (msg.type === 'upload-error') {
+          figma.ui.off('message', messageHandler);
+          console.error(`[SERVER] Upload failed via UI: ${msg.error}`);
+          
+          reject(new Error(`Error uploading image via UI: ${msg.error}`));
+        }
+      };
+      
+      // 메시지 이벤트 핸들러 등록
+      figma.ui.on('message', messageHandler);
+      
+      // UI에 업로드 요청 전송
+      figma.ui.postMessage({
+        type: 'upload-image',
+        bytes: Array.from(bytes), // ArrayBuffer를 배열로 변환하여 전송
+        mimeType: mimeType,
+        format: format,
+        nodeId: nodeId, // 노드 ID 추가 (파일명 생성에 활용)
+        nodeName: node.name || 'image', // 노드 이름 추가 (파일명 생성에 활용)
+        messageId: messageId
+      });
+      
+      // 타임아웃 설정 (30초)
+      setTimeout(() => {
+        figma.ui.off('message', messageHandler);
+        reject(new Error('Upload timeout via UI after 30 seconds'));
+      }, 30000);
+    });
+  } catch (error) {
+    console.error(`[SERVER] Error exporting node as image:`, error);
+    throw new Error(`Error exporting node to server: ${error.message}`);
   }
 }
 
@@ -2371,4 +2483,32 @@ async function localizeText(params) {
     localizationResults: localizationResults,
     visualizationFrameId: visualizationFrame ? visualizationFrame.id : null
   };
+}
+
+// Base64 인코딩을 위한 헬퍼 함수
+function customBase64Encode(bytes) {
+  const CHUNK_SIZE = 1024; // 한 번에 처리할 바이트 수
+  let binary = '';
+  
+  // 작은 청크로 나누어 처리하여 메모리 효율성 향상
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const end = Math.min(i + CHUNK_SIZE, bytes.length);
+    for (let j = i; j < end; j++) {
+      binary += String.fromCharCode(bytes[j]);
+    }
+  }
+  
+  // Base64 변환
+  try {
+    // Browser environment
+    return btoa(binary);
+  } catch (e) {
+    // Node.js environment 또는 btoa가 없는 경우
+    try {
+      return Buffer.from(binary, 'binary').toString('base64');
+    } catch (e2) {
+      console.error('Base64 인코딩 실패:', e2);
+      throw new Error('Base64 인코딩에 실패했습니다');
+    }
+  }
 }

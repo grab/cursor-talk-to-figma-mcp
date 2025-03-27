@@ -3,12 +3,22 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
+import http from 'http';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
   id: string;
   result?: any;
   error?: string;
+}
+
+// Define interface for image export results
+interface ImageExportResult {
+  imageData: string;
+  mimeType: string;
 }
 
 // WebSocket connection and request tracking
@@ -22,11 +32,216 @@ const pendingRequests = new Map<string, {
 // Track which channel each client is in
 let currentChannel: string | null = null;
 
+// 인메모리 이미지 저장소
+interface StoredImage {
+  id: string;
+  data: Uint8Array;
+  mimeType: string;
+  createdAt: number;
+}
+
+// 이미지를 저장할 맵
+const imageStore = new Map<string, StoredImage>();
+
+// 이미지 저장소 포트
+const IMAGE_SERVER_PORT = 3056;
+
+// 구조화된 이미지 저장을 위한 상수
+const IMAGE_BASE_DIR = path.join(process.cwd(), 'figma-exports');
+
+// 구조화된 폴더 생성 함수
+function createDirectoryStructure(documentId: string, pageId?: string): string {
+  // 기본 디렉토리 생성
+  if (!fs.existsSync(IMAGE_BASE_DIR)) {
+    fs.mkdirSync(IMAGE_BASE_DIR, { recursive: true });
+  }
+  
+  // 문서 ID 폴더
+  const docDir = path.join(IMAGE_BASE_DIR, documentId);
+  if (!fs.existsSync(docDir)) {
+    fs.mkdirSync(docDir, { recursive: true });
+  }
+  
+  // 날짜 폴더 (YYYY-MM-DD 형식)
+  const today = new Date();
+  const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
+  const dateDir = path.join(docDir, dateStr);
+  if (!fs.existsSync(dateDir)) {
+    fs.mkdirSync(dateDir, { recursive: true });
+  }
+  
+  // 페이지 ID 폴더 (있는 경우)
+  if (pageId) {
+    const pageDir = path.join(dateDir, pageId);
+    if (!fs.existsSync(pageDir)) {
+      fs.mkdirSync(pageDir, { recursive: true });
+    }
+    return pageDir;
+  }
+  
+  return dateDir;
+}
+
+// 이미지 파일 저장 함수
+function saveImageToFile(imageId: string, data: Uint8Array, documentId: string, pageId?: string): string {
+  const targetDir = createDirectoryStructure(documentId, pageId);
+  const filePath = path.join(targetDir, `${imageId}.png`);
+  
+  fs.writeFileSync(filePath, Buffer.from(data));
+  console.log(`[SERVER] Image saved to file: ${filePath}`);
+  
+  return filePath;
+}
+
+// 이미지 저장 함수 업데이트
+function storeImage(data: Uint8Array, mimeType: string, documentId?: string, pageId?: string, nodeName?: string): string {
+  const imageId = crypto.randomBytes(16).toString('hex');
+  
+  // 인메모리 저장
+  imageStore.set(imageId, {
+    id: imageId,
+    data,
+    mimeType,
+    createdAt: Date.now()
+  });
+  
+  // 파일 시스템에 저장 (문서 ID가 제공된 경우)
+  let filePath = null;
+  if (documentId) {
+    filePath = saveImageToFile(imageId, data, documentId, pageId);
+  }
+  
+  return imageId;
+}
+
+// 이미지를 저장할 맵
+const imageServer = http.createServer((req, res) => {
+  const url = new URL(req.url || '/', `http://${req.headers.host}`);
+  const pathname = url.pathname;
+
+  // CORS 헤더 설정
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Mime-Type, X-Image-Format, X-Node-ID, X-Node-Name');
+  
+  // OPTIONS 요청 처리 (CORS preflight)
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  // 업로드 엔드포인트: /upload (POST)
+  if (pathname === '/upload' && req.method === 'POST') {
+    console.log(`[SERVER] Received image upload request`);
+    
+    const chunks: Buffer[] = [];
+    
+    // 데이터 수신
+    req.on('data', (chunk) => {
+      chunks.push(Buffer.from(chunk));
+    });
+    
+    // 데이터 처리
+    req.on('end', () => {
+      try {
+        // 전체 데이터 합치기
+        const buffer = Buffer.concat(chunks);
+        const mimeType = req.headers['x-mime-type'] as string || 'image/png';
+        const format = req.headers['x-image-format'] as string || 'png';
+        const nodeId = req.headers['x-node-id'] as string || 'unknown';
+        const nodeName = req.headers['x-node-name'] as string || 'image';
+        const documentId = req.headers['x-document-id'] as string;
+        const pageId = req.headers['x-page-id'] as string;
+        
+        console.log(`[SERVER] Received ${buffer.length} bytes, mime type: ${mimeType}`);
+        
+        // 인메모리 저장소에 저장 및 파일로 저장
+        const imageId = storeImage(new Uint8Array(buffer), mimeType, documentId, pageId, nodeName);
+        const imageUrl = `http://localhost:${IMAGE_SERVER_PORT}/images/${imageId}`;
+        
+        // 구조화된 파일 경로 (있는 경우)
+        let filePath = null;
+        if (documentId) {
+          const targetDir = createDirectoryStructure(documentId, pageId);
+          filePath = path.join(targetDir, `${imageId}.png`);
+        }
+        
+        // 응답 반환
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: true, 
+          imageId: imageId,
+          imageUrl: imageUrl,
+          filePath: filePath
+        }));
+      } catch (error) {
+        console.error(`[SERVER] Error processing upload:`, error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error) 
+        }));
+      }
+    });
+    
+    // 오류 처리
+    req.on('error', (error) => {
+      console.error(`[SERVER] Upload request error:`, error);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ 
+        success: false, 
+        error: error.message 
+      }));
+    });
+    
+    return;
+  }
+
+  // 이미지 엔드포인트: /images/{imageId}
+  if (pathname.startsWith('/images/')) {
+    const imageId = pathname.substring('/images/'.length);
+    const image = imageStore.get(imageId);
+
+    if (!image) {
+      res.writeHead(404);
+      res.end('Image not found');
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': image.mimeType,
+      'Content-Length': image.data.length,
+      'Cache-Control': 'max-age=3600'
+    });
+    res.end(Buffer.from(image.data));
+    return;
+  }
+
+  // 기본 응답
+  res.writeHead(404);
+  res.end('Not found');
+});
+
+// 오래된 이미지 정리 (1시간마다)
+setInterval(() => {
+  const now = Date.now();
+  const ONE_HOUR = 60 * 60 * 1000;
+  
+  for (const [id, image] of imageStore.entries()) {
+    if (now - image.createdAt > ONE_HOUR) {
+      imageStore.delete(id);
+      console.log(`Removed old image: ${id}`);
+    }
+  }
+}, 60 * 60 * 1000);
+
 // Create MCP server
 const server = new McpServer({
   name: "TalkToFigmaMCP",
   version: "1.0.0",
 });
+
 
 // Document Info Tool
 server.tool(
@@ -561,10 +776,10 @@ server.tool(
   }
 );
 
-// Export Node as Image Tool
+// Export Node as Image to Server Tool
 server.tool(
-  "export_node_as_image",
-  "Export a node as an image from Figma",
+  "export_node_as_image_to_server",
+  "Export a node as an image from Figma and save it to the server",
   {
     nodeId: z.string().describe("The ID of the node to export"),
     format: z.enum(["PNG", "JPG", "SVG", "PDF"]).optional().describe("Export format"),
@@ -572,28 +787,56 @@ server.tool(
   },
   async ({ nodeId, format, scale }) => {
     try {
-      const result = await sendCommandToFigma('export_node_as_image', {
+      console.log(`[SERVER] Starting image export and upload for node ${nodeId} with format ${format || 'PNG'} at scale ${scale || 1}`);
+      
+      // get document info
+      const docInfo = await sendCommandToFigma('get_document_info') as any;
+      
+      const imageResult = await sendCommandToFigma('export_node_as_image_to_server', {
         nodeId,
         format: format || 'PNG',
-        scale: scale || 1
+        scale: scale || 1,
+        documentId: docInfo?.id || 'unknown',
+        pageId: docInfo?.currentPage?.id || 'unknown'
       });
-      const typedResult = result as { imageData: string, mimeType: string };
-
-      return {
-        content: [
-          {
-            type: "image",
-            data: typedResult.imageData,
-            mimeType: typedResult.mimeType || "image/png"
-          }
-        ]
-      };
-    } catch (error) {
+      
+      // check response format and process
+      if (imageResult && typeof imageResult === 'object') {
+        const result = imageResult as any;
+        
+        // if uploaded to server (success, imageId, imageUrl included)
+        if (result.success === true && result.imageId) {
+          const imageUrl = result.imageUrl || `http://localhost:${IMAGE_SERVER_PORT}/images/${result.imageId}`;
+          const filePath = result.filePath || '';
+          
+          console.log(`[SERVER] Image uploaded successfully, URL: ${imageUrl}`);
+          
+          // 간결한 응답 반환
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Image exported successfully.\n\nImage URL: ${imageUrl}\nImage ID: ${result.imageId}\nDocument ID: ${docInfo?.id || 'unknown'}`
+              }
+            ],
+            context: {
+              prompts: ["figma_image_prompt"]
+            }
+          };
+        }
+      }
+      
+      console.error(`[SERVER] Invalid response format from Figma:`, imageResult);
+      throw new Error('Invalid response format from Figma');
+    } catch (error: unknown) {
+      console.error('[SERVER] Error exporting node as image:', error);
+      
+      // Return error as text content instead of throwing
       return {
         content: [
           {
             type: "text",
-            text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)}`
+            text: `Error exporting node as image to server: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
       };
@@ -755,7 +998,7 @@ Example Login Screen Structure:
   }
 );
 
-// 텍스트 노드 스캐닝 도구 추가
+// add text node scanning tool
 server.tool(
   "scan_text_nodes",
   "Scan all text nodes in the selected Figma node",
@@ -786,7 +1029,7 @@ server.tool(
   }
 );
 
-// 텍스트 노드 주석 추가 도구
+// add text annotations tool
 server.tool(
   "add_text_annotations",
   "Add annotations to text nodes",
@@ -823,162 +1066,92 @@ server.tool(
   }
 );
 
-// UX 텍스트 분석 도구
-server.tool(
-  "analyze_ux_text",
-  "Analyze UX text for quality and consistency",
-  {
-    nodeId: z.string().describe("ID of the parent node containing text to analyze"),
-    criteria: z.array(z.string()).optional().describe("Specific criteria to analyze (e.g., ['clarity', 'consistency', 'tone'])")
-  },
-  async ({ nodeId, criteria }) => {
-    try {
-      const result = await sendCommandToFigma('analyze_ux_text', { 
-        nodeId,
-        criteria: criteria || ["clarity", "consistency", "tone", "action-oriented", "accessibility"]
-      });
-      return {
-        content: [
-          {
+// add prompt for processing exported Figma images
+// @ts-nocheck
+server.prompt(
+  "figma_image_prompt",
+  "Guide for downloading Figma images with Cursor",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
             type: "text",
-            text: JSON.stringify(result, null, 2)
+            text: `# Figma Image Downloader
+
+When you receive an exported Figma image response with Image URL and Image ID, follow these simple steps to download the image:
+
+### macOS / Linux:
+\`\`\`bash
+cd cursor-talk-to-figma-mcp && DOCUMENT_ID="[DOCUMENT_ID_FROM_RESPONSE]" && IMAGE_ID="[IMAGE_ID_FROM_RESPONSE]" && IMAGE_URL="[IMAGE_URL_FROM_RESPONSE]" && TODAY=$(date +%Y-%m-%d) && mkdir -p "figma-exports/$DOCUMENT_ID/$TODAY" && curl -s "$IMAGE_URL" -o "figma-exports/$DOCUMENT_ID/$TODAY/$IMAGE_ID.png" && SAVED_PATH="figma-exports/$DOCUMENT_ID/$TODAY/$IMAGE_ID.png" && echo "Image saved to: $SAVED_PATH" && file "$SAVED_PATH"
+\`\`\`
+
+### Windows (PowerShell):
+\`\`\`powershell
+cd cursor-talk-to-figma-mcp; $DOCUMENT_ID = "[DOCUMENT_ID_FROM_RESPONSE]"; $IMAGE_ID = "[IMAGE_ID_FROM_RESPONSE]"; $IMAGE_URL = "[IMAGE_URL_FROM_RESPONSE]"; $TODAY = Get-Date -Format "yyyy-MM-dd"; New-Item -Path "figma-exports\\$DOCUMENT_ID\\$TODAY" -ItemType Directory -Force | Out-Null; Invoke-WebRequest -Uri "$IMAGE_URL" -OutFile "figma-exports\\$DOCUMENT_ID\\$TODAY\\$IMAGE_ID.png"; $SAVED_PATH = "figma-exports\\$DOCUMENT_ID\\$TODAY\\$IMAGE_ID.png"; Write-Host "Image saved to: $SAVED_PATH"; Get-Item "$SAVED_PATH" | Select-Object Name, Length, LastWriteTime
+\`\`\`
+
+Once the image is downloaded, you can use the 'figma_image_analyze_prompt' to analyze the content of the image.`
           }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error analyzing UX text: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
+        }
+      ],
+      description: "Guide for downloading Figma images"
+    };
   }
 );
 
-// UX 리포트 생성 도구
-server.tool(
-  "generate_ux_report",
-  "Generate a UX writing report as a Figma frame",
-  {
-    nodeId: z.string().describe("ID of the node to generate report for"),
-    reportTitle: z.string().optional().describe("Title of the report"),
-    includeScreenshots: z.boolean().optional().describe("Whether to include screenshots in the report"),
-    reportStyle: z.enum(["minimal", "detailed", "visual"]).optional().describe("Style of the report"),
-    position: z.object({
-      x: z.number().describe("X position for the report frame"),
-      y: z.number().describe("Y position for the report frame")
-    }).optional().describe("Position of the report frame")
-  },
-  async ({ nodeId, reportTitle, includeScreenshots, reportStyle, position }) => {
-    try {
-      const result = await sendCommandToFigma('generate_ux_report', { 
-        nodeId,
-        reportTitle: reportTitle || "UX Writing Analysis Report",
-        includeScreenshots: includeScreenshots !== false,
-        reportStyle: reportStyle || "detailed",
-        position: position || { x: 100, y: 100 }
-      });
-      return {
-        content: [
-          {
+// add prompt for analyzing Figma images
+server.prompt(
+  "figma_image_analyze_prompt",
+  "Guide for analyzing GUI designs with Cursor",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
             type: "text",
-            text: JSON.stringify(result, null, 2)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error generating UX report: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
+            text: `You are an agent that is trained to complete certain tasks on a GUI app. You will be given a screenshot of a GUI app. 
 
-// 텍스트 최적화 도구
-server.tool(
-  "optimize_ux_text",
-  "Optimize UX writing for selected text nodes",
-  {
-    nodeId: z.string().describe("ID of the text node to optimize"),
-    optimizationType: z.enum(["clarity", "conciseness", "friendliness", "technical", "persuasive"]).optional().describe("Type of optimization to apply"),
-    customInstructions: z.string().optional().describe("Custom instructions for optimization"),
-    applyChanges: z.boolean().optional().describe("Whether to apply changes directly")
-  },
-  async ({ nodeId, optimizationType, customInstructions, applyChanges }) => {
-    try {
-      const result = await sendCommandToFigma('optimize_ux_text', { 
-        nodeId, 
-        optimizationType: optimizationType || "clarity",
-        customInstructions: customInstructions || "",
-        applyChanges: applyChanges !== false
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error optimizing UX text: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
+You can call the following functions to interact with those labeled elements to control the app:
 
-// 로컬라이징 도구
-server.tool(
-  "localize_text",
-  "Localize text nodes to different languages",
-  {
-    nodeId: z.string().describe("ID of the node containing text to localize"),
-    languages: z.array(z.string()).describe("Array of language codes to translate to"),
-    createVisualFrame: z.boolean().optional().describe("Whether to create a visual frame with translations"),
-    adaptLayout: z.boolean().optional().describe("Whether to adapt layout for localized text")
-  },
-  async ({ nodeId, languages, createVisualFrame, adaptLayout }) => {
-    try {
-      const result = await sendCommandToFigma('localize_text', { 
-        nodeId, 
-        languages,
-        createVisualFrame: createVisualFrame !== false,
-        adaptLayout: adaptLayout === true
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2)
+1. tap(element: x, y: y)
+This function is used to tap an UI element shown on the screen.
+"x" and "y" are the coordinates of the UI element on the screen.
+A simple use case can be tap(50, 100), which taps the UI element at the coordinates (50, 100).
+
+2. text(text_input: str)
+This function is used to insert text input in an input field/box. text_input is the string you want to insert and must be wrapped with double quotation marks. A simple use case can be text("Hello, world!"), which inserts the string "Hello, world!" into the input area on the screen. This function is only callable when you see a keyboard showing in the lower half of the screen.
+
+3. long_press(element: x, y: y)
+This function is used to long press an UI element shown on the screen.
+"x" and "y" are the coordinates of the UI element on the screen.
+A simple use case can be long_press(50, 100), which long presses the UI element at the coordinates (50, 100).
+
+4. swipe(element: x, y: y, direction: str, dist: str)
+This function is used to swipe an UI element shown on the screen, usually a scroll view or a slide bar.
+"x" and "y" are the coordinates of the UI element on the screen. "direction" is a string that represents one of the four directions: up, down, left, right. "direction" must be wrapped with double quotation marks. "dist" determines the distance of the swipe and can be one of the three options: short, medium, long. You should choose the appropriate distance option according to your need.
+A simple use case can be swipe(21, "up", "medium"), which swipes up the UI element at the coordinates (21, 100) for a medium distance.
+
+The task you need to complete is to <task_description>. Your past actions to proceed with this task are summarized as follows: <last_act>
+Now, given the following screenshot, you need to think and call the function needed to proceed with the task. 
+Your output should include three parts in the given format:
+
+* Observation: <Describe what you observe in the image>
+* Thought: <To complete the given task, what is the next step I should do>
+* Action: <The function call with the correct parameters to proceed with the task. If you believe the task is completed or there is nothing to be done, you should output FINISH. You cannot output anything else except a function call or FINISH in this field.>
+* Summary: <Summarize your past actions along with your latest action in one or two sentences. Do not include the numeric tag in your summary>
+
+You can only take one action at a time, so please directly call the function.`
           }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error localizing text: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
+        }
+      ],
+      description: "Guide for analyzing GUI designs"
+    };
   }
 );
+// @ts-check
 
 // Define command types and parameters
 type FigmaCommand =
@@ -1003,10 +1176,7 @@ type FigmaCommand =
   | 'set_corner_radius'
   | 'scan_text_nodes'
   | 'add_text_annotations'
-  | 'analyze_ux_text'
-  | 'generate_ux_report'
-  | 'optimize_ux_text'
-  | 'localize_text';
+  | 'export_node_as_image_to_server';
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -1228,6 +1398,11 @@ async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.info('FigmaMCP server running on stdio');
+
+  // 이미지 서버 시작
+  imageServer.listen(IMAGE_SERVER_PORT, () => {
+    console.log(`Image server running on http://localhost:${IMAGE_SERVER_PORT}`);
+  });
 }
 
 // Run the server
