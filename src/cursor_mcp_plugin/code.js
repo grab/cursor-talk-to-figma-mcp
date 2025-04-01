@@ -102,8 +102,8 @@ async function handleCommand(command, params) {
       return await setCornerRadius(params);
     case "scan_text_nodes":
       return await scanTextNodes(params.nodeId);
-    case "understand_context":
-      return await understandContext(params);
+    case "export_node_as_image_large":
+      return await exportNodeAsImageLarge(params);
     case "clone_node":
       return await cloneNode(params);
     case "apply_translations":
@@ -111,9 +111,7 @@ async function handleCommand(command, params) {
     default:
       throw new Error(`Unknown command: ${command}`);
   }
-}
-
-// Command implementations
+}// Command implementations
 
 async function getDocumentInfo() {
   await figma.currentPage.loadAsync();
@@ -882,9 +880,9 @@ async function scanTextNodes(nodeId) {
   }
 }
 
-async function understandContext(params) {
+async function exportNodeAsImageLarge(params) {
   const { nodeId, format = "PNG", scale = 1 } = params || {};
-  
+
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
   }
@@ -892,27 +890,19 @@ async function understandContext(params) {
   console.log(`[SERVER] Starting image export and upload for node ${nodeId} with format ${format} at scale ${scale}`);
 
   try {
+    // Get the node information for the name
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
-      console.error(`[SERVER] Node not found with ID: ${nodeId}`);
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
-  
-    if (!("exportAsync" in node)) {
-      console.error(`[SERVER] Node does not support exporting: ${nodeId}`);
-      throw new Error(`Node does not support exporting: ${nodeId}`);
-    }
-
+    
+    // Export the node directly using the Figma API
     const settings = {
       format: format,
       constraint: { type: "SCALE", value: scale },
     };
-
-    console.log(`[SERVER] Exporting node with settings:`, settings);
     
     const bytes = await node.exportAsync(settings);
-    console.log(`[SERVER] Successfully exported ${bytes.length} bytes`);
-
     let mimeType;
     switch (format) {
       case "PNG":
@@ -930,7 +920,7 @@ async function understandContext(params) {
       default:
         mimeType = "application/octet-stream";
     }
-
+    
     console.log(`[SERVER] Sending to UI for upload to server...`);
     
     if (!figma.ui) {
@@ -1537,3 +1527,4 @@ async function applyTranslations(params) {
     results: results
   };
 }
+

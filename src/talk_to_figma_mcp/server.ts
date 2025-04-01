@@ -5,7 +5,7 @@ import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import http from "http";
 import crypto from "crypto";
-import fs from "fs";
+
 import path from "path";
 
 // Define TypeScript interfaces for Figma responses
@@ -13,12 +13,6 @@ interface FigmaResponse {
   id: string;
   result?: any;
   error?: string;
-}
-
-// Define interface for image export results
-interface ImageExportResult {
-  imageData: string;
-  mimeType: string;
 }
 
 // WebSocket connection and request tracking
@@ -35,7 +29,7 @@ const pendingRequests = new Map<
 // Track which channel each client is in
 let currentChannel: string | null = null;
 
-// 인메모리 이미지 저장소
+// in-memory image storage
 interface StoredImage {
   id: string;
   data: Uint8Array;
@@ -43,75 +37,17 @@ interface StoredImage {
   createdAt: number;
 }
 
-// 이미지를 저장할 맵
+// in-memory image storage map
 const imageStore = new Map<string, StoredImage>();
 
-// 이미지 저장소 포트
+// in-memory image storage port
 const IMAGE_SERVER_PORT = 3056;
 
-// 구조화된 이미지 저장을 위한 상수
-const IMAGE_BASE_DIR = path.join(process.cwd(), "figma-exports");
-
-// 구조화된 폴더 생성 함수
-function createDirectoryStructure(documentId: string, pageId?: string): string {
-  // 기본 디렉토리 생성
-  if (!fs.existsSync(IMAGE_BASE_DIR)) {
-    fs.mkdirSync(IMAGE_BASE_DIR, { recursive: true });
-  }
-
-  // 문서 ID 폴더
-  const docDir = path.join(IMAGE_BASE_DIR, documentId);
-  if (!fs.existsSync(docDir)) {
-    fs.mkdirSync(docDir, { recursive: true });
-  }
-
-  // 날짜 폴더 (YYYY-MM-DD 형식)
-  const today = new Date();
-  const dateStr = today.toISOString().split("T")[0]; // YYYY-MM-DD
-  const dateDir = path.join(docDir, dateStr);
-  if (!fs.existsSync(dateDir)) {
-    fs.mkdirSync(dateDir, { recursive: true });
-  }
-
-  // 페이지 ID 폴더 (있는 경우)
-  if (pageId) {
-    const pageDir = path.join(dateDir, pageId);
-    if (!fs.existsSync(pageDir)) {
-      fs.mkdirSync(pageDir, { recursive: true });
-    }
-    return pageDir;
-  }
-
-  return dateDir;
-}
-
-// 이미지 파일 저장 함수
-function saveImageToFile(
-  imageId: string,
-  data: Uint8Array,
-  documentId: string,
-  pageId?: string
-): string {
-  const targetDir = createDirectoryStructure(documentId, pageId);
-  const filePath = path.join(targetDir, `${imageId}.png`);
-
-  fs.writeFileSync(filePath, Buffer.from(data));
-  console.log(`[SERVER] Image saved to file: ${filePath}`);
-
-  return filePath;
-}
-
-// 이미지 저장 함수 업데이트
-function storeImage(
-  data: Uint8Array,
-  mimeType: string,
-  documentId?: string,
-  pageId?: string,
-  nodeName?: string
-): string {
+// Image storage function (memory only)
+function storeImage(data: Uint8Array, mimeType: string): string {
   const imageId = crypto.randomBytes(16).toString("hex");
 
-  // 인메모리 저장
+  // Store image in memory only
   imageStore.set(imageId, {
     id: imageId,
     data,
@@ -119,21 +55,14 @@ function storeImage(
     createdAt: Date.now(),
   });
 
-  // 파일 시스템에 저장 (문서 ID가 제공된 경우)
-  let filePath = null;
-  if (documentId) {
-    filePath = saveImageToFile(imageId, data, documentId, pageId);
-  }
-
   return imageId;
 }
 
-// 이미지를 저장할 맵
 const imageServer = http.createServer((req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // CORS 헤더 설정
+  // CORS header settings
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader(
@@ -141,28 +70,28 @@ const imageServer = http.createServer((req, res) => {
     "Content-Type, X-Mime-Type, X-Image-Format, X-Node-ID, X-Node-Name"
   );
 
-  // OPTIONS 요청 처리 (CORS preflight)
+  // OPTIONS request handling (CORS preflight)
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
     return;
   }
 
-  // 업로드 엔드포인트: /upload (POST)
+  // upload endpoint: /upload (POST)
   if (pathname === "/upload" && req.method === "POST") {
     console.log(`[SERVER] Received image upload request`);
 
     const chunks: Buffer[] = [];
 
-    // 데이터 수신
+    // receive data
     req.on("data", (chunk) => {
       chunks.push(Buffer.from(chunk));
     });
 
-    // 데이터 처리
+    // process data
     req.on("end", () => {
       try {
-        // 전체 데이터 합치기
+        // concatenate all data
         const buffer = Buffer.concat(chunks);
         const mimeType = (req.headers["x-mime-type"] as string) || "image/png";
         const format = (req.headers["x-image-format"] as string) || "png";
@@ -175,31 +104,17 @@ const imageServer = http.createServer((req, res) => {
           `[SERVER] Received ${buffer.length} bytes, mime type: ${mimeType}`
         );
 
-        // 인메모리 저장소에 저장 및 파일로 저장
-        const imageId = storeImage(
-          new Uint8Array(buffer),
-          mimeType,
-          documentId,
-          pageId,
-          nodeName
-        );
+        // store in in-memory storage and save to file
+        const imageId = storeImage(new Uint8Array(buffer), mimeType);
         const imageUrl = `http://localhost:${IMAGE_SERVER_PORT}/images/${imageId}`;
 
-        // 구조화된 파일 경로 (있는 경우)
-        let filePath = null;
-        if (documentId) {
-          const targetDir = createDirectoryStructure(documentId, pageId);
-          filePath = path.join(targetDir, `${imageId}.png`);
-        }
-
-        // 응답 반환
+        // return response
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             success: true,
             imageId: imageId,
             imageUrl: imageUrl,
-            filePath: filePath,
           })
         );
       } catch (error) {
@@ -214,7 +129,7 @@ const imageServer = http.createServer((req, res) => {
       }
     });
 
-    // 오류 처리
+    // error handling
     req.on("error", (error) => {
       console.error(`[SERVER] Upload request error:`, error);
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -229,7 +144,7 @@ const imageServer = http.createServer((req, res) => {
     return;
   }
 
-  // 이미지 엔드포인트: /images/{imageId}
+  // image endpoint: /images/{imageId}
   if (pathname.startsWith("/images/")) {
     const imageId = pathname.substring("/images/".length);
     const image = imageStore.get(imageId);
@@ -249,12 +164,12 @@ const imageServer = http.createServer((req, res) => {
     return;
   }
 
-  // 기본 응답
+  // default response
   res.writeHead(404);
   res.end("Not found");
 });
 
-// 오래된 이미지 정리 (1시간마다)
+// clean up old images (1 hour)
 setInterval(() => {
   const now = Date.now();
   const ONE_HOUR = 60 * 60 * 1000;
@@ -776,6 +691,89 @@ server.tool(
   }
 );
 
+// Export Node as Image Tool
+server.tool(
+  "export_node_as_image",
+  "Export a node as an image from Figma",
+  {
+    nodeId: z.string().describe("The ID of the node to export"),
+    format: z
+      .enum(["PNG", "JPG", "SVG", "PDF"])
+      .optional()
+      .describe("Export format"),
+    scale: z.number().positive().optional().describe("Export scale"),
+  },
+  async ({ nodeId, format, scale }) => {
+    try {
+      const result = await sendCommandToFigma("export_node_as_image", {
+        nodeId,
+        format: format || "PNG",
+        scale: scale || 1,
+      });
+      const typedResult = result as { imageData: string; mimeType: string };
+
+      return {
+        content: [
+          {
+            type: "image",
+            data: typedResult.imageData,
+            mimeType: typedResult.mimeType || "image/png",
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error exporting node as image: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Text Content Tool
+server.tool(
+  "set_text_content",
+  "Set the text content of an existing text node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the text node to modify"),
+    text: z.string().describe("New text content"),
+  },
+  async ({ nodeId, text }) => {
+    try {
+      const result = await sendCommandToFigma("set_text_content", {
+        nodeId,
+        text,
+      });
+      const typedResult = result as { name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Updated text content of node "${typedResult.name}" to "${text}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting text content: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Get Styles Tool
 server.tool(
   "get_styles",
@@ -1102,112 +1100,10 @@ server.tool(
   }
 );
 
-// add prompt for analyzing Figma images for understanding context of the design
-server.tool(
-  "understand_context",
-  "Send a screen to Cursor for context understanding and analysis",
-  {
-    nodeId: z.string().describe("The ID of the node to analyze"),
-    format: z
-      .enum(["PNG", "JPG", "SVG", "PDF"])
-      .optional()
-      .describe("Export format"),
-    scale: z.number().positive().optional().describe("Export scale"),
-  },
-  async ({ nodeId, format, scale }) => {
-    try {
-      console.log(
-        `[SERVER] Starting context analysis for node ${nodeId} with format ${
-          format || "PNG"
-        } at scale ${scale || 1}`
-      );
-
-      // get document info
-      const docInfo = (await sendCommandToFigma("get_document_info")) as any;
-
-      const imageResult = await sendCommandToFigma("understand_context", {
-        nodeId,
-        format: format || "PNG",
-        scale: scale || 1,
-        documentId: docInfo?.id || "unknown",
-        pageId: docInfo?.currentPage?.id || "unknown",
-      });
-      const typedResult = imageResult as any;
-
-      // Create a more structured response with workflow guidance
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(typedResult, null, 2),
-          },
-          {
-            type: "text",
-            text:
-              "Execute immediately follow up prompt for downloading the exported Figma image",
-          },
-        ],
-        followUp: {
-          prompt: "download_image_prompt",
-          description: "Download the exported Figma image",
-        },
-      };
-    } catch (error) {
-      console.error("[SERVER] Error analyzing context:", error);
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error analyzing context: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  }
-);
-
-// add prompt for processing exported Figma images
-// @ts-nocheck
-server.prompt(
-  "download_image_prompt",
-  "Downloading Figma images with Cursor",
-  (extra) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: `I'll automatically download the Figma image for you. Let me process that right away.
-
-I'll execute the following terminal command to download the image:
-
-\`\`\`bash
-DOCUMENT_ID="[DOCUMENT_ID_FROM_RESPONSE]" && IMAGE_ID="[IMAGE_ID_FROM_RESPONSE]" && IMAGE_URL="[IMAGE_URL_FROM_RESPONSE]" && TODAY=$(date +%Y-%m-%d) && mkdir -p "cursor-talk-to-figma-mcp/figma-exports/$DOCUMENT_ID/$TODAY" && curl -s "$IMAGE_URL" -o "figma-exports/$DOCUMENT_ID/$TODAY/$IMAGE_ID.png" && SAVED_PATH="figma-exports/$DOCUMENT_ID/$TODAY/$IMAGE_ID.png" && echo "Image saved to: $SAVED_PATH" && file "$SAVED_PATH"
-\`\`\`
-
-After downloading, I'll automatically analyze the image content using the context_understanding_prompt.`
-            
-          },
-          followUp: {
-            prompt: "context_understanding_prompt",
-            description: "Analyze the content of the downloaded image",
-          },
-        },
-      ],
-      description:
-        "Execute command for downloading captured design from the image server",
-    };
-  }
-);
-
-// add prompt for analyzing Figma images for understanding context of the design
+// context understanding prompt
 server.prompt(
   "context_understanding_prompt",
-  "Guide for analyzing Figma images for understanding context of the design",
+  "Guide for exporting the screenshot from Figma and downloading the screenshot to Cursor talk or Claude and observing the content of the screenshot for understanding the context of the screenshot",
   (extra) => {
     return {
       messages: [
@@ -1215,58 +1111,116 @@ server.prompt(
           role: "assistant",
           content: {
             type: "text",
-            text: `I am an agent that is trained to complete certain tasks on a GUI app. I will analyze the given screenshot of a GUI app that downloaded from Figma.
+            text: `# Figma Design Understanding
 
-I can call the following functions to interact with those UI elements to control the app:
+I'll help you understand the context of the Figma design. I'll export the screenshot from Figma and download the screenshot to Cursor talk or Claude and observe the content of the screenshot for understanding the context of the screenshot.
 
-1. tap(element: x, y: y)
+# Context understanding process
+
+1. First, use the \`export_node_as_image\` tool to export the selected node as an image:
+   \`\`\`
+   export_node_as_image(nodeId: "selected-node-id", format: "PNG", scale: 1)
+   \`\`\`
+
+2. if it timeout or error, proceed with a smaller scale
+
+3. After exporting, understand the context of the Figma design with the following prompt:
+
+\`\`\`
+You are an agent that is trained to complete certain tasks on a GUI app. You will be given a screenshot of a GUI app.
+
+You can call the following functions to interact with UI elements to control the GUI:
+
+1. tap(x: int, y: int)
 This function is used to tap an UI element shown on the screen.
-"x" and "y" are the coordinates of the UI element on the screen.
-A simple use case can be tap(50, 100), which taps the UI element at the coordinates (50, 100).
+"x" and "y" are coordinates on the screen where you want to tap.
+A simple use case can be tap(200, 150), which taps the location at coordinates (200, 150) on the screen.
 
 2. text(text_input: str)
-This function is used to insert text input in an input field/box. text_input is the string I want to insert and must be wrapped with double quotation marks. A simple use case can be text("Hello, world!"), which inserts the string "Hello, world!" into the input area on the screen. This function is only callable when I see a keyboard showing in the lower half of the screen.
+This function is used to insert text input in an input field/box. text_input is the string you want to insert and must be wrapped with double quotation marks. A simple use case can be text("Hello, world!"), which inserts the string "Hello, world!" into the input area on the screen. This function is only callable when you see a text input field is active.
 
-3. long_press(element: x, y: y)
-This function is used to long press an UI element shown on the screen.
-"x" and "y" are the coordinates of the UI element on the screen.
-A simple use case can be long_press(50, 100), which long presses the UI element at the coordinates (50, 100).
+3. long_press(x: int, y: int)
+This function is used to long press at a specific location on the screen.
+"x" and "y" are coordinates on the screen where you want to perform the long press.
+A simple use case can be long_press(200, 150), which long presses at the coordinates (200, 150).
 
-4. swipe(element: x, y: y, direction: str, dist: str)
-This function is used to swipe an UI element shown on the screen, usually a scroll view or a slide bar.
-"x" and "y" are the coordinates of the UI element on the screen. "direction" is a string that represents one of the four directions: up, down, left, right. "direction" must be wrapped with double quotation marks. "dist" determines the distance of the swipe and can be one of the three options: short, medium, long. I should choose the appropriate distance option according to my need.
-A simple use case can be swipe(21, "up", "medium"), which swipes up the UI element at the coordinates (21, 100) for a medium distance.
+4. swipe(start_x: int, start_y: int, direction: str, dist: str)
+This function is used to swipe from a starting position on the screen, usually a scroll view or a slide bar.
+"start_x" and "start_y" are the starting coordinates for the swipe. "direction" is a string that represents one of the four directions: up, down, left, right. "direction" must be wrapped with double quotation marks. "dist" determines the distance of the swipe and can be one of the three options: short, medium, long. You should choose the appropriate distance option according to your need.
+A simple use case can be swipe(200, 300, "up", "medium"), which swipes up from coordinates (200, 300) for a medium distance.
 
-The task I need to complete is to <task_description (if empty, ask user for what is the task I need to complete in this screen)>. My past actions to proceed with this task are summarized as follows: <last_act (if empty, ask user for what is the last action I took)>
-Now, given the following screenshot, I need to think and call the function needed to proceed with the task. 
-My output should include three parts in the given format:
+The task you need to complete is to <task_description>.
 
-* Observation: <Describe what I observe in the image>
-* Thought: <To complete the given task, what is the next step I should do>
-* Action: <The function call with the correct parameters to proceed with the task. If I believe the task is completed or there is nothing to be done, I should output FINISH. I cannot output anything else except a function call or FINISH in this field.>
-* Summary: <Summarize my past actions along with my latest action in one or two sentences. Do not include the numeric tag in my summary>
+Now, given the following screenshot, you need to think and call the function needed to proceed with the task. Your output should include three parts in the given format:
 
-I can only take one action at a time, so please directly call the function.
+Observation: <Describe what you observe in the image>
+Thought: <To complete the given task, what is the next step I should do>
+Action: <The function call with the correct parameters to proceed with the task. If you believe the task is completed or there is nothing to be done, you should output FINISH. You cannot output anything else except a function call or FINISH in this field.>
+Summary: <Summarize your actions in one or two sentences.>
 
-After analyzing the image, I now have a complete understanding of the design context for the selected node.
-
-Now that I understand the design context, I would like to:
-
-1. Improve the UX Writing: Enhance the content clarity, persuasiveness, or emotional appeal based on the design's purpose
-2. Localize the Content: Translate the text content to another language while preserving the design's intent and cultural context
-3. Analyze Design Patterns: Get insights about the UI components and how they compare to standard design patterns
-4. Optimize for Conversion: Receive recommendations for improving conversion rates by adjusting text and UI elements
-
-I can select one of these options or request another action related to the design I've analyzed.`
+You can only take one action at a time, so please directly call the function.
+\`\`\`
+`,
           },
         },
       ],
-      description:
-        "Guide for analyzing Figma images for understanding context of the design",
+      description: "Guide for understanding the context of the Figma design",
     };
   }
 );
-// @ts-check
+
+// add prompt for localizing Figma designs
+server.prompt(
+  "localization_prompt",
+  "Guide for localizing Figma designs to other languages",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Figma Design Localization
+
+I'll help you localize the Figma design to your desired language. Based on the context analysis of the design, I can provide culturally appropriate translations while preserving the original design intent.
+
+## Localization Process
+
+1. First, use the \`clone_node\` tool to duplicate the selected node and create a new version for localization:
+   \`\`\`
+   clone_node(nodeId: "your-node-id", x: 200, y: 0)
+   \`\`\`
+
+2. Then, use the \`scan_text_nodes\` tool directly on the cloned node to retrieve all text elements:
+   \`\`\`
+   scan_text_nodes(nodeId: "cloned-node-id")
+   \`\`\`
+
+3. Finally, apply translations to the text elements using the \`apply_translations\` tool:
+   \`\`\`
+   apply_translations(
+     nodeId: "cloned-node-id",
+     translations: [
+       { nodeId: "text-node-id-1", text: "translated text 1" },
+       { nodeId: "text-node-id-2", text: "translated text 2" },
+       ...
+     ]
+   )
+   \`\`\`
+
+## Please specify:
+- What target language would you like to localize to?
+- Are there any specific cultural adaptations or terminology preferences I should consider?
+- Would you like to maintain the same text length (important for layout constraints) or allow for natural variations?
+
+I'll ensure the translation maintains the original meaning and purpose while being culturally appropriate for your target audience.`,
+          },
+        },
+      ],
+      description: "Guide for localizing Figma designs to other languages",
+    };
+  }
+);
 
 // Define command types and parameters
 type FigmaCommand =
@@ -1290,9 +1244,9 @@ type FigmaCommand =
   | "join"
   | "set_corner_radius"
   | "scan_text_nodes"
-  | "understand_context"
   | "clone_node"
-  | "apply_translations";
+  | "apply_translations"
+  | "set_text_content";
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -1525,89 +1479,48 @@ server.tool(
   }
 );
 
-// add prompt for localizing Figma designs
-server.prompt(
-  "localization_prompt",
-  "Guide for localizing Figma designs to other languages",
-  (extra) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: `# Figma Design Localization
-
-I'll help you localize the Figma design to your desired language. Based on the context analysis of the design, I can provide culturally appropriate translations while preserving the original design intent.
-
-## Localization Process
-
-1. First, use the \`clone_node\` tool to duplicate the selected node and create a new version for localization:
-   \`\`\`
-   clone_node(nodeId: "your-node-id", x: 200, y: 0)
-   \`\`\`
-
-2. Then, use the \`scan_text_nodes\` tool directly on the cloned node to retrieve all text elements:
-   \`\`\`
-   scan_text_nodes(nodeId: "cloned-node-id")
-   \`\`\`
-
-3. Finally, apply translations to the text elements using the \`apply_translations\` tool:
-   \`\`\`
-   apply_translations(
-     nodeId: "cloned-node-id",
-     translations: [
-       { nodeId: "text-node-id-1", text: "translated text 1" },
-       { nodeId: "text-node-id-2", text: "translated text 2" },
-       ...
-     ]
-   )
-   \`\`\`
-
-## Please specify:
-- What target language would you like to localize to?
-- Are there any specific cultural adaptations or terminology preferences I should consider?
-- Would you like to maintain the same text length (important for layout constraints) or allow for natural variations?
-
-I'll ensure the translation maintains the original meaning and purpose while being culturally appropriate for your target audience.`
-          }
-        }
-      ],
-      description: "Guide for localizing Figma designs to other languages"
-    };
-  }
-);
-
 // Add this right before the localize_node tool function
 server.tool(
   "clone_node",
   "Clone a node in Figma",
   {
     nodeId: z.string().describe("The ID of the node to clone"),
-    x: z.number().optional().describe("X position offset from the original node"),
-    y: z.number().optional().describe("Y position offset from the original node"),
+    x: z
+      .number()
+      .optional()
+      .describe("X position offset from the original node"),
+    y: z
+      .number()
+      .optional()
+      .describe("Y position offset from the original node"),
   },
   async ({ nodeId, x, y }) => {
     try {
       // 1. 먼저 원본 노드의 정보를 가져와서 현재 위치를 확인
-      const originalNode = await sendCommandToFigma("get_node_info", { nodeId }) as any;
-      
-      if (!originalNode || typeof originalNode !== 'object') {
-        throw new Error(`Failed to get information for original node: ${nodeId}`);
+      const originalNode = (await sendCommandToFigma("get_node_info", {
+        nodeId,
+      })) as any;
+
+      if (!originalNode || typeof originalNode !== "object") {
+        throw new Error(
+          `Failed to get information for original node: ${nodeId}`
+        );
       }
-      
+
       // 2. 원본 노드의 위치가 있는지 확인
-      if (!('x' in originalNode) || !('y' in originalNode)) {
-        throw new Error(`Original node does not have position information: ${nodeId}`);
+      if (!("x" in originalNode) || !("y" in originalNode)) {
+        throw new Error(
+          `Original node does not have position information: ${nodeId}`
+        );
       }
-      
+
       // 3. 오프셋 적용하여 새로운 위치 계산
       const offsetX = x !== undefined ? x : 200; // 기본 오프셋은 x축으로 200px
-      const offsetY = y !== undefined ? y : 0;   // 기본 오프셋은 y축으로 0px
-      
+      const offsetY = y !== undefined ? y : 0; // 기본 오프셋은 y축으로 0px
+
       const newX = originalNode.x + offsetX;
       const newY = originalNode.y + offsetY;
-      
+
       // 4. 새 위치로 노드 복제
       const result = await sendCommandToFigma("clone_node", {
         nodeId,
@@ -1628,7 +1541,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error cloning node: ${error instanceof Error ? error.message : String(error)}`,
+            text: `Error cloning node: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
       };
@@ -1641,13 +1556,17 @@ server.tool(
   "apply_translations",
   "Apply translated text to nodes in Figma",
   {
-    nodeId: z.string().describe("The ID of the node containing the text nodes to translate"),
-    translations: z.array(
-      z.object({
-        nodeId: z.string().describe("The ID of the text node"),
-        text: z.string().describe("The translated text")
-      })
-    ).describe("Array of text node IDs and their translations"),
+    nodeId: z
+      .string()
+      .describe("The ID of the node containing the text nodes to translate"),
+    translations: z
+      .array(
+        z.object({
+          nodeId: z.string().describe("The ID of the text node"),
+          text: z.string().describe("The translated text"),
+        })
+      )
+      .describe("Array of text node IDs and their translations"),
   },
   async ({ nodeId, translations }) => {
     try {
@@ -1661,13 +1580,13 @@ server.tool(
           ],
         };
       }
-      
+
       // Use the plugin's apply_translations function directly
       const result = await sendCommandToFigma("apply_translations", {
         nodeId,
-        translations
+        translations,
       });
-      
+
       return {
         content: [
           {
@@ -1681,7 +1600,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error applying translations: ${error instanceof Error ? error.message : String(error)}`,
+            text: `Error applying translations: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
       };
