@@ -922,39 +922,6 @@ server.tool(
   }
 );
 
-// Set Text Content Tool
-server.tool(
-  "set_text_content",
-  "Set the text content of an existing text node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the text node to modify"),
-    text: z.string().describe("New text content")
-  },
-  async ({ nodeId, text }) => {
-    try {
-      const result = await sendCommandToFigma('set_text_content', { nodeId, text });
-      const typedResult = result as { name: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Updated text content of node "${typedResult.name}" to "${text}"`
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
 // Define design strategy prompt
 server.prompt(
   "design_strategy",
@@ -1052,9 +1019,54 @@ server.tool(
   },
   async ({ nodeId }) => {
     try {
-      const result = await sendCommandToFigma("scan_text_nodes", { nodeId });
+      // Initial response to indicate we're starting the process
+      const initialStatus = {
+        type: "text" as const,
+        text: "Starting text node scanning. This may take a moment for large designs...",
+      };
+
+      // Use the plugin's scan_text_nodes function with chunking flag
+      const result = await sendCommandToFigma("scan_text_nodes", { 
+        nodeId,
+        useChunking: true,  // Enable chunking on the plugin side
+        chunkSize: 10       // Process 10 nodes at a time
+      });
+
+      // If the result indicates chunking was used, format the response accordingly
+      if (result && typeof result === 'object' && 'chunks' in result) {
+        const typedResult = result as {
+          success: boolean,
+          totalNodes: number,
+          processedNodes: number,
+          chunks: number,
+          textNodes: Array<any>
+        };
+
+        const summaryText = `
+        Scan completed:
+        - Found ${typedResult.totalNodes} text nodes
+        - Processed in ${typedResult.chunks} chunks
+        `;
+
+        return {
+          content: [
+            initialStatus,
+            {
+              type: "text" as const,
+              text: summaryText
+            },
+            {
+              type: "text" as const,
+              text: JSON.stringify(typedResult.textNodes, null, 2)
+            }
+          ],
+        };
+      }
+
+      // If chunking wasn't used or wasn't reported in the result format, return the result as is
       return {
         content: [
+          initialStatus,
           {
             type: "text",
             text: JSON.stringify(result, null, 2),
@@ -1067,6 +1079,225 @@ server.tool(
           {
             type: "text",
             text: `Error scanning text nodes: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Text Replacement Strategy Prompt
+server.prompt(
+  "text_replacement_strategy",
+  "Systematic approach for replacing text in Figma designs",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Text Replacement Strategy
+
+## 1. Analyze Node & Text
+- Scan text nodes and get node info to understand the design
+- If context is unclear, please provide the primary purpose of this screen and why you need to replace the text, or use "copy as PNG" (cmd+shift+c) in Figma to share the design image
+\`\`\`
+scan_text_nodes(nodeId: "node-id")
+get_node_info(nodeId: "node-id")  // optional
+\`\`\`
+
+## 2. Understand User Requirements
+- Identify what kind of text replacement is needed:
+  * Direct instruction ("translate to Korean", "fix typos", "update pricing")
+  * Data source integration (CSV, JSON, MD files, spreadsheets)
+  * Content revision (tone change, terminology update, branding alignment)
+  * Localization (language translation with cultural adaptation)
+- Build a strategy based on the specific requirement
+- Ask clarifying questions if the request isn't specific enough
+\`\`\`
+// Example approaches based on requirement type:
+// For translation: "I'll translate all text while preserving original meaning"
+// For data integration: "I'll map each column from your CSV to appropriate text fields"
+// For content revision: "I'll apply consistent terminology across all UI elements"
+\`\`\`
+
+## 3. Create a Safe Copy 
+- Clone the node to create a safe copy for text replacement
+- This ensures the original design remains intact
+\`\`\`
+clone_node(nodeId: "selected-node-id", x: [new-x], y: [new-y])
+\`\`\`
+
+## 4. Prepare & Execute Replacements
+- Map node IDs to new text content considering length constraints
+- Replace text in manageable batches (5 nodes at a time) for better performance
+- Progressive feedback is provided as each batch completes
+\`\`\`
+set_multiple_text_contents(
+  nodeId: "parent-node-id", 
+  text: [
+    { nodeId: "node-id-1", text: "New text 1" },
+    { nodeId: "node-id-2", text: "New text 2" }
+  ]
+)
+\`\`\`
+
+## 5. Monitor Progress
+- Watch for progress updates as batches are processed
+- Each batch of 5 nodes will be processed sequentially
+- You'll receive feedback on:
+  * Current batch being processed
+  * Successful replacements
+  * Any errors encountered
+  * Overall progress percentage
+
+## 6. Validate the Result
+- Export the updated design as an image at reduced scale to avoid performance issues:
+\`\`\`
+export_node_as_image(nodeId: "node-id", format: "PNG", scale: 0.3)
+\`\`\`
+- The default scale is now 0.5 and maximum allowed is 1.0
+- For large designs, use even smaller values like 0.2 or 0.3
+- Check the exported image for:
+  * Text overflow or truncation
+  * Unexpected line breaks
+  * Alignment issues
+  * Text that appears too small or large
+  * Consistency in tone and terminology
+
+## 7. Iterative Refinement (Up to 5 iterations)
+- Identify problematic text nodes
+- Adjust text length, add line breaks, or reformat
+- Re-apply changes to specific nodes and validate again
+- Repeat until design quality is acceptable (max 5 times)
+
+## 8. Finalize and Report
+- Provide a summary of changes made
+- Document any persistent issues
+- Show before/after comparisons
+
+## Best Practices
+- **Preserve Intent**: Maintain the original meaning and purpose of text
+- **Respect Context**: Consider how text relates to surrounding elements
+- **Maintain Hierarchy**: Preserve emphasis and information hierarchy
+- **Consider Space Constraints**: Be mindful of available space for text
+- **Validate Visually**: Always check how text appears in the actual design
+- **Document Changes**: Keep clear records of what was changed and why
+- **Be Patient**: Large text replacements happen in batches with progress updates
+
+Remember that text is a critical design element - changes should enhance usability and maintain visual harmony with the overall design.`,
+          },
+        },
+      ],
+      description: "Systematic approach for replacing text in Figma designs",
+    };
+  }
+);
+
+// Set Multiple Text Contents Tool
+server.tool(
+  "set_multiple_text_contents",
+  "Set multiple text contents parallelly in a node",
+  {
+    nodeId: z
+      .string()
+      .describe("The ID of the node containing the text nodes to replace"),
+    text: z
+      .array(
+        z.object({
+          nodeId: z.string().describe("The ID of the text node"),
+          text: z.string().describe("The replacement text"),
+        })
+      )
+      .describe("Array of text node IDs and their replacement texts"),
+  },
+  async ({ nodeId, text }, extra) => {
+    try {
+      if (!text || text.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No text provided",
+            },
+          ],
+        };
+      }
+
+      // Initial response to indicate we're starting the process
+      const initialStatus = {
+        type: "text" as const,
+        text: `Starting text replacement for ${text.length} nodes. This will be processed in batches of 5...`,
+      };
+
+      // Track overall progress
+      let totalProcessed = 0;
+      const totalToProcess = text.length;
+      
+      // Use the plugin's set_multiple_text_contents function with chunking
+      const result = await sendCommandToFigma("set_multiple_text_contents", {
+        nodeId,
+        text,
+      });
+      
+      // Cast the result to a specific type to work with it safely
+      interface TextReplaceResult {
+        success: boolean;
+        nodeId: string;
+        replacementsApplied?: number;
+        replacementsFailed?: number;
+        totalReplacements?: number;
+        completedInChunks?: number;
+        results?: Array<{
+          success: boolean;
+          nodeId: string;
+          error?: string;
+          originalText?: string;
+          translatedText?: string;
+        }>;
+      }
+      
+      const typedResult = result as TextReplaceResult;
+      
+      // Format the results for display
+      const success = typedResult.replacementsApplied && typedResult.replacementsApplied > 0;
+      const progressText = `
+      Text replacement completed:
+      - ${typedResult.replacementsApplied || 0} of ${totalToProcess} successfully updated
+      - ${typedResult.replacementsFailed || 0} failed
+      - Processed in ${typedResult.completedInChunks || 1} batches
+      `;
+      
+      // Detailed results
+      const detailedResults = typedResult.results || [];
+      const failedResults = detailedResults.filter(item => !item.success);
+      
+      // Create the detailed part of the response
+      let detailedResponse = "";
+      if (failedResults.length > 0) {
+        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item => 
+          `- ${item.nodeId}: ${item.error || "Unknown error"}`
+        ).join('\n')}`;
+      }
+
+      return {
+        content: [
+          initialStatus,
+          {
+            type: "text" as const,
+            text: progressText + detailedResponse,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting multiple text contents: ${
               error instanceof Error ? error.message : String(error)
             }`,
           },
@@ -1145,65 +1376,6 @@ You can only take one action at a time, so please directly call the function.
   }
 );
 
-// Text Replacement Tool
-server.tool(
-  "replace_text",
-  "Replace text in a node in Figma",
-  {
-    nodeId: z
-      .string()
-      .describe("The ID of the node containing the text nodes to replace"),
-    text: z
-      .array(
-        z.object({
-          nodeId: z.string().describe("The ID of the text node"),
-          text: z.string().describe("The translated text"),
-        })
-      )
-      .describe("Array of text node IDs and their translations"),
-  },
-  async ({ nodeId, text }) => {
-    try {
-      if (!text || text.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "No text provided",
-            },
-          ],
-        };
-      }
-
-      // Use the plugin's apply_translations function directly
-      const result = await sendCommandToFigma("replace_text", {
-        nodeId,
-        text,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error applying translations: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  }
-);
-
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -1228,7 +1400,7 @@ type FigmaCommand =
   | "clone_node"
   | "set_text_content"
   | "scan_text_nodes"
-  | "replace_text";
+  | "set_multiple_text_contents";
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -1475,3 +1647,4 @@ main().catch(error => {
   logger.error(`Error starting FigmaMCP server: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });
+
