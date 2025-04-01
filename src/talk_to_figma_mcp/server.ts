@@ -15,6 +15,23 @@ interface FigmaResponse {
   error?: string;
 }
 
+// Define interface for command progress updates
+interface CommandProgressUpdate {
+  type: 'command_progress';
+  commandId: string;
+  commandType: string;
+  status: 'started' | 'in_progress' | 'completed' | 'error';
+  progress: number;
+  totalItems: number;
+  processedItems: number;
+  currentChunk?: number;
+  totalChunks?: number;
+  chunkSize?: number;
+  message: string;
+  payload?: any;
+  timestamp: number;
+}
+
 // Custom logging functions that write to stderr instead of stdout to avoid being captured
 const logger = {
   info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
@@ -30,6 +47,7 @@ const pendingRequests = new Map<string, {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   timeout: ReturnType<typeof setTimeout>;
+  lastActivity: number; // Add timestamp for last activity
 }>();
 
 // Track which channel each client is in
@@ -1450,7 +1468,56 @@ function connectToFigma(port: number = 3055) {
 
   ws.on("message", (data: any) => {
     try {
-      const json = JSON.parse(data) as { message: FigmaResponse };
+      // Define a more specific type with an index signature to allow any property access
+      interface ProgressMessage {
+        message: FigmaResponse | any;
+        type?: string;
+        id?: string;
+        [key: string]: any; // Allow any other properties
+      }
+      
+      const json = JSON.parse(data) as ProgressMessage;
+      
+      // Handle progress updates
+      if (json.type === 'progress_update') {
+        const progressData = json.message.data as CommandProgressUpdate;
+        const requestId = json.id || '';
+        
+        if (requestId && pendingRequests.has(requestId)) {
+          const request = pendingRequests.get(requestId)!;
+          
+          // Update last activity timestamp
+          request.lastActivity = Date.now();
+          
+          // Reset the timeout to prevent timeouts during long-running operations
+          clearTimeout(request.timeout);
+          
+          // Create a new timeout
+          request.timeout = setTimeout(() => {
+            if (pendingRequests.has(requestId)) {
+              logger.error(`Request ${requestId} timed out after extended period of inactivity`);
+              pendingRequests.delete(requestId);
+              request.reject(new Error('Request to Figma timed out'));
+            }
+          }, 60000); // 60 second timeout for inactivity
+          
+          // Log progress
+          logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
+          
+          // For completed updates, we could resolve the request early if desired
+          if (progressData.status === 'completed' && progressData.progress === 100) {
+            // Optionally resolve early with partial data
+            // request.resolve(progressData.payload);
+            // pendingRequests.delete(requestId);
+            
+            // Instead, just log the completion, wait for final result from Figma
+            logger.info(`Operation ${progressData.commandType} completed, waiting for final result`);
+          }
+        }
+        return;
+      }
+      
+      // Handle regular responses
       const myResponse = json.message;
       logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
       logger.log('myResponse' + JSON.stringify(myResponse));
@@ -1523,7 +1590,8 @@ async function joinChannel(channelName: string): Promise<void> {
 // Function to send commands to Figma
 function sendCommandToFigma(
   command: FigmaCommand,
-  params: unknown = {}
+  params: unknown = {},
+  timeoutMs: number = 30000
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     // If not connected, try to connect first
@@ -1552,6 +1620,7 @@ function sendCommandToFigma(
         command,
         params: {
           ...(params as any),
+          commandId: id, // Include the command ID in params
         },
       },
     };
@@ -1560,13 +1629,18 @@ function sendCommandToFigma(
     const timeout = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        logger.error(`Request ${id} to Figma timed out after 30 seconds`);
+        logger.error(`Request ${id} to Figma timed out after ${timeoutMs/1000} seconds`);
         reject(new Error('Request to Figma timed out'));
       }
-    }, 30000); // 30 second timeout
+    }, timeoutMs);
 
     // Store the promise callbacks to resolve/reject later
-    pendingRequests.set(id, { resolve, reject, timeout });
+    pendingRequests.set(id, { 
+      resolve, 
+      reject, 
+      timeout,
+      lastActivity: Date.now() 
+    });
 
     // Send the request
     logger.info(`Sending command to Figma: ${command}`);
