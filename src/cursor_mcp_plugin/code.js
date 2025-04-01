@@ -1395,46 +1395,46 @@ async function cloneNode(params) {
   };
 }
 
-// Apply translations to specific text nodes
-async function applyTranslations(params) {
-  const { nodeId, translations } = params || {};
+// Replace text in a specific node
+async function replaceText(params) {
+  const { nodeId, text } = params || {};
 
-  if (!nodeId || !translations || !Array.isArray(translations)) {
-    throw new Error("Missing required parameters: nodeId and translations array");
+  if (!nodeId || !text || !Array.isArray(text)) {
+    throw new Error("Missing required parameters: nodeId and text array");
   }
 
-  console.log(`Starting translation application for node: ${nodeId} with ${translations.length} translations`);
+  console.log(`Starting text replacement for node: ${nodeId} with ${text.length} text replacements`);
   
   const results = [];
   let successCount = 0;
   let failureCount = 0;
   
-  // Process each translation
-  for (const translation of translations) {
-    if (!translation.nodeId || translation.text === undefined) {
+  // Process each text replacement
+  for (const replacement of text) {
+    if (!replacement.nodeId || replacement.text === undefined) {
       failureCount++;
       results.push({
         success: false,
-        nodeId: translation.nodeId || 'unknown',
-        error: 'Missing nodeId or text in translation entry'
+        nodeId: replacement.nodeId || 'unknown',
+        error: 'Missing nodeId or text in replacement entry'
       });
       continue;
     }
     
     try {
-      console.log(`Attempting to translate text node: ${translation.nodeId}`);
+      console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
       
       // Get the text node to update
-      const textNode = await figma.getNodeByIdAsync(translation.nodeId);
+      const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
       
       if (!textNode) {
         failureCount++;
         results.push({
           success: false,
-          nodeId: translation.nodeId,
-          error: `Node not found: ${translation.nodeId}`
+          nodeId: replacement.nodeId,
+          error: `Node not found: ${replacement.nodeId}`
         });
-        console.error(`Text node not found: ${translation.nodeId}`);
+        console.error(`Text node not found: ${replacement.nodeId}`);
         continue;
       }
       
@@ -1442,21 +1442,21 @@ async function applyTranslations(params) {
         failureCount++;
         results.push({
           success: false,
-          nodeId: translation.nodeId,
-          error: `Node is not a text node: ${translation.nodeId} (type: ${textNode.type})`
+          nodeId: replacement.nodeId,
+          error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
         });
-        console.error(`Node is not a text node: ${translation.nodeId} (type: ${textNode.type})`);
+        console.error(`Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`);
         continue;
       }
       
       // Save original text for the result
       const originalText = textNode.characters;
       console.log(`Original text: "${originalText}"`);
-      console.log(`Will translate to: "${translation.text}"`);
+      console.log(`Will translate to: "${replacement.text}"`);
       
       try {
         // Debug font information
-        console.log(`Font info for node ${translation.nodeId}:`, 
+        console.log(`Font info for node ${replacement.nodeId}:`, 
                     textNode.fontName === figma.mixed ? 'Mixed fonts' : JSON.stringify(textNode.fontName));
         
         if (textNode.fontName === figma.mixed) {
@@ -1491,9 +1491,9 @@ async function applyTranslations(params) {
         successCount++;
         results.push({
           success: true,
-          nodeId: translation.nodeId,
+          nodeId: replacement.nodeId,
           originalText: originalText,
-          translatedText: translation.text
+          translatedText: replacement.text
         });
       } catch (fontError) {
         console.error(`Font loading or text update error: ${fontError.message}`);
@@ -1506,24 +1506,24 @@ async function applyTranslations(params) {
         });
       }
     } catch (error) {
-      console.error(`General error handling node ${translation.nodeId}: ${error.message}`);
+      console.error(`General error handling node ${replacement.nodeId}: ${error.message}`);
       failureCount++;
       results.push({
         success: false,
-        nodeId: translation.nodeId,
-        error: `Error applying translation: ${error.message}`
+        nodeId: replacement.nodeId,
+        error: `Error applying replacement: ${error.message}`
       });
     }
   }
   
-  console.log(`Translation complete: ${successCount} successful, ${failureCount} failed`);
+  console.log(`Replacement complete: ${successCount} successful, ${failureCount} failed`);
   
   return {
     success: successCount > 0,
     nodeId: nodeId,
-    translationsApplied: successCount,
-    translationsFailed: failureCount,
-    totalTranslations: translations.length,
+    replacementsApplied: successCount,
+    replacementsFailed: failureCount,
+    totalReplacements: replacements.length,
     results: results
   };
 }

@@ -3,8 +3,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
-import http from "http";
-import crypto from "crypto";
 
 import path from "path";
 
@@ -28,159 +26,6 @@ const pendingRequests = new Map<
 
 // Track which channel each client is in
 let currentChannel: string | null = null;
-
-// in-memory image storage
-interface StoredImage {
-  id: string;
-  data: Uint8Array;
-  mimeType: string;
-  createdAt: number;
-}
-
-// in-memory image storage map
-const imageStore = new Map<string, StoredImage>();
-
-// in-memory image storage port
-const IMAGE_SERVER_PORT = 3056;
-
-// Image storage function (memory only)
-function storeImage(data: Uint8Array, mimeType: string): string {
-  const imageId = crypto.randomBytes(16).toString("hex");
-
-  // Store image in memory only
-  imageStore.set(imageId, {
-    id: imageId,
-    data,
-    mimeType,
-    createdAt: Date.now(),
-  });
-
-  return imageId;
-}
-
-const imageServer = http.createServer((req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host}`);
-  const pathname = url.pathname;
-
-  // CORS header settings
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, X-Mime-Type, X-Image-Format, X-Node-ID, X-Node-Name"
-  );
-
-  // OPTIONS request handling (CORS preflight)
-  if (req.method === "OPTIONS") {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
-
-  // upload endpoint: /upload (POST)
-  if (pathname === "/upload" && req.method === "POST") {
-    console.log(`[SERVER] Received image upload request`);
-
-    const chunks: Buffer[] = [];
-
-    // receive data
-    req.on("data", (chunk) => {
-      chunks.push(Buffer.from(chunk));
-    });
-
-    // process data
-    req.on("end", () => {
-      try {
-        // concatenate all data
-        const buffer = Buffer.concat(chunks);
-        const mimeType = (req.headers["x-mime-type"] as string) || "image/png";
-        const format = (req.headers["x-image-format"] as string) || "png";
-        const nodeId = (req.headers["x-node-id"] as string) || "unknown";
-        const nodeName = (req.headers["x-node-name"] as string) || "image";
-        const documentId = req.headers["x-document-id"] as string;
-        const pageId = req.headers["x-page-id"] as string;
-
-        console.log(
-          `[SERVER] Received ${buffer.length} bytes, mime type: ${mimeType}`
-        );
-
-        // store in in-memory storage and save to file
-        const imageId = storeImage(new Uint8Array(buffer), mimeType);
-        const imageUrl = `http://localhost:${IMAGE_SERVER_PORT}/images/${imageId}`;
-
-        // return response
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            success: true,
-            imageId: imageId,
-            imageUrl: imageUrl,
-          })
-        );
-      } catch (error) {
-        console.error(`[SERVER] Error processing upload:`, error);
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          })
-        );
-      }
-    });
-
-    // error handling
-    req.on("error", (error) => {
-      console.error(`[SERVER] Upload request error:`, error);
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: error.message,
-        })
-      );
-    });
-
-    return;
-  }
-
-  // image endpoint: /images/{imageId}
-  if (pathname.startsWith("/images/")) {
-    const imageId = pathname.substring("/images/".length);
-    const image = imageStore.get(imageId);
-
-    if (!image) {
-      res.writeHead(404);
-      res.end("Image not found");
-      return;
-    }
-
-    res.writeHead(200, {
-      "Content-Type": image.mimeType,
-      "Content-Length": image.data.length,
-      "Cache-Control": "max-age=3600",
-    });
-    res.end(Buffer.from(image.data));
-    return;
-  }
-
-  // default response
-  res.writeHead(404);
-  res.end("Not found");
-});
-
-// clean up old images (1 hour)
-setInterval(() => {
-  const now = Date.now();
-  const ONE_HOUR = 60 * 60 * 1000;
-
-  for (const [id, image] of imageStore.entries()) {
-    if (now - image.createdAt > ONE_HOUR) {
-      imageStore.delete(id);
-      console.log(`Removed old image: ${id}`);
-    }
-  }
-}, 60 * 60 * 1000);
 
 // Create MCP server
 const server = new McpServer({
@@ -936,6 +781,7 @@ server.tool(
 //   }
 // );
 
+
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
@@ -1067,7 +913,7 @@ Example Login Screen Structure:
   }
 );
 
-// add text node scanning tool
+// Text Node Scanning Tool
 server.tool(
   "scan_text_nodes",
   "Scan all text nodes in the selected Figma node",
@@ -1100,10 +946,10 @@ server.tool(
   }
 );
 
-// context understanding prompt
+// Context Understanding Prompt
 server.prompt(
   "context_understanding_prompt",
-  "Guide for exporting the screenshot from Figma and downloading the screenshot to Cursor talk or Claude and observing the content of the screenshot for understanding the context of the screenshot",
+  "Guide for understanding the context of the Figma design",
   (extra) => {
     return {
       messages: [
@@ -1169,56 +1015,134 @@ You can only take one action at a time, so please directly call the function.
   }
 );
 
-// add prompt for localizing Figma designs
-server.prompt(
-  "localization_prompt",
-  "Guide for localizing Figma designs to other languages",
-  (extra) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
+// Clone Node Tool
+server.tool(
+  "clone_node",
+  "Clone a node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the node to clone"),
+    x: z
+      .number()
+      .optional()
+      .describe("X position offset from the original node"),
+    y: z
+      .number()
+      .optional()
+      .describe("Y position offset from the original node"),
+  },
+  async ({ nodeId, x, y }) => {
+    try {
+      // 1. Get the information of the original node to check the current position
+      const originalNode = (await sendCommandToFigma("get_node_info", {
+        nodeId,
+      })) as any;
+
+      if (!originalNode || typeof originalNode !== "object") {
+        throw new Error(
+          `Failed to get information for original node: ${nodeId}`
+        );
+      }
+
+      // 2. Check if the original node has position information
+      if (!("x" in originalNode) || !("y" in originalNode)) {
+        throw new Error(
+          `Original node does not have position information: ${nodeId}`
+        );
+      }
+
+      // 3. Apply the offset to calculate the new position
+      const offsetX = x !== undefined ? x : 200; // The default offset is 200px on the x-axis
+      const offsetY = y !== undefined ? y : 0; // The default offset is 0px on the y-axis
+
+      const newX = originalNode.x + offsetX;
+      const newY = originalNode.y + offsetY;
+
+      // 4. Clone the node to the new position
+      const result = await sendCommandToFigma("clone_node", {
+        nodeId,
+        x: newX,
+        y: newY,
+      });
+
+      return {
+        content: [
+          {
             type: "text",
-            text: `# Figma Design Localization
-
-I'll help you localize the Figma design to your desired language. Based on the context analysis of the design, I can provide culturally appropriate translations while preserving the original design intent.
-
-## Localization Process
-
-1. First, use the \`clone_node\` tool to duplicate the selected node and create a new version for localization:
-   \`\`\`
-   clone_node(nodeId: "your-node-id", x: 200, y: 0)
-   \`\`\`
-
-2. Then, use the \`scan_text_nodes\` tool directly on the cloned node to retrieve all text elements:
-   \`\`\`
-   scan_text_nodes(nodeId: "cloned-node-id")
-   \`\`\`
-
-3. Finally, apply translations to the text elements using the \`apply_translations\` tool:
-   \`\`\`
-   apply_translations(
-     nodeId: "cloned-node-id",
-     translations: [
-       { nodeId: "text-node-id-1", text: "translated text 1" },
-       { nodeId: "text-node-id-2", text: "translated text 2" },
-       ...
-     ]
-   )
-   \`\`\`
-
-## Please specify:
-- What target language would you like to localize to?
-- Are there any specific cultural adaptations or terminology preferences I should consider?
-- Would you like to maintain the same text length (important for layout constraints) or allow for natural variations?
-
-I'll ensure the translation maintains the original meaning and purpose while being culturally appropriate for your target audience.`,
+            text: JSON.stringify(result, null, 2),
           },
-        },
-      ],
-      description: "Guide for localizing Figma designs to other languages",
-    };
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error cloning node: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Text Replacement Tool
+server.tool(
+  "replace_text",
+  "Replace text in a node in Figma",
+  {
+    nodeId: z
+      .string()
+      .describe("The ID of the node containing the text nodes to replace"),
+    text: z
+      .array(
+        z.object({
+          nodeId: z.string().describe("The ID of the text node"),
+          text: z.string().describe("The translated text"),
+        })
+      )
+      .describe("Array of text node IDs and their translations"),
+  },
+  async ({ nodeId, text }) => {
+    try {
+      if (!text || text.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No text provided",
+            },
+          ],
+        };
+      }
+
+      // Use the plugin's apply_translations function directly
+      const result = await sendCommandToFigma("replace_text", {
+        nodeId,
+        text,
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error applying translations: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
   }
 );
 
@@ -1245,7 +1169,7 @@ type FigmaCommand =
   | "set_corner_radius"
   | "scan_text_nodes"
   | "clone_node"
-  | "apply_translations"
+  | "replace_text"
   | "set_text_content";
 
 // Helper function to process Figma node responses
@@ -1479,136 +1403,7 @@ server.tool(
   }
 );
 
-// Add this right before the localize_node tool function
-server.tool(
-  "clone_node",
-  "Clone a node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the node to clone"),
-    x: z
-      .number()
-      .optional()
-      .describe("X position offset from the original node"),
-    y: z
-      .number()
-      .optional()
-      .describe("Y position offset from the original node"),
-  },
-  async ({ nodeId, x, y }) => {
-    try {
-      // 1. 먼저 원본 노드의 정보를 가져와서 현재 위치를 확인
-      const originalNode = (await sendCommandToFigma("get_node_info", {
-        nodeId,
-      })) as any;
 
-      if (!originalNode || typeof originalNode !== "object") {
-        throw new Error(
-          `Failed to get information for original node: ${nodeId}`
-        );
-      }
-
-      // 2. 원본 노드의 위치가 있는지 확인
-      if (!("x" in originalNode) || !("y" in originalNode)) {
-        throw new Error(
-          `Original node does not have position information: ${nodeId}`
-        );
-      }
-
-      // 3. 오프셋 적용하여 새로운 위치 계산
-      const offsetX = x !== undefined ? x : 200; // 기본 오프셋은 x축으로 200px
-      const offsetY = y !== undefined ? y : 0; // 기본 오프셋은 y축으로 0px
-
-      const newX = originalNode.x + offsetX;
-      const newY = originalNode.y + offsetY;
-
-      // 4. 새 위치로 노드 복제
-      const result = await sendCommandToFigma("clone_node", {
-        nodeId,
-        x: newX,
-        y: newY,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error cloning node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  }
-);
-
-// Handler to apply translations to text nodes
-server.tool(
-  "apply_translations",
-  "Apply translated text to nodes in Figma",
-  {
-    nodeId: z
-      .string()
-      .describe("The ID of the node containing the text nodes to translate"),
-    translations: z
-      .array(
-        z.object({
-          nodeId: z.string().describe("The ID of the text node"),
-          text: z.string().describe("The translated text"),
-        })
-      )
-      .describe("Array of text node IDs and their translations"),
-  },
-  async ({ nodeId, translations }) => {
-    try {
-      if (!translations || translations.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "No translations provided",
-            },
-          ],
-        };
-      }
-
-      // Use the plugin's apply_translations function directly
-      const result = await sendCommandToFigma("apply_translations", {
-        nodeId,
-        translations,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error applying translations: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Start the server
 async function main() {
