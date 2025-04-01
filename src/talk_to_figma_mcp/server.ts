@@ -1117,96 +1117,121 @@ server.prompt(
           role: "assistant",
           content: {
             type: "text",
-            text: `# Text Replacement Strategy
+            text: `# Intelligent Text Replacement Strategy
 
-## 1. Analyze Node & Text
-- Scan text nodes and get node info to understand the design
-- If context is unclear, please provide the primary purpose of this screen and why you need to replace the text, or use "copy as PNG" (cmd+shift+c) in Figma to share the design image
+## 1. Analyze Design & Identify Structure
+- Scan text nodes to understand the overall structure of the design
+- Use AI pattern recognition to identify logical groupings:
+  * Tables (rows, columns, headers, cells)
+  * Lists (items, headers, nested lists)
+  * Card groups (similar cards with recurring text fields)
+  * Forms (labels, input fields, validation text)
+  * Navigation (menu items, breadcrumbs)
 \`\`\`
 scan_text_nodes(nodeId: "node-id")
 get_node_info(nodeId: "node-id")  // optional
 \`\`\`
 
-## 2. Understand User Requirements
-- Identify what kind of text replacement is needed:
-  * Direct instruction ("translate to Korean", "fix typos", "update pricing")
-  * Data source integration (CSV, JSON, MD files, spreadsheets)
-  * Content revision (tone change, terminology update, branding alignment)
-  * Localization (language translation with cultural adaptation)
-- Build a strategy based on the specific requirement
-- Ask clarifying questions if the request isn't specific enough
-\`\`\`
-// Example approaches based on requirement type:
-// For translation: "I'll translate all text while preserving original meaning"
-// For data integration: "I'll map each column from your CSV to appropriate text fields"
-// For content revision: "I'll apply consistent terminology across all UI elements"
-\`\`\`
+## 2. Strategic Chunking for Complex Designs
+- Divide replacement tasks into logical content chunks based on design structure
+- Use one of these chunking strategies that best fits the design:
+  * **Structural Chunking**: Table rows/columns, list sections, card groups
+  * **Spatial Chunking**: Top-to-bottom, left-to-right in screen areas
+  * **Semantic Chunking**: Content related to the same topic or functionality
+  * **Component-Based Chunking**: Process similar component instances together
 
-## 3. Create a Safe Copy 
-- Clone the node to create a safe copy for text replacement
-- This ensures the original design remains intact
+## 3. Progressive Replacement with Verification
+- Create a safe copy of the node for text replacement
+- Replace text chunk by chunk with continuous progress updates
+- After each chunk is processed:
+  * Export that section as a small, manageable image
+  * Verify text fits properly and maintain design integrity
+  * Fix issues before proceeding to the next chunk
+
 \`\`\`
+// Clone the node to create a safe copy
 clone_node(nodeId: "selected-node-id", x: [new-x], y: [new-y])
-\`\`\`
 
-## 4. Prepare & Execute Replacements
-- Map node IDs to new text content considering length constraints
-- Replace text in manageable batches (5 nodes at a time) for better performance
-- Progressive feedback is provided as each batch completes
-\`\`\`
+// Replace text chunk by chunk
 set_multiple_text_contents(
   nodeId: "parent-node-id", 
   text: [
     { nodeId: "node-id-1", text: "New text 1" },
-    { nodeId: "node-id-2", text: "New text 2" }
+    // More nodes in this chunk...
   ]
 )
+
+// Verify chunk with small, targeted image exports
+export_node_as_image(nodeId: "chunk-node-id", format: "PNG", scale: 0.5)
 \`\`\`
 
-## 5. Monitor Progress
-- Watch for progress updates as batches are processed
-- Each batch of 5 nodes will be processed sequentially
-- You'll receive feedback on:
-  * Current batch being processed
-  * Successful replacements
-  * Any errors encountered
-  * Overall progress percentage
+## 4. Intelligent Handling for Table Data
+- For tabular content:
+  * Process one row or column at a time
+  * Maintain alignment and spacing between cells
+  * Consider conditional formatting based on cell content
+  * Preserve header/data relationships
 
-## 6. Validate the Result
-- Export the updated design as an image at reduced scale to avoid performance issues:
-\`\`\`
-export_node_as_image(nodeId: "node-id", format: "PNG", scale: 0.3)
-\`\`\`
-- The default scale is now 0.5 and maximum allowed is 1.0
-- For large designs, use even smaller values like 0.2 or 0.3
-- Check the exported image for:
-  * Text overflow or truncation
-  * Unexpected line breaks
-  * Alignment issues
-  * Text that appears too small or large
-  * Consistency in tone and terminology
+## 5. Smart Text Adaptation
+- Adaptively handle text based on container constraints:
+  * Auto-detect space constraints and adjust text length
+  * Apply line breaks at appropriate linguistic points
+  * Maintain text hierarchy and emphasis
+  * Consider font scaling for critical content that must fit
 
-## 7. Iterative Refinement (Up to 5 iterations)
-- Identify problematic text nodes
-- Adjust text length, add line breaks, or reformat
-- Re-apply changes to specific nodes and validate again
-- Repeat until design quality is acceptable (max 5 times)
+## 6. Progressive Feedback Loop
+- Establish a continuous feedback loop during replacement:
+  * Real-time progress updates (0-100%)
+  * Small image exports after each chunk for verification
+  * Issues identified early and resolved incrementally
+  * Quick adjustments applied to subsequent chunks
 
-## 8. Finalize and Report
-- Provide a summary of changes made
-- Document any persistent issues
-- Show before/after comparisons
+## 7. Final Verification & Context-Aware QA
+- After all chunks are processed:
+  * Export the entire design at reduced scale for final verification
+  * Check for cross-chunk consistency issues
+  * Verify proper text flow between different sections
+  * Ensure design harmony across the full composition
+
+## 8. Chunk-Specific Export Scale Guidelines
+- Scale exports appropriately based on chunk size:
+  * Small chunks (1-5 elements): scale 1.0
+  * Medium chunks (6-20 elements): scale 0.7
+  * Large chunks (21-50 elements): scale 0.5
+  * Very large chunks (50+ elements): scale 0.3
+  * Full design verification: scale 0.2
+
+## Sample Chunking Strategy for Common Design Types
+
+### Tables
+- Process by logical rows (5-10 rows per chunk)
+- Alternative: Process by column for columnar analysis
+- Tip: Always include header row in first chunk for reference
+
+### Card Lists
+- Group 3-5 similar cards per chunk
+- Process entire cards to maintain internal consistency
+- Verify text-to-image ratio within cards after each chunk
+
+### Forms
+- Group related fields (e.g., "Personal Information", "Payment Details")
+- Process labels and input fields together
+- Ensure validation messages and hints are updated with their fields
+
+### Navigation & Menus
+- Process hierarchical levels together (main menu, submenu)
+- Respect information architecture relationships
+- Verify menu fit and alignment after replacement
 
 ## Best Practices
-- **Preserve Intent**: Maintain the original meaning and purpose of text
-- **Respect Context**: Consider how text relates to surrounding elements
-- **Maintain Hierarchy**: Preserve emphasis and information hierarchy
-- **Consider Space Constraints**: Be mindful of available space for text
-- **Validate Visually**: Always check how text appears in the actual design
-- **Document Changes**: Keep clear records of what was changed and why
-- **Be Patient**: Large text replacements happen in batches with progress updates
+- **Preserve Design Intent**: Always prioritize design integrity
+- **Structural Consistency**: Maintain alignment, spacing, and hierarchy
+- **Visual Feedback**: Verify each chunk visually before proceeding
+- **Incremental Improvement**: Learn from each chunk to improve subsequent ones
+- **Balance Automation & Control**: Let AI handle repetitive replacements but maintain oversight
+- **Respect Content Relationships**: Keep related content consistent across chunks
 
-Remember that text is a critical design element - changes should enhance usability and maintain visual harmony with the overall design.`,
+Remember that text is never just text—it's a core design element that must work harmoniously with the overall composition. This chunk-based strategy allows you to methodically transform text while maintaining design integrity.`,
           },
         },
       ],
