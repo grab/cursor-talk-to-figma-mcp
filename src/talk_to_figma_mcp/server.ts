@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -13,16 +15,22 @@ interface FigmaResponse {
   error?: string;
 }
 
+// Custom logging functions that write to stderr instead of stdout to avoid being captured
+const logger = {
+  info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
+  debug: (message: string) => process.stderr.write(`[DEBUG] ${message}\n`),
+  warn: (message: string) => process.stderr.write(`[WARN] ${message}\n`),
+  error: (message: string) => process.stderr.write(`[ERROR] ${message}\n`),
+  log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
+};
+
 // WebSocket connection and request tracking
 let ws: WebSocket | null = null;
-const pendingRequests = new Map<
-  string,
-  {
-    resolve: (value: unknown) => void;
-    reject: (reason: unknown) => void;
-    timeout: ReturnType<typeof setTimeout>;
-  }
->();
+const pendingRequests = new Map<string, {
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}>();
 
 // Track which channel each client is in
 let currentChannel: string | null = null;
@@ -32,6 +40,12 @@ const server = new McpServer({
   name: "TalkToFigmaMCP",
   version: "1.0.0",
 });
+
+// Add command line argument parsing
+const args = process.argv.slice(2);
+const serverArg = args.find(arg => arg.startsWith('--server='));
+const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
+const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
 
 // Document Info Tool
 server.tool(
@@ -45,9 +59,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+            text: JSON.stringify(result)
+          }
+        ]
       };
     } catch (error) {
       return {
@@ -76,9 +90,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+            text: JSON.stringify(result)
+          }
+        ]
       };
     } catch (error) {
       return {
@@ -109,9 +123,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+            text: JSON.stringify(result)
+          }
+        ]
       };
     } catch (error) {
       return {
@@ -123,6 +137,42 @@ server.tool(
             }`,
           },
         ],
+      };
+    }
+  }
+);
+
+// Nodes Info Tool
+server.tool(
+  "get_nodes_info",
+  "Get detailed information about multiple nodes in Figma",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
+  },
+  async ({ nodeIds }) => {
+    try {
+      const results = await Promise.all(
+        nodeIds.map(async (nodeId) => {
+          const result = await sendCommandToFigma('get_node_info', { nodeId });
+          return { nodeId, info: result };
+        })
+      );
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(results)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
       };
     }
   }
@@ -463,6 +513,40 @@ server.tool(
   }
 );
 
+// Clone Node Tool
+server.tool(
+  "clone_node",
+  "Clone an existing node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the node to clone"),
+    x: z.number().optional().describe("New X position for the clone"),
+    y: z.number().optional().describe("New Y position for the clone")
+  },
+  async ({ nodeId, x, y }) => {
+    try {
+      const result = await sendCommandToFigma('clone_node', { nodeId, x, y });
+      const typedResult = result as { name: string, id: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cloned node "${typedResult.name}" with new ID: ${typedResult.id}${x !== undefined && y !== undefined ? ` at position (${x}, ${y})` : ''}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error cloning node: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Resize Node Tool
 server.tool(
   "resize_node",
@@ -631,9 +715,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+            text: JSON.stringify(result)
+          }
+        ]
       };
     } catch (error) {
       return {
@@ -662,9 +746,9 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
+            text: JSON.stringify(result)
+          }
+        ]
       };
     } catch (error) {
       return {
@@ -726,15 +810,25 @@ server.tool(
         x,
         y,
       });
-      const typedResult = result as { name: string; id: string };
+      const typedResult = result as any;
+
+      // return {
+      //   content: [
+      //     {
+      //       type: "image",
+      //       data: typedResult.imageData,
+      //       mimeType: typedResult.mimeType || "image/png"
+      //     }
+      //   ]
+      // };
       return {
         content: [
           {
             type: "text",
-            text: `Created component instance "${typedResult.name}" with ID: ${typedResult.id}`,
-          },
-        ],
-      };
+            text: JSON.stringify(typedResult),
+          }
+        ]
+      }
     } catch (error) {
       return {
         content: [
@@ -828,6 +922,39 @@ server.tool(
   }
 );
 
+// Set Text Content Tool
+server.tool(
+  "set_text_content",
+  "Set the text content of an existing text node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the text node to modify"),
+    text: z.string().describe("New text content")
+  },
+  async ({ nodeId, text }) => {
+    try {
+      const result = await sendCommandToFigma('set_text_content', { nodeId, text });
+      const typedResult = result as { name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Updated text content of node "${typedResult.name}" to "${text}"`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Define design strategy prompt
 server.prompt(
   "design_strategy",
@@ -873,7 +1000,10 @@ server.prompt(
      * Use strokeColor for borders
      * Set proper fontWeight for different text elements
 
-6. Visual Hierarchy:
+6. Mofifying existing elements:
+  - use set_text_content() to modify text content.
+
+7. Visual Hierarchy:
    - Position elements in logical reading order (top to bottom)
    - Maintain consistent spacing between elements
    - Use appropriate font sizes for different text types:
@@ -882,7 +1012,7 @@ server.prompt(
      * Standard for button text
      * Smaller for helper text/links
 
-7. Best Practices:
+8. Best Practices:
    - Verify each creation with get_node_info()
    - Use parentId to maintain proper hierarchy
    - Group related elements together in frames
@@ -1015,78 +1145,6 @@ You can only take one action at a time, so please directly call the function.
   }
 );
 
-// Clone Node Tool
-server.tool(
-  "clone_node",
-  "Clone a node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the node to clone"),
-    x: z
-      .number()
-      .optional()
-      .describe("X position offset from the original node"),
-    y: z
-      .number()
-      .optional()
-      .describe("Y position offset from the original node"),
-  },
-  async ({ nodeId, x, y }) => {
-    try {
-      // 1. Get the information of the original node to check the current position
-      const originalNode = (await sendCommandToFigma("get_node_info", {
-        nodeId,
-      })) as any;
-
-      if (!originalNode || typeof originalNode !== "object") {
-        throw new Error(
-          `Failed to get information for original node: ${nodeId}`
-        );
-      }
-
-      // 2. Check if the original node has position information
-      if (!("x" in originalNode) || !("y" in originalNode)) {
-        throw new Error(
-          `Original node does not have position information: ${nodeId}`
-        );
-      }
-
-      // 3. Apply the offset to calculate the new position
-      const offsetX = x !== undefined ? x : 200; // The default offset is 200px on the x-axis
-      const offsetY = y !== undefined ? y : 0; // The default offset is 0px on the y-axis
-
-      const newX = originalNode.x + offsetX;
-      const newY = originalNode.y + offsetY;
-
-      // 4. Clone the node to the new position
-      const result = await sendCommandToFigma("clone_node", {
-        nodeId,
-        x: newX,
-        y: newY,
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result, null, 2),
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error cloning node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  }
-);
-
 // Text Replacement Tool
 server.tool(
   "replace_text",
@@ -1167,10 +1225,10 @@ type FigmaCommand =
   | "execute_code"
   | "join"
   | "set_corner_radius"
-  | "scan_text_nodes"
   | "clone_node"
-  | "replace_text"
-  | "set_text_content";
+  | "set_text_content"
+  | "scan_text_nodes"
+  | "replace_text";
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -1200,19 +1258,20 @@ function processFigmaNodeResponse(result: unknown): any {
   return result;
 }
 
-// Simple function to connect to Figma WebSocket server
+// Update the connectToFigma function
 function connectToFigma(port: number = 3055) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
-    console.info("Already connected to Figma");
+    logger.info('Already connected to Figma');
     return;
   }
 
-  console.info(`Connecting to Figma socket server on port ${port}...`);
-  ws = new WebSocket(`ws://localhost:${port}`);
+  const wsUrl = serverUrl === 'localhost' ? `${WS_URL}:${port}` : WS_URL;
+  logger.info(`Connecting to Figma socket server at ${wsUrl}...`);
+  ws = new WebSocket(wsUrl);
 
-  ws.on("open", () => {
-    console.info("Connected to Figma socket server");
+  ws.on('open', () => {
+    logger.info('Connected to Figma socket server');
     // Reset channel on new connection
     currentChannel = null;
   });
@@ -1221,8 +1280,8 @@ function connectToFigma(port: number = 3055) {
     try {
       const json = JSON.parse(data) as { message: FigmaResponse };
       const myResponse = json.message;
-      console.debug(`Received message: ${JSON.stringify(myResponse)}`);
-      console.log("myResponse", myResponse);
+      logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
+      logger.log('myResponse' + JSON.stringify(myResponse));
 
       // Handle response to a request
       if (
@@ -1234,7 +1293,7 @@ function connectToFigma(port: number = 3055) {
         clearTimeout(request.timeout);
 
         if (myResponse.error) {
-          console.error(`Error from Figma: ${myResponse.error}`);
+          logger.error(`Error from Figma: ${myResponse.error}`);
           request.reject(new Error(myResponse.error));
         } else {
           if (myResponse.result) {
@@ -1245,25 +1304,19 @@ function connectToFigma(port: number = 3055) {
         pendingRequests.delete(myResponse.id);
       } else {
         // Handle broadcast messages or events
-        console.info(
-          `Received broadcast message: ${JSON.stringify(myResponse)}`
-        );
+        logger.info(`Received broadcast message: ${JSON.stringify(myResponse)}`);
       }
     } catch (error) {
-      console.error(
-        `Error parsing message: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
+      logger.error(`Error parsing message: ${error instanceof Error ? error.message : String(error)}`);
     }
   });
 
-  ws.on("error", (error) => {
-    console.error(`Socket error: ${error}`);
+  ws.on('error', (error) => {
+    logger.error(`Socket error: ${error}`);
   });
 
-  ws.on("close", () => {
-    console.info("Disconnected from Figma socket server");
+  ws.on('close', () => {
+    logger.info('Disconnected from Figma socket server');
     ws = null;
 
     // Reject all pending requests
@@ -1274,7 +1327,7 @@ function connectToFigma(port: number = 3055) {
     }
 
     // Attempt to reconnect
-    console.info("Attempting to reconnect in 2 seconds...");
+    logger.info('Attempting to reconnect in 2 seconds...');
     setTimeout(() => connectToFigma(port), 2000);
   });
 }
@@ -1288,13 +1341,9 @@ async function joinChannel(channelName: string): Promise<void> {
   try {
     await sendCommandToFigma("join", { channel: channelName });
     currentChannel = channelName;
-    console.info(`Joined channel: ${channelName}`);
+    logger.info(`Joined channel: ${channelName}`);
   } catch (error) {
-    console.error(
-      `Failed to join channel: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
+    logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -1339,8 +1388,8 @@ function sendCommandToFigma(
     const timeout = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        console.error(`Request ${id} to Figma timed out after 30 seconds`);
-        reject(new Error("Request to Figma timed out"));
+        logger.error(`Request ${id} to Figma timed out after 30 seconds`);
+        reject(new Error('Request to Figma timed out'));
       }
     }, 30000); // 30 second timeout
 
@@ -1348,8 +1397,8 @@ function sendCommandToFigma(
     pendingRequests.set(id, { resolve, reject, timeout });
 
     // Send the request
-    console.info(`Sending command to Figma: ${command}`);
-    console.debug(`Request details: ${JSON.stringify(request)}`);
+    logger.info(`Sending command to Figma: ${command}`);
+    logger.debug(`Request details: ${JSON.stringify(request)}`);
     ws.send(JSON.stringify(request));
   });
 }
@@ -1411,33 +1460,18 @@ async function main() {
     // Try to connect to Figma socket server
     connectToFigma();
   } catch (error) {
-    console.warn(
-      `Could not connect to Figma initially: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-    console.warn("Will try to connect when the first command is sent");
+    logger.warn(`Could not connect to Figma initially: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn('Will try to connect when the first command is sent');
   }
 
   // Start the MCP server with stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.info("FigmaMCP server running on stdio");
-
-  // Start the image server
-  imageServer.listen(IMAGE_SERVER_PORT, () => {
-    console.log(
-      `Image server running on http://localhost:${IMAGE_SERVER_PORT}`
-    );
-  });
+  logger.info('FigmaMCP server running on stdio');
 }
 
 // Run the server
-main().catch((error) => {
-  console.error(
-    `Error starting FigmaMCP server: ${
-      error instanceof Error ? error.message : String(error)
-    }`
-  );
+main().catch(error => {
+  logger.error(`Error starting FigmaMCP server: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });

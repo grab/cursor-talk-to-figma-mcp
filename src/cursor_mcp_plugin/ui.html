@@ -372,9 +372,6 @@
 
         // If it's a response to a previous request
         if (data.id && state.pendingRequests.has(data.id)) {
-          console.log("go inside", data);
-
-          console.log("nice", data);
           const { resolve, reject } = state.pendingRequests.get(data.id);
           state.pendingRequests.delete(data.id);
 
@@ -527,101 +524,10 @@
       });
 
       // Listen for messages from the plugin code
-      window.onmessage = async (event) => {
+      window.onmessage = (event) => {
         const message = event.data.pluginMessage;
         if (!message) return;
 
-        console.log("Received message from plugin:", message);
-
-        // 이미지 업로드 요청 처리
-        if (message.type === 'upload-image') {
-          connectionStatus.textContent = `Uploading image (${message.bytes.length} bytes)...`;
-          connectionStatus.className = "status info";
-          
-          try {
-            // 서버에 이미지 업로드
-            const response = await uploadImageToServer(message.bytes, message.mimeType, message.format, message.nodeId, message.nodeName);
-            
-            // 결과를 플러그인으로 전송
-            parent.postMessage({ 
-              pluginMessage: { 
-                type: 'upload-complete', 
-                success: true, 
-                imageId: response.imageId,
-                imageUrl: response.imageUrl,
-                messageId: message.messageId
-              } 
-            }, '*');
-            
-            connectionStatus.textContent = 'Upload complete!';
-            connectionStatus.className = "status connected";
-            
-            // 3초 후에 채널 상태로 돌아가기
-            setTimeout(() => {
-              // 채널이 연결된 상태인 경우만 텍스트 변경
-              if (state.connected && state.channel) {
-                updateConnectionStatus(true, `Connected to channel: ${state.channel}`);
-              }
-            }, 3000);
-          } catch (error) {
-            console.error('Upload error:', error);
-            
-            // 에러 정보를 플러그인으로 전송
-            parent.postMessage({ 
-              pluginMessage: { 
-                type: 'upload-error', 
-                error: error.message,
-                messageId: message.messageId
-              } 
-            }, '*');
-            
-            connectionStatus.textContent = `Upload error: ${error.message}`;
-            connectionStatus.className = "status disconnected";
-            
-            // 5초 후에 채널 상태로 돌아가기
-            setTimeout(() => {
-              // 채널이 연결된 상태인 경우만 텍스트 변경
-              if (state.connected && state.channel) {
-                updateConnectionStatus(true, `Connected to channel: ${state.channel}`);
-              }
-            }, 5000);
-          }
-          return;
-        }
-
-        // 연결 관련 메시지 처리
-        if (message.type === "disconnect") {
-          console.log("Disconnected from plugin");
-          state.connected = false;
-          state.socket = null;
-          updateConnectionStatus(false, "Disconnected from server");
-          return;
-        }
-        
-        if (message.type === "scan-text-nodes-result") {
-          // 스캔 결과 처리
-          console.log("Received scan result:", message.result);
-          displayScanResults(message.result);
-          return;
-        }
-        
-        if (message.type === "command-result") {
-          if (state.socket) {
-            // 결과를 서버로 전송
-            sendSuccessResponse(message.id, message.result);
-          }
-          return;
-        }
-        
-        if (message.type === "command-error") {
-          if (state.socket) {
-            // 에러를 서버로 전송
-            sendErrorResponse(message.id, message.error);
-          }
-          return;
-        }
-
-        // 기타 메시지 타입 처리
         switch (message.type) {
           case "connection-status":
             updateConnectionStatus(message.connected, message.message);
@@ -632,49 +538,16 @@
           case "auto-disconnect":
             disconnectButton.click();
             break;
-          case "execute-command":
-            // Figma로부터 명령 실행 요청 수신 처리
-            try {
-              // 핸들러 로직...
-            } catch (error) {
-              console.error("Error executing command:", error);
-            }
+          case "command-result":
+            // Forward the result from plugin code back to WebSocket
+            sendSuccessResponse(message.id, message.result);
+            break;
+          case "command-error":
+            // Forward the error from plugin code back to WebSocket
+            sendErrorResponse(message.id, message.error);
             break;
         }
       };
-
-      // 서버에 이미지 업로드하는 함수
-      async function uploadImageToServer(bytes, mimeType, format, nodeId, nodeName) {
-        return new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest();
-          xhr.open("POST", "http://localhost:3056/upload");
-          xhr.setRequestHeader("Content-Type", "application/octet-stream");
-          xhr.setRequestHeader("X-Mime-Type", mimeType);
-          xhr.setRequestHeader("X-Image-Format", format);
-          xhr.setRequestHeader("X-Node-ID", nodeId || 'unknown');
-          xhr.setRequestHeader("X-Node-Name", nodeName || 'image');
-          
-          xhr.onload = function() {
-            if (xhr.status === 200) {
-              try {
-                const response = JSON.parse(xhr.responseText);
-                resolve(response);
-              } catch (error) {
-                reject(new Error(`Error parsing server response: ${error.message}`));
-              }
-            } else {
-              reject(new Error(`Upload failed with status: ${xhr.status}`));
-            }
-          };
-          
-          xhr.onerror = function() {
-            reject(new Error("Network error during upload"));
-          };
-          
-          // UI HTML에서는 Uint8Array 직접 전송 가능
-          xhr.send(new Uint8Array(bytes));
-        });
-      }
     </script>
   </body>
 </html>

@@ -27,10 +27,20 @@ bun setup
 3. Start the Websocket server
 
 ```bash
-bun start
+bun socket
 ```
 
-4. Install [Figma Plugin](#figma-plugin)
+4. MCP server
+
+```bash
+bunx cursor-talk-to-figma-mcp
+```
+
+5. Install [Figma Plugin](#figma-plugin)
+
+# Quick Video Tutorial
+
+[![image](images/tutorial.jpg)](https://www.linkedin.com/posts/sonnylazuardi_just-wanted-to-share-my-latest-experiment-activity-7307821553654657024-yrh8)
 
 ## Manual Setup and Installation
 
@@ -42,10 +52,8 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
 {
   "mcpServers": {
     "TalkToFigma": {
-      "command": "bun",
-      "args": [
-        "/path/to/cursor-talk-to-figma-mcp/src/talk_to_figma_mcp/server.ts"
-      ]
+      "command": "bunx",
+      "args": ["cursor-talk-to-figma-mcp"]
     }
   }
 }
@@ -56,7 +64,7 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
 Start the WebSocket server:
 
 ```bash
-bun run src/socket.ts
+bun socket
 ```
 
 ### Figma Plugin
@@ -65,6 +73,27 @@ bun run src/socket.ts
 2. Choose "Link existing plugin"
 3. Select the `src/cursor_mcp_plugin/manifest.json` file
 4. The plugin should now be available in your Figma development plugins
+
+## Windows + WSL Guide
+
+1. Install bun via powershell
+
+```bash
+powershell -c "irm bun.sh/install.ps1|iex"
+```
+
+2. Uncomment the hostname `0.0.0.0` in `src/socket.ts`
+
+```typescript
+// uncomment this to allow connections in windows wsl
+hostname: "0.0.0.0",
+```
+
+3. Start the websocket
+
+```bash
+bun socket
+```
 
 ## Usage
 
@@ -83,12 +112,17 @@ The MCP server provides the following tools for interacting with Figma:
 - `get_document_info` - Get information about the current Figma document
 - `get_selection` - Get information about the current selection
 - `get_node_info` - Get detailed information about a specific node
+- `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
 
 ### Creating Elements
 
 - `create_rectangle` - Create a new rectangle with position, size, and optional name
 - `create_frame` - Create a new frame with position, size, and optional name
 - `create_text` - Create a new text node with customizable font properties
+
+### Modifying text content
+
+- `set_text_content` - Set the text content of an existing text node
 
 ### Styling
 
@@ -101,6 +135,7 @@ The MCP server provides the following tools for interacting with Figma:
 - `move_node` - Move a node to a new position
 - `resize_node` - Resize a node with new dimensions
 - `delete_node` - Delete a node
+- `clone_node` - Create a copy of an existing node with optional position offset
 
 ### Components & Styles
 

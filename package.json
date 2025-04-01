@@ -1,21 +1,36 @@
 {
   "name": "cursor-talk-to-figma-mcp",
-  "version": "1.0.0",
   "description": "Cursor Talk to Figma MCP",
-  "main": "src/socket.ts",
+  "version": "0.1.1",
+  "module": "dist/server.js",
+  "main": "dist/server.js",
+  "bin": {
+    "cursor-talk-to-figma-mcp": "dist/server.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
   "scripts": {
+    "start": "bun run dist/server.js",
+    "socket": "bun run src/socket.ts",
     "setup": "./scripts/setup.sh",
-    "start": "bun run src/socket.ts",
-    "watch": "bun --watch watch-plugin.js"
+    "build": "tsup",
+    "build:watch": "tsup --watch",
+    "dev": "bun run build:watch",
+    "pub:release": "bun run build && npm publish"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "^1.2.5",
+    "tsup": "^8.4.0",
+    "typescript": "^5.0.0"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
-    "bun": "latest",
     "uuid": "latest",
     "ws": "latest",
     "zod": "latest"
-  },
-  "devDependencies": {
-    "@types/ws": "^8.18.0"
   }
 }

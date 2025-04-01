@@ -1,3 +1,4 @@
 node_modules/
 .cursor/
-/figma-exports
+dist/
+/docs
