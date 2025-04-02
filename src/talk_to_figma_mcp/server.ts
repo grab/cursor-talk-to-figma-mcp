@@ -144,6 +144,11 @@ function rgbaToHex(color: any): string {
 }
 
 function filterFigmaNode(node: any) {
+  // Skip VECTOR type nodes
+  if (node.type === "VECTOR") {
+    return null;
+  }
+
   const filtered: any = {
     id: node.id,
     name: node.name,
@@ -151,14 +156,47 @@ function filterFigmaNode(node: any) {
   };
 
   if (node.fills && node.fills.length > 0) {
-    filtered.fills = node.fills.map((fill: any) => ({
-      ...fill,
-      color: fill.color ? rgbaToHex(fill.color) : undefined
-    }));
+    filtered.fills = node.fills.map((fill: any) => {
+      const processedFill = { ...fill };
+
+      // Remove boundVariables and imageRef
+      delete processedFill.boundVariables;
+      delete processedFill.imageRef;
+
+      // Process gradientStops if present
+      if (processedFill.gradientStops) {
+        processedFill.gradientStops = processedFill.gradientStops.map((stop: any) => {
+          const processedStop = { ...stop };
+          // Convert color to hex if present
+          if (processedStop.color) {
+            processedStop.color = rgbaToHex(processedStop.color);
+          }
+          // Remove boundVariables
+          delete processedStop.boundVariables;
+          return processedStop;
+        });
+      }
+
+      // Convert solid fill colors to hex
+      if (processedFill.color) {
+        processedFill.color = rgbaToHex(processedFill.color);
+      }
+
+      return processedFill;
+    });
   }
 
   if (node.strokes && node.strokes.length > 0) {
-    filtered.strokes = node.strokes;
+    filtered.strokes = node.strokes.map((stroke: any) => {
+      const processedStroke = { ...stroke };
+      // Remove boundVariables
+      delete processedStroke.boundVariables;
+      // Convert color to hex if present
+      if (processedStroke.color) {
+        processedStroke.color = rgbaToHex(processedStroke.color);
+      }
+      return processedStroke;
+    });
   }
 
   if (node.cornerRadius !== undefined) {
@@ -174,11 +212,21 @@ function filterFigmaNode(node: any) {
   }
 
   if (node.style) {
-    filtered.style = node.style;
+    filtered.style = {
+      fontFamily: node.style.fontFamily,
+      fontStyle: node.style.fontStyle,
+      fontWeight: node.style.fontWeight,
+      fontSize: node.style.fontSize,
+      textAlignHorizontal: node.style.textAlignHorizontal,
+      letterSpacing: node.style.letterSpacing,
+      lineHeightPx: node.style.lineHeightPx
+    };
   }
 
   if (node.children) {
-    filtered.children = node.children.map((child: any) => filterFigmaNode(child));
+    filtered.children = node.children
+      .map((child: any) => filterFigmaNode(child))
+      .filter((child: any) => child !== null); // Remove null children (VECTOR nodes)
   }
 
   return filtered;
@@ -203,7 +251,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(filterFigmaNode(results))
+            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
           }
         ]
       };
