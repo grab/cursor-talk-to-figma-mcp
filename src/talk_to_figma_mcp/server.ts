@@ -86,9 +86,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting document info: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -117,9 +116,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting selection: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting selection: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -150,9 +148,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting node info: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -332,9 +329,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating rectangle: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating rectangle: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -423,9 +419,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating frame: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating frame: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -495,9 +490,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating text: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating text: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -527,9 +521,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set fill color of node "${
-              typedResult.name
-            }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+            text: `Set fill color of node "${typedResult.name
+              }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
           },
         ],
       };
@@ -538,9 +531,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting fill color: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting fill color: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -572,9 +564,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set stroke color of node "${
-              typedResult.name
-            }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
+            text: `Set stroke color of node "${typedResult.name
+              }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
           },
         ],
       };
@@ -583,9 +574,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting stroke color: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -619,9 +609,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error moving node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error moving node: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -693,9 +682,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error resizing node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error resizing node: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -726,9 +714,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error deleting node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error deleting node: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -771,9 +758,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error exporting node as image: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -809,9 +795,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting text content: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -840,9 +825,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting styles: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting styles: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -871,44 +855,14 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting local components: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting local components: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
     }
   }
 );
-
-// Get Team Components Tool
-// server.tool(
-//   "get_team_components",
-//   "Get all team library components available in Figma",
-//   {},
-//   async () => {
-//     try {
-//       const result = await sendCommandToFigma('get_team_components');
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: JSON.stringify(result, null, 2)
-//           }
-//         ]
-//       };
-//     } catch (error) {
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: `Error getting team components: ${error instanceof Error ? error.message : String(error)}`
-//           }
-//         ]
-//       };
-//     }
-//   }
-// );
 
 // Create Component Instance Tool
 server.tool(
@@ -927,16 +881,6 @@ server.tool(
         y,
       });
       const typedResult = result as any;
-
-      // return {
-      //   content: [
-      //     {
-      //       type: "image",
-      //       data: typedResult.imageData,
-      //       mimeType: typedResult.mimeType || "image/png"
-      //     }
-      //   ]
-      // };
       return {
         content: [
           {
@@ -950,47 +894,14 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating component instance: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating component instance: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
     }
   }
 );
-
-// Execute Figma Code Tool
-// server.tool(
-//   "execute_figma_code",
-//   "Execute arbitrary JavaScript code in Figma (use with caution)",
-//   {
-//     code: z.string().describe("JavaScript code to execute in Figma")
-//   },
-//   async ({ code }) => {
-//     try {
-//       const result = await sendCommandToFigma('execute_code', { code });
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: `Code executed successfully: ${JSON.stringify(result, null, 2)}`
-//           }
-//         ]
-//       };
-//     } catch (error) {
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: `Error executing code: ${error instanceof Error ? error.message : String(error)}`
-//           }
-//         ]
-//       };
-//     }
-//   }
-// );
-
 
 // Set Corner Radius Tool
 server.tool(
@@ -1028,9 +939,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting corner radius: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting corner radius: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1126,6 +1036,34 @@ Example Login Screen Structure:
   }
 );
 
+server.prompt(
+  "read_design_strategy",
+  "Best practices for reading Figma designs",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `When reading Figma designs, follow these best practices:
+
+1. Start with selection:
+   - First use get_selection() to understand the current selection
+   - If no selection ask user to select single or multiple nodes
+
+2. Get node infos of the selected nodes:
+   - Use get_nodes_info() to get the information of the selected nodes
+   - If no selection ask user to select single or multiple nodes
+`,
+          },
+        },
+      ],
+      description: "Best practices for reading Figma designs",
+    };
+  }
+);
+
 // Text Node Scanning Tool
 server.tool(
   "scan_text_nodes",
@@ -1142,7 +1080,7 @@ server.tool(
       };
 
       // Use the plugin's scan_text_nodes function with chunking flag
-      const result = await sendCommandToFigma("scan_text_nodes", { 
+      const result = await sendCommandToFigma("scan_text_nodes", {
         nodeId,
         useChunking: true,  // Enable chunking on the plugin side
         chunkSize: 10       // Process 10 nodes at a time
@@ -1194,9 +1132,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error scanning text nodes: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1377,13 +1314,13 @@ server.tool(
       // Track overall progress
       let totalProcessed = 0;
       const totalToProcess = text.length;
-      
+
       // Use the plugin's set_multiple_text_contents function with chunking
       const result = await sendCommandToFigma("set_multiple_text_contents", {
         nodeId,
         text,
       });
-      
+
       // Cast the result to a specific type to work with it safely
       interface TextReplaceResult {
         success: boolean;
@@ -1400,9 +1337,9 @@ server.tool(
           translatedText?: string;
         }>;
       }
-      
+
       const typedResult = result as TextReplaceResult;
-      
+
       // Format the results for display
       const success = typedResult.replacementsApplied && typedResult.replacementsApplied > 0;
       const progressText = `
@@ -1411,15 +1348,15 @@ server.tool(
       - ${typedResult.replacementsFailed || 0} failed
       - Processed in ${typedResult.completedInChunks || 1} batches
       `;
-      
+
       // Detailed results
       const detailedResults = typedResult.results || [];
       const failedResults = detailedResults.filter(item => !item.success);
-      
+
       // Create the detailed part of the response
       let detailedResponse = "";
       if (failedResults.length > 0) {
-        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item => 
+        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item =>
           `- ${item.nodeId}: ${item.error || "Unknown error"}`
         ).join('\n')}`;
       }
@@ -1438,82 +1375,12 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting multiple text contents: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting multiple text contents: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
     }
-  }
-);
-
-// Context Understanding Prompt
-server.prompt(
-  "context_understanding_prompt",
-  "Guide for understanding the context of the Figma design",
-  (extra) => {
-    return {
-      messages: [
-        {
-          role: "assistant",
-          content: {
-            type: "text",
-            text: `# Figma Design Understanding
-
-I'll help you understand the context of the Figma design. I'll export the screenshot from Figma and download the screenshot to Cursor talk or Claude and observe the content of the screenshot for understanding the context of the screenshot.
-
-# Context understanding process
-
-1. First, use the \`export_node_as_image\` tool to export the selected node as an image:
-   \`\`\`
-   export_node_as_image(nodeId: "selected-node-id", format: "PNG", scale: 1)
-   \`\`\`
-
-2. if it timeout or error, proceed with a smaller scale
-
-3. After exporting, understand the context of the Figma design with the following prompt:
-
-\`\`\`
-You are an agent that is trained to complete certain tasks on a GUI app. You will be given a screenshot of a GUI app.
-
-You can call the following functions to interact with UI elements to control the GUI:
-
-1. tap(x: int, y: int)
-This function is used to tap an UI element shown on the screen.
-"x" and "y" are coordinates on the screen where you want to tap.
-A simple use case can be tap(200, 150), which taps the location at coordinates (200, 150) on the screen.
-
-2. text(text_input: str)
-This function is used to insert text input in an input field/box. text_input is the string you want to insert and must be wrapped with double quotation marks. A simple use case can be text("Hello, world!"), which inserts the string "Hello, world!" into the input area on the screen. This function is only callable when you see a text input field is active.
-
-3. long_press(x: int, y: int)
-This function is used to long press at a specific location on the screen.
-"x" and "y" are coordinates on the screen where you want to perform the long press.
-A simple use case can be long_press(200, 150), which long presses at the coordinates (200, 150).
-
-4. swipe(start_x: int, start_y: int, direction: str, dist: str)
-This function is used to swipe from a starting position on the screen, usually a scroll view or a slide bar.
-"start_x" and "start_y" are the starting coordinates for the swipe. "direction" is a string that represents one of the four directions: up, down, left, right. "direction" must be wrapped with double quotation marks. "dist" determines the distance of the swipe and can be one of the three options: short, medium, long. You should choose the appropriate distance option according to your need.
-A simple use case can be swipe(200, 300, "up", "medium"), which swipes up from coordinates (200, 300) for a medium distance.
-
-The task you need to complete is to <task_description>.
-
-Now, given the following screenshot, you need to think and call the function needed to proceed with the task. Your output should include three parts in the given format:
-
-Observation: <Describe what you observe in the image>
-Thought: <To complete the given task, what is the next step I should do>
-Action: <The function call with the correct parameters to proceed with the task. If you believe the task is completed or there is nothing to be done, you should output FINISH. You cannot output anything else except a function call or FINISH in this field.>
-Summary: <Summarize your actions in one or two sentences.>
-
-You can only take one action at a time, so please directly call the function.
-\`\`\`
-`,
-          },
-        },
-      ],
-      description: "Guide for understanding the context of the Figma design",
-    };
   }
 );
 
@@ -1535,7 +1402,6 @@ type FigmaCommand =
   | "get_team_components"
   | "create_component_instance"
   | "export_node_as_image"
-  | "execute_code"
   | "join"
   | "set_corner_radius"
   | "clone_node"
@@ -1554,8 +1420,7 @@ function processFigmaNodeResponse(result: unknown): any {
   if ("id" in resultObj && typeof resultObj.id === "string") {
     // It appears to be a node response, log the details
     console.info(
-      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${
-        resultObj.id
+      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${resultObj.id
       })`
     );
 
@@ -1598,23 +1463,23 @@ function connectToFigma(port: number = 3055) {
         id?: string;
         [key: string]: any; // Allow any other properties
       }
-      
+
       const json = JSON.parse(data) as ProgressMessage;
-      
+
       // Handle progress updates
       if (json.type === 'progress_update') {
         const progressData = json.message.data as CommandProgressUpdate;
         const requestId = json.id || '';
-        
+
         if (requestId && pendingRequests.has(requestId)) {
           const request = pendingRequests.get(requestId)!;
-          
+
           // Update last activity timestamp
           request.lastActivity = Date.now();
-          
+
           // Reset the timeout to prevent timeouts during long-running operations
           clearTimeout(request.timeout);
-          
+
           // Create a new timeout
           request.timeout = setTimeout(() => {
             if (pendingRequests.has(requestId)) {
@@ -1623,23 +1488,23 @@ function connectToFigma(port: number = 3055) {
               request.reject(new Error('Request to Figma timed out'));
             }
           }, 60000); // 60 second timeout for inactivity
-          
+
           // Log progress
           logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
-          
+
           // For completed updates, we could resolve the request early if desired
           if (progressData.status === 'completed' && progressData.progress === 100) {
             // Optionally resolve early with partial data
             // request.resolve(progressData.payload);
             // pendingRequests.delete(requestId);
-            
+
             // Instead, just log the completion, wait for final result from Figma
             logger.info(`Operation ${progressData.commandType} completed, waiting for final result`);
           }
         }
         return;
       }
-      
+
       // Handle regular responses
       const myResponse = json.message;
       logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
@@ -1752,17 +1617,17 @@ function sendCommandToFigma(
     const timeout = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        logger.error(`Request ${id} to Figma timed out after ${timeoutMs/1000} seconds`);
+        logger.error(`Request ${id} to Figma timed out after ${timeoutMs / 1000} seconds`);
         reject(new Error('Request to Figma timed out'));
       }
     }, timeoutMs);
 
     // Store the promise callbacks to resolve/reject later
-    pendingRequests.set(id, { 
-      resolve, 
-      reject, 
+    pendingRequests.set(id, {
+      resolve,
+      reject,
       timeout,
-      lastActivity: Date.now() 
+      lastActivity: Date.now()
     });
 
     // Send the request
@@ -1811,9 +1676,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error joining channel: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error joining channel: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
