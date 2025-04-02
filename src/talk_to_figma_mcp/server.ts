@@ -117,7 +117,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result)
+            text: JSON.stringify(filterFigmaNode(result))
           }
         ]
       };
@@ -133,6 +133,56 @@ server.tool(
     }
   }
 );
+
+function rgbaToHex(color: any): string {
+  const r = Math.round(color.r * 255);
+  const g = Math.round(color.g * 255);
+  const b = Math.round(color.b * 255);
+  const a = Math.round(color.a * 255);
+
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a === 255 ? '' : a.toString(16).padStart(2, '0')}`;
+}
+
+function filterFigmaNode(node: any) {
+  const filtered: any = {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+  };
+
+  if (node.fills && node.fills.length > 0) {
+    filtered.fills = node.fills.map((fill: any) => ({
+      ...fill,
+      color: fill.color ? rgbaToHex(fill.color) : undefined
+    }));
+  }
+
+  if (node.strokes && node.strokes.length > 0) {
+    filtered.strokes = node.strokes;
+  }
+
+  if (node.cornerRadius !== undefined) {
+    filtered.cornerRadius = node.cornerRadius;
+  }
+
+  if (node.absoluteBoundingBox) {
+    filtered.absoluteBoundingBox = node.absoluteBoundingBox;
+  }
+
+  if (node.characters) {
+    filtered.characters = node.characters;
+  }
+
+  if (node.style) {
+    filtered.style = node.style;
+  }
+
+  if (node.children) {
+    filtered.children = node.children.map((child: any) => filterFigmaNode(child));
+  }
+
+  return filtered;
+}
 
 // Nodes Info Tool
 server.tool(
@@ -153,7 +203,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(results)
+            text: JSON.stringify(filterFigmaNode(results))
           }
         ]
       };
