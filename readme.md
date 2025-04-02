@@ -122,7 +122,9 @@ The MCP server provides the following tools for interacting with Figma:
 
 ### Modifying text content
 
-- `set_text_content` - Set the text content of an existing text node
+- `scan_text_nodes` - Scan text nodes with intelligent chunking for large designs
+- `set_text_content` - Set the text content of a single text node
+- `set_multiple_text_contents` - Batch update multiple text nodes efficiently
 
 ### Styling
 
@@ -179,6 +181,14 @@ When working with the Figma MCP:
 5. Verify changes using `get_node_info`
 6. Use component instances when possible for consistency
 7. Handle errors appropriately as all commands can throw exceptions
+8. For large designs:
+   - Use chunking parameters in `scan_text_nodes`
+   - Monitor progress through WebSocket updates
+   - Implement appropriate error handling
+9. For text operations:
+   - Use batch operations when possible
+   - Consider structural relationships
+   - Verify changes with targeted exports
 
 ## License
 
