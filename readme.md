@@ -53,7 +53,7 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
   "mcpServers": {
     "TalkToFigma": {
       "command": "bunx",
-      "args": ["cursor-talk-to-figma-mcp"]
+      "args": ["cursor-talk-to-figma-mcp@latest"]
     }
   }
 }

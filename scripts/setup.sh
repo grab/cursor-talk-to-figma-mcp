@@ -11,7 +11,7 @@ echo "{
     \"TalkToFigma\": {
       \"command\": \"bunx\",
       \"args\": [
-        \"cursor-talk-to-figma-mcp\"
+        \"cursor-talk-to-figma-mcp@latest\"
       ]
     }
   }
