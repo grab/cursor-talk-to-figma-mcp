@@ -160,6 +160,13 @@
         height: 24px;
         object-fit: contain;
       }
+      /* Progress styles */
+      .operation-complete {
+        color: #4ade80;
+      }
+      .operation-error {
+        color: #ff9999;
+      }
     </style>
   </head>
   <body>
@@ -207,6 +214,19 @@
             Disconnect
           </button>
         </div>
+        
+        <!-- Add Progress Bar Section -->
+        <div id="progress-container" class="section hidden">
+          <h2>Operation Progress</h2>
+          <div id="progress-message">No operation in progress</div>
+          <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
+            <div id="progress-bar" style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;"></div>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
+            <div id="progress-status">Not started</div>
+            <div id="progress-percentage">0%</div>
+          </div>
+        </div>
       </div>
 
       <div id="content-about" class="tab-content">
@@ -252,6 +272,13 @@
       // Tabs
       const tabs = document.querySelectorAll(".tab");
       const tabContents = document.querySelectorAll(".tab-content");
+
+      // Add UI elements for progress tracking
+      const progressContainer = document.getElementById("progress-container");
+      const progressBar = document.getElementById("progress-bar");
+      const progressMessage = document.getElementById("progress-message");
+      const progressStatus = document.getElementById("progress-status");
+      const progressPercentage = document.getElementById("progress-percentage");
 
       // Initialize UI
       function updateConnectionStatus(isConnected, message) {
@@ -523,10 +550,79 @@
         disconnectFromServer();
       });
 
+      // Function to update progress UI
+      function updateProgressUI(progressData) {
+        // Show progress container if hidden
+        progressContainer.classList.remove("hidden");
+        
+        // Update progress bar
+        const progress = progressData.progress || 0;
+        progressBar.style.width = `${progress}%`;
+        progressPercentage.textContent = `${progress}%`;
+        
+        // Update message
+        progressMessage.textContent = progressData.message || "Operation in progress";
+        
+        // Update status text based on operation state
+        if (progressData.status === 'started') {
+          progressStatus.textContent = "Started";
+          progressStatus.className = "";
+        } else if (progressData.status === 'in_progress') {
+          progressStatus.textContent = "In Progress";
+          progressStatus.className = "";
+        } else if (progressData.status === 'completed') {
+          progressStatus.textContent = "Completed";
+          progressStatus.className = "operation-complete";
+          
+          // Hide progress container after 5 seconds
+          setTimeout(() => {
+            progressContainer.classList.add("hidden");
+          }, 5000);
+        } else if (progressData.status === 'error') {
+          progressStatus.textContent = "Error";
+          progressStatus.className = "operation-error";
+        }
+      }
+
+      // Send operation progress update to server
+      function sendProgressUpdateToServer(progressData) {
+        if (!state.connected || !state.socket) {
+          console.error("Cannot send progress update: socket not connected");
+          return;
+        }
+        
+        console.log("Sending progress update to server:", progressData);
+        
+        state.socket.send(
+          JSON.stringify({
+            id: progressData.commandId,
+            type: "progress_update",
+            channel: state.channel,
+            message: {
+              id: progressData.commandId,
+              type: "progress_update",
+              data: progressData
+            }
+          })
+        );
+      }
+      
+      // Reset progress UI
+      function resetProgressUI() {
+        progressContainer.classList.add("hidden");
+        progressBar.style.width = "0%";
+        progressMessage.textContent = "No operation in progress";
+        progressStatus.textContent = "Not started";
+        progressStatus.className = "";
+        progressPercentage.textContent = "0%";
+      }
+
       // Listen for messages from the plugin code
       window.onmessage = (event) => {
         const message = event.data.pluginMessage;
         if (!message) return;
+
+        console.log("Received message from plugin:", message);
 
         switch (message.type) {
           case "connection-status":
@@ -545,6 +641,12 @@
           case "command-error":
             // Forward the error from plugin code back to WebSocket
             sendErrorResponse(message.id, message.error);
+            break;
+          case "command_progress":
+            // Update UI with progress information
+            updateProgressUI(message);
+            // Forward progress update to server
+            sendProgressUpdateToServer(message);
             break;
         }
       };
