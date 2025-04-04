@@ -783,35 +783,6 @@ server.tool(
   }
 );
 
-// Get Annotation Categories Tool
-server.tool(
-  "get_annotation_categories",
-  "Get all available annotation categories",
-  {},
-  async () => {
-    try {
-      const result = await sendCommandToFigma("get_annotation_categories");
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting annotation categories: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
 // Get Annotations Tool
 server.tool(
   "get_annotations",
@@ -1526,6 +1497,140 @@ You can only take one action at a time, so please directly call the function.
   }
 );
 
+// Annotation Conversion Strategy Prompt
+server.prompt(
+  "annotation_conversion_strategy",
+  "Strategy for converting manual annotations to Figma's native annotations",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Manual to Native Annotation Conversion Strategy
+
+## 1. Initial Analysis
+- Get available annotation categories
+\`\`\`typescript
+get_annotations()
+\`\`\`
+- Export frame as image for visual analysis
+\`\`\`typescript
+export_node_as_image(nodeId: "frame-id", format: "SVG", scale: 1)
+\`\`\`
+
+## 2. Visual Context Understanding
+Analyze the exported image to identify:
+- Numbered annotations (1, 2, 3...)
+- Arrows or connection lines
+- Text content and its relationship to UI elements
+- Annotation placement patterns
+
+## 3. Node Mapping Process
+For each annotation number:
+1. Identify target node
+   - Use visual position and arrows
+   - Consider proximity to numbered label
+   - Check node type and content
+
+2. Extract annotation content
+   - Capture full annotation text
+   - Preserve formatting and structure
+   - Note any special indicators or markers
+
+3. Determine appropriate category
+   - Match content type to available categories
+   - Consider node type and context
+   - Use default category if no clear match
+
+## 4. Conversion Process
+For each identified annotation:
+1. Get target node info
+\`\`\`typescript
+get_node_info(nodeId: "target-node-id")
+\`\`\`
+
+2. Create native annotation
+\`\`\`typescript
+set_annotation({
+  nodeId: "target-node-id",
+  labelMarkdown: "Converted annotation text",
+  categoryId: "matched-category-id"
+})
+\`\`\`
+
+## 5. Verification Steps
+After each conversion:
+- Verify annotation is properly attached
+- Check markdown formatting
+- Ensure correct category assignment
+- Validate position and visibility
+
+## Best Practices
+1. **Content Preservation**
+   - Maintain original meaning and intent
+   - Preserve formatting where possible
+   - Keep important context and references
+
+2. **Category Selection**
+   - Use semantic matching for categories
+   - Consider node type and purpose
+   - Default to general category when unclear
+
+3. **Node Targeting**
+   - Prioritize explicit connections (arrows)
+   - Use proximity as secondary indicator
+   - Consider logical grouping and hierarchy
+
+4. **Progressive Conversion**
+   - Convert one annotation at a time
+   - Follow numerical order if present
+   - Verify each conversion before proceeding
+
+5. **Error Handling**
+   - Log failed conversions
+   - Note skipped or problematic annotations
+   - Provide reason for conversion issues
+
+## Common Annotation Patterns
+1. **UI Element Description**
+   - Target: Individual UI components
+   - Content: Functionality explanation
+   - Category: Usually 'Documentation' or 'Usage'
+
+2. **Input Requirements**
+   - Target: Form fields, inputs
+   - Content: Validation rules, requirements
+   - Category: 'Validation' or 'Requirements'
+
+3. **Process Flows**
+   - Target: Buttons, links
+   - Content: Action results, flow description
+   - Category: 'Flow' or 'Process'
+
+4. **Technical Notes**
+   - Target: Implementation-specific elements
+   - Content: Development notes, API refs
+   - Category: 'Technical' or 'Development'
+
+## Conversion Checklist
+1. [ ] Export and analyze frame
+2. [ ] List all manual annotations
+3. [ ] Map annotations to target nodes
+4. [ ] Determine categories
+5. [ ] Convert annotations sequentially
+6. [ ] Verify each conversion
+7. [ ] Document any issues or skips
+8. [ ] Final visual verification`
+          },
+        },
+      ],
+      description: "Strategy for converting manual annotations to Figma's native annotations",
+    };
+  }
+);
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -1552,9 +1657,7 @@ type FigmaCommand =
   | "scan_text_nodes"
   | "set_multiple_text_contents"
   | "get_annotations"
-  | "set_annotation"
-  | "ensure_annotation_category"
-  | "get_annotation_categories";
+  | "set_annotation";
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {

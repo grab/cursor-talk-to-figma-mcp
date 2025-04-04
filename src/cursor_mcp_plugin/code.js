@@ -146,10 +146,6 @@ async function handleCommand(command, params) {
       return await getAnnotations(params);
     case "set_annotation":
       return await setAnnotation(params);
-    case "ensure_annotation_category":
-      return await ensureAnnotationCategory(params);
-    case "get_annotation_categories":
-      return await getAnnotationCategories();
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1879,22 +1875,6 @@ function generateCommandId() {
   return 'cmd_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-// Annotation command implementations
-
-async function getAnnotationCategories() {
-  try {
-    const categories = await figma.annotations.getAnnotationCategoriesAsync();
-    return categories.map(category => ({
-      id: category.id,
-      label: category.label,
-      color: category.color,
-      isPreset: category.isPreset
-    }));
-  } catch (error) {
-    console.error('Error in getAnnotationCategories:', error);
-    throw error;
-  }
-}
 
 async function getAnnotations(params) {
   try {
@@ -1970,42 +1950,6 @@ async function getAnnotations(params) {
     }
   } catch (error) {
     console.error('Error in getAnnotations:', error);
-    throw error;
-  }
-}
-
-async function ensureAnnotationCategory(params) {
-  try {
-    const { label, color } = params;
-    
-    // Get existing categories
-    const categories = await figma.annotations.getAnnotationCategoriesAsync();
-    
-    // Check if category already exists
-    const existingCategory = categories.find(c => c.label === label);
-    if (existingCategory) {
-      return {
-        id: existingCategory.id,
-        label: existingCategory.label,
-        color: existingCategory.color,
-        isPreset: existingCategory.isPreset
-      };
-    }
-    
-    // Create new category
-    const newCategory = await figma.annotations.addAnnotationCategoryAsync({
-      label,
-      color
-    });
-    
-    return {
-      id: newCategory.id,
-      label: newCategory.label,
-      color: newCategory.color,
-      isPreset: newCategory.isPreset
-    };
-  } catch (error) {
-    console.error('Error in ensureAnnotationCategory:', error);
     throw error;
   }
 }
