@@ -783,6 +783,113 @@ server.tool(
   }
 );
 
+// Get Annotation Categories Tool
+server.tool(
+  "get_annotation_categories",
+  "Get all available annotation categories",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_annotation_categories");
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting annotation categories: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Get Annotations Tool
+server.tool(
+  "get_annotations",
+  "Get all annotations in the current document or specific node",
+  {
+    nodeId: z.string().optional().describe("Optional node ID to get annotations for specific node"),
+    includeCategories: z.boolean().optional().default(true).describe("Whether to include category information")
+  },
+  async ({ nodeId, includeCategories }) => {
+    try {
+      const result = await sendCommandToFigma("get_annotations", { 
+        nodeId,
+        includeCategories
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Set Annotation Tool
+server.tool(
+  "set_annotation",
+  "Create or update an annotation",
+  {
+    nodeId: z.string().describe("The ID of the node to annotate"),
+    annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
+    labelMarkdown: z.string().describe("The annotation text in markdown format"),
+    categoryId: z.string().optional().describe("The ID of the annotation category"),
+    properties: z.array(z.object({
+      type: z.string()
+    })).optional().describe("Additional properties for the annotation")
+  },
+  async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }) => {
+    try {
+      const result = await sendCommandToFigma("set_annotation", {
+        nodeId,
+        annotationId,
+        labelMarkdown,
+        categoryId,
+        properties
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
 // Get Team Components Tool
 // server.tool(
 //   "get_team_components",
@@ -1443,7 +1550,11 @@ type FigmaCommand =
   | "clone_node"
   | "set_text_content"
   | "scan_text_nodes"
-  | "set_multiple_text_contents";
+  | "set_multiple_text_contents"
+  | "get_annotations"
+  | "set_annotation"
+  | "ensure_annotation_category"
+  | "get_annotation_categories";
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -1722,8 +1833,6 @@ server.tool(
     }
   }
 );
-
-
 
 // Start the server
 async function main() {

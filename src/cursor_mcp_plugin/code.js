@@ -142,6 +142,14 @@ async function handleCommand(command, params) {
       return await scanTextNodes(params);
     case "set_multiple_text_contents":
       return await setMultipleTextContents(params);
+    case "get_annotations":
+      return await getAnnotations(params);
+    case "set_annotation":
+      return await setAnnotation(params);
+    case "ensure_annotation_category":
+      return await ensureAnnotationCategory(params);
+    case "get_annotation_categories":
+      return await getAnnotationCategories();
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1869,4 +1877,219 @@ async function setMultipleTextContents(params) {
 // Function to generate simple UUIDs for command IDs
 function generateCommandId() {
   return 'cmd_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+// Annotation command implementations
+
+async function getAnnotationCategories() {
+  try {
+    const categories = await figma.annotations.getAnnotationCategoriesAsync();
+    return categories.map(category => ({
+      id: category.id,
+      label: category.label,
+      color: category.color,
+      isPreset: category.isPreset
+    }));
+  } catch (error) {
+    console.error('Error in getAnnotationCategories:', error);
+    throw error;
+  }
+}
+
+async function getAnnotations(params) {
+  try {
+    const { nodeId, includeCategories = true } = params;
+
+    // Get categories first if needed
+    let categoriesMap = {};
+    if (includeCategories) {
+      const categories = await figma.annotations.getAnnotationCategoriesAsync();
+      categoriesMap = categories.reduce((map, category) => {
+        map[category.id] = {
+          id: category.id,
+          label: category.label,
+          color: category.color,
+          isPreset: category.isPreset
+        };
+        return map;
+      }, {});
+    }
+
+    if (nodeId) {
+      // Get annotations for a specific node
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (!node) {
+        throw new Error(`Node not found: ${nodeId}`);
+      }
+
+      if (!('annotations' in node)) {
+        throw new Error(`Node type ${node.type} does not support annotations`);
+      }
+
+      const result = {
+        nodeId: node.id,
+        name: node.name,
+        annotations: node.annotations || []
+      };
+
+      if (includeCategories) {
+        result.categories = Object.values(categoriesMap);
+      }
+
+      return result;
+    } else {
+      // Get all annotations in the current page
+      const annotations = [];
+      const processNode = async (node) => {
+        if ('annotations' in node && node.annotations && node.annotations.length > 0) {
+          annotations.push({
+            nodeId: node.id,
+            name: node.name,
+            annotations: node.annotations
+          });
+        }
+        if ('children' in node) {
+          for (const child of node.children) {
+            await processNode(child);
+          }
+        }
+      };
+
+      // Start from current page
+      await processNode(figma.currentPage);
+
+      const result = {
+        annotatedNodes: annotations
+      };
+
+      if (includeCategories) {
+        result.categories = Object.values(categoriesMap);
+      }
+
+      return result;
+    }
+  } catch (error) {
+    console.error('Error in getAnnotations:', error);
+    throw error;
+  }
+}
+
+async function ensureAnnotationCategory(params) {
+  try {
+    const { label, color } = params;
+    
+    // Get existing categories
+    const categories = await figma.annotations.getAnnotationCategoriesAsync();
+    
+    // Check if category already exists
+    const existingCategory = categories.find(c => c.label === label);
+    if (existingCategory) {
+      return {
+        id: existingCategory.id,
+        label: existingCategory.label,
+        color: existingCategory.color,
+        isPreset: existingCategory.isPreset
+      };
+    }
+    
+    // Create new category
+    const newCategory = await figma.annotations.addAnnotationCategoryAsync({
+      label,
+      color
+    });
+    
+    return {
+      id: newCategory.id,
+      label: newCategory.label,
+      color: newCategory.color,
+      isPreset: newCategory.isPreset
+    };
+  } catch (error) {
+    console.error('Error in ensureAnnotationCategory:', error);
+    throw error;
+  }
+}
+
+async function setAnnotation(params) {
+  try {
+    console.log('setAnnotation called with params:', params);
+    const { nodeId, annotationId, labelMarkdown, categoryId, properties } = params;
+
+    // Get the node
+    const node = await figma.getNodeByIdAsync(nodeId);
+    console.log('Found node:', node);
+    
+    if (!node) {
+      throw new Error(`Node not found: ${nodeId}`);
+    }
+
+    if (!('annotations' in node)) {
+      throw new Error(`Node type ${node.type} does not support annotations`);
+    }
+
+    // Get current annotations
+    const currentAnnotations = node.annotations || [];
+    console.log('Current annotations:', currentAnnotations);
+
+    if (annotationId) {
+      console.log('Updating existing annotation:', annotationId);
+      // Update existing annotation
+      const annotationIndex = currentAnnotations.findIndex(a => a.id === annotationId);
+      if (annotationIndex === -1) {
+        throw new Error(`Annotation not found: ${annotationId}`);
+      }
+
+      // Update the annotation while preserving existing properties
+      const updatedAnnotation = {
+        id: currentAnnotations[annotationIndex].id,
+        labelMarkdown: labelMarkdown
+      };
+
+      if (categoryId) {
+        updatedAnnotation.categoryId = categoryId;
+      }
+
+      if (properties && properties.length > 0) {
+        updatedAnnotation.properties = properties;
+      }
+
+      console.log('Updated annotation:', updatedAnnotation);
+      currentAnnotations[annotationIndex] = updatedAnnotation;
+      node.annotations = currentAnnotations;
+    } else {
+      console.log('Creating new annotation');
+      // Create new annotation
+
+      // Example annotation format:
+      // node.annotations = [
+      //   { labelMarkdown: '# Important \n Pressing activates a *fun* animation' },
+      // ]
+      const newAnnotation = {
+        labelMarkdown
+      };
+
+      if (categoryId) {
+        newAnnotation.categoryId = categoryId;
+      }
+
+      if (properties && properties.length > 0) {
+        newAnnotation.properties = properties;
+      }
+
+      console.log('New annotation:', newAnnotation);
+      node.annotations = [newAnnotation];
+    }
+
+    console.log('Final node annotations:', node.annotations);
+
+    // Return updated node info
+    return {
+      nodeId: node.id,
+      name: node.name,
+      annotations: node.annotations
+    };
+  } catch (error) {
+    console.error('Error in setAnnotation:', error);
+    throw error;
+  }
 }
