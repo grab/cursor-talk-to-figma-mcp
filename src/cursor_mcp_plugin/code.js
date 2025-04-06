@@ -122,6 +122,8 @@ async function handleCommand(command, params) {
       return await resizeNode(params);
     case "delete_node":
       return await deleteNode(params);
+    case "delete_multiple_nodes":
+      return await deleteMultipleNodes(params);
     case "get_styles":
       return await getStyles();
     case "get_local_components":
@@ -146,6 +148,10 @@ async function handleCommand(command, params) {
       return await getAnnotations(params);
     case "set_annotation":
       return await setAnnotation(params);
+    case "scan_nodes_by_types":
+      return await scanNodesByTypes(params);
+    case "set_multiple_annotations":
+      return await setMultipleAnnotations(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1956,84 +1962,456 @@ async function getAnnotations(params) {
 
 async function setAnnotation(params) {
   try {
-    console.log('setAnnotation called with params:', params);
+    console.log('=== setAnnotation Debug Start ===');
+    console.log('Input params:', JSON.stringify(params, null, 2));
+    
     const { nodeId, annotationId, labelMarkdown, categoryId, properties } = params;
 
-    // Get the node
+    // Validate required parameters
+    if (!nodeId) {
+      console.error('Validation failed: Missing nodeId');
+      return { success: false, error: 'Missing nodeId' };
+    }
+
+    if (!labelMarkdown) {
+      console.error('Validation failed: Missing labelMarkdown');
+      return { success: false, error: 'Missing labelMarkdown' };
+    }
+
+    console.log('Attempting to get node:', nodeId);
+    // Get and validate node
     const node = await figma.getNodeByIdAsync(nodeId);
-    console.log('Found node:', node);
+    console.log('Node lookup result:', {
+      id: nodeId,
+      found: !!node,
+      type: node ? node.type : undefined,
+      name: node ? node.name : undefined,
+      hasAnnotations: node ? 'annotations' in node : false
+    });
     
     if (!node) {
-      throw new Error(`Node not found: ${nodeId}`);
+      console.error('Node lookup failed:', nodeId);
+      return { success: false, error: `Node not found: ${nodeId}` };
     }
 
+    // Validate node supports annotations
     if (!('annotations' in node)) {
-      throw new Error(`Node type ${node.type} does not support annotations`);
+      console.error('Node annotation support check failed:', {
+        nodeType: node.type,
+        nodeId: node.id
+      });
+      return { success: false, error: `Node type ${node.type} does not support annotations` };
     }
 
-    // Get current annotations
-    const currentAnnotations = node.annotations || [];
-    console.log('Current annotations:', currentAnnotations);
+    // Create the annotation object
+    const newAnnotation = {
+      labelMarkdown
+    };
 
-    if (annotationId) {
-      console.log('Updating existing annotation:', annotationId);
-      // Update existing annotation
-      const annotationIndex = currentAnnotations.findIndex(a => a.id === annotationId);
-      if (annotationIndex === -1) {
-        throw new Error(`Annotation not found: ${annotationId}`);
-      }
-
-      // Update the annotation while preserving existing properties
-      const updatedAnnotation = {
-        id: currentAnnotations[annotationIndex].id,
-        labelMarkdown: labelMarkdown
-      };
-
-      if (categoryId) {
-        updatedAnnotation.categoryId = categoryId;
-      }
-
-      if (properties && properties.length > 0) {
-        updatedAnnotation.properties = properties;
-      }
-
-      console.log('Updated annotation:', updatedAnnotation);
-      currentAnnotations[annotationIndex] = updatedAnnotation;
-      node.annotations = currentAnnotations;
-    } else {
-      console.log('Creating new annotation');
-      // Create new annotation
-
-      // Example annotation format:
-      // node.annotations = [
-      //   { labelMarkdown: '# Important \n Pressing activates a *fun* animation' },
-      // ]
-      const newAnnotation = {
-        labelMarkdown
-      };
-
-      if (categoryId) {
-        newAnnotation.categoryId = categoryId;
-      }
-
-      if (properties && properties.length > 0) {
-        newAnnotation.properties = properties;
-      }
-
-      console.log('New annotation:', newAnnotation);
-      node.annotations = [newAnnotation];
+    // Validate and add categoryId if provided
+    if (categoryId) {
+      console.log('Adding categoryId to annotation:', categoryId);
+      newAnnotation.categoryId = categoryId;
     }
 
-    console.log('Final node annotations:', node.annotations);
+    // Validate and add properties if provided
+    if (properties && Array.isArray(properties) && properties.length > 0) {
+      console.log('Adding properties to annotation:', JSON.stringify(properties, null, 2));
+      newAnnotation.properties = properties;
+    }
 
-    // Return updated node info
+    // Log current annotations before update
+    console.log('Current node annotations:', node.annotations);
+    
+    // Overwrite annotations
+    console.log('Setting new annotation:', JSON.stringify(newAnnotation, null, 2));
+    node.annotations = [newAnnotation];
+    
+    // Verify the update
+    console.log('Updated node annotations:', node.annotations);
+    console.log('=== setAnnotation Debug End ===');
+
     return {
+      success: true,
       nodeId: node.id,
       name: node.name,
       annotations: node.annotations
     };
   } catch (error) {
-    console.error('Error in setAnnotation:', error);
-    throw error;
+    console.error('=== setAnnotation Error ===');
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      params: JSON.stringify(params, null, 2)
+    });
+    return { success: false, error: error.message };
   }
+}
+
+/**
+ * Scan for nodes with specific types within a node
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the node to scan within
+ * @param {Array<string>} params.types - Array of node types to find (e.g. ['COMPONENT', 'FRAME'])
+ * @returns {Object} - Object containing found nodes
+ */
+async function scanNodesByTypes(params) {
+  console.log(`Starting to scan nodes by types from node ID: ${params.nodeId}`);
+  const { nodeId, types = [] } = params || {};
+  
+  if (!types || types.length === 0) {
+    throw new Error("No types specified to search for");
+  }
+  
+  const node = await figma.getNodeByIdAsync(nodeId);
+
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Simple implementation without chunking
+  const matchingNodes = [];
+  
+  // Send a single progress update to notify start
+  const commandId = generateCommandId();
+  sendProgressUpdate(
+    commandId,
+    'scan_nodes_by_types',
+    'started',
+    0,
+    1,
+    0,
+    `Starting scan of node "${node.name || nodeId}" for types: ${types.join(', ')}`,
+    null
+  );
+
+  // Recursively find nodes with specified types
+  await findNodesByTypes(node, types, matchingNodes);
+  
+  // Send completion update
+  sendProgressUpdate(
+    commandId,
+    'scan_nodes_by_types',
+    'completed',
+    100,
+    matchingNodes.length,
+    matchingNodes.length,
+    `Scan complete. Found ${matchingNodes.length} matching nodes.`,
+    { matchingNodes }
+  );
+
+  return {
+    success: true,
+    message: `Found ${matchingNodes.length} matching nodes.`,
+    count: matchingNodes.length,
+    matchingNodes: matchingNodes,
+    searchedTypes: types
+  };
+}
+
+/**
+ * Helper function to recursively find nodes with specific types
+ * @param {SceneNode} node - The root node to start searching from
+ * @param {Array<string>} types - Array of node types to find
+ * @param {Array} matchingNodes - Array to store found nodes
+ */
+async function findNodesByTypes(node, types, matchingNodes = []) {
+  // Skip invisible nodes
+  if (node.visible === false) return;
+
+  // Check if this node is one of the specified types
+  if (types.includes(node.type)) {
+    // Create a minimal representation with just ID, type and bbox
+    matchingNodes.push({
+      id: node.id,
+      name: node.name || `Unnamed ${node.type}`,
+      type: node.type,
+      // Basic bounding box info
+      bbox: {
+        x: typeof node.x === "number" ? node.x : 0,
+        y: typeof node.y === "number" ? node.y : 0,
+        width: typeof node.width === "number" ? node.width : 0,
+        height: typeof node.height === "number" ? node.height : 0
+      }
+    });
+  }
+
+  // Recursively process children of container nodes
+  if ("children" in node) {
+    for (const child of node.children) {
+      await findNodesByTypes(child, types, matchingNodes);
+    }
+  }
+}
+
+// Set multiple annotations with async progress updates
+async function setMultipleAnnotations(params) {
+  console.log('=== setMultipleAnnotations Debug Start ===');
+  console.log('Input params:', JSON.stringify(params, null, 2));
+  
+  const { nodeId, annotations } = params;
+  
+  if (!annotations || annotations.length === 0) {
+    console.error('Validation failed: No annotations provided');
+    return { success: false, error: "No annotations provided" };
+  }
+
+  console.log(`Processing ${annotations.length} annotations for node ${nodeId}`);
+  
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process annotations sequentially
+  for (let i = 0; i < annotations.length; i++) {
+    const annotation = annotations[i];
+    console.log(`\nProcessing annotation ${i + 1}/${annotations.length}:`, JSON.stringify(annotation, null, 2));
+    
+    try {
+      console.log('Calling setAnnotation with params:', {
+        nodeId: annotation.nodeId,
+        labelMarkdown: annotation.labelMarkdown,
+        categoryId: annotation.categoryId,
+        properties: annotation.properties
+      });
+      
+      const result = await setAnnotation({
+        nodeId: annotation.nodeId,
+        labelMarkdown: annotation.labelMarkdown,
+        categoryId: annotation.categoryId,
+        properties: annotation.properties
+      });
+      
+      console.log('setAnnotation result:', JSON.stringify(result, null, 2));
+      
+      if (result.success) {
+        successCount++;
+        results.push({ success: true, nodeId: annotation.nodeId });
+        console.log(`✓ Annotation ${i + 1} applied successfully`);
+      } else {
+        failureCount++;
+        results.push({ success: false, nodeId: annotation.nodeId, error: result.error });
+        console.error(`✗ Annotation ${i + 1} failed:`, result.error);
+      }
+    } catch (error) {
+      failureCount++;
+      const errorResult = { success: false, nodeId: annotation.nodeId, error: error.message };
+      results.push(errorResult);
+      console.error(`✗ Annotation ${i + 1} failed with error:`, error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+    }
+  }
+
+  const summary = {
+    success: successCount > 0,
+    annotationsApplied: successCount,
+    annotationsFailed: failureCount,
+    totalAnnotations: annotations.length,
+    results: results
+  };
+
+  console.log('\n=== setMultipleAnnotations Summary ===');
+  console.log(JSON.stringify(summary, null, 2));
+  console.log('=== setMultipleAnnotations Debug End ===');
+
+  return summary;
+}
+
+async function deleteMultipleNodes(params) {
+  const { nodeIds } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      'delete_multiple_nodes',
+      'error',
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting deletion of ${nodeIds.length} nodes`);
+  
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    'delete_multiple_nodes',
+    'started',
+    0,
+    nodeIds.length,
+    0,
+    `Starting deletion of ${nodeIds.length} nodes`,
+    { totalNodes: nodeIds.length }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+  
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+  }
+  
+  console.log(`Split ${nodeIds.length} deletions into ${chunks.length} chunks`);
+  
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    'delete_multiple_nodes',
+    'in_progress',
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to delete ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE
+    }
+  );
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(`Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`);
+    
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      'delete_multiple_nodes',
+      'in_progress',
+      Math.round(5 + ((chunkIndex / chunks.length) * 90)),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing deletion chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount
+      }
+    );
+    
+    // Process deletions within a chunk in parallel
+    const chunkPromises = chunk.map(async (nodeId) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        
+        if (!node) {
+          console.error(`Node not found: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node not found: ${nodeId}`
+          };
+        }
+
+        // Save node info before deleting
+        const nodeInfo = {
+          id: node.id,
+          name: node.name,
+          type: node.type
+        };
+
+        // Delete the node
+        node.remove();
+
+        console.log(`Successfully deleted node: ${nodeId}`);
+        return {
+          success: true,
+          nodeId: nodeId,
+          nodeInfo: nodeInfo
+        };
+      } catch (error) {
+        console.error(`Error deleting node ${nodeId}: ${error.message}`);
+        return {
+          success: false,
+          nodeId: nodeId,
+          error: error.message
+        };
+      }
+    });
+
+    // Wait for all deletions in this chunk to complete
+    const chunkResults = await Promise.all(chunkPromises);
+    
+    // Process results for this chunk
+    chunkResults.forEach(result => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+    
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      'delete_multiple_nodes',
+      'in_progress',
+      Math.round(5 + (((chunkIndex + 1) / chunks.length) * 90)),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        chunkResults: chunkResults
+      }
+    );
+    
+    // Add a small delay between chunks
+    if (chunkIndex < chunks.length - 1) {
+      console.log('Pausing between chunks...');
+      await delay(1000);
+    }
+  }
+
+  console.log(
+    `Deletion complete: ${successCount} successful, ${failureCount} failed`
+  );
+  
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    'delete_multiple_nodes',
+    'completed',
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Node deletion complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      totalNodes: nodeIds.length,
+      nodesDeleted: successCount,
+      nodesFailed: failureCount,
+      completedInChunks: chunks.length,
+      results: results
+    }
+  );
+
+  return {
+    success: successCount > 0,
+    nodesDeleted: successCount,
+    nodesFailed: failureCount,
+    totalNodes: nodeIds.length,
+    results: results,
+    completedInChunks: chunks.length,
+    commandId
+  };
 }

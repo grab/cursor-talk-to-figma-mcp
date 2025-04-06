@@ -114,6 +114,13 @@ The MCP server provides the following tools for interacting with Figma:
 - `get_node_info` - Get detailed information about a specific node
 - `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
 
+### Annotations
+
+- `get_annotations` - Get all annotations in the current document or specific node
+- `set_annotation` - Create or update an annotation with markdown support
+- `set_multiple_annotations` - Batch create/update multiple annotations efficiently
+- `scan_nodes_by_types` - Scan for nodes with specific types (useful for finding annotation targets)
+
 ### Creating Elements
 
 - `create_rectangle` - Create a new rectangle with position, size, and optional name
@@ -137,6 +144,7 @@ The MCP server provides the following tools for interacting with Figma:
 - `move_node` - Move a node to a new position
 - `resize_node` - Resize a node with new dimensions
 - `delete_node` - Delete a node
+- `delete_multiple_nodes` - Delete multiple nodes at once efficiently
 - `clone_node` - Create a copy of an existing node with optional position offset
 
 ### Components & Styles
@@ -189,6 +197,15 @@ When working with the Figma MCP:
    - Use batch operations when possible
    - Consider structural relationships
    - Verify changes with targeted exports
+10. For converting legacy annotations:
+    - Scan text nodes to identify numbered markers and descriptions
+    - Use `scan_nodes_by_types` to find UI elements that annotations refer to
+    - Match markers with their target elements using path, name, or proximity
+    - Categorize annotations appropriately with `get_annotations` 
+    - Create native annotations with `set_multiple_annotations` in batches
+    - Verify all annotations are properly linked to their targets
+    - Delete legacy annotation nodes after successful conversion
+
 
 ## License
 
