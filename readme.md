@@ -38,9 +38,15 @@ bunx cursor-talk-to-figma-mcp
 
 5. Install [Figma Plugin](#figma-plugin)
 
-# Quick Video Tutorial
+## Quick Video Tutorial
 
 [![image](images/tutorial.jpg)](https://www.linkedin.com/posts/sonnylazuardi_just-wanted-to-share-my-latest-experiment-activity-7307821553654657024-yrh8)
+
+## Design Automation Example
+
+**Bulk text content replacement**
+
+Thanks to [@dusskapark](https://github.com/dusskapark) for contributing the bulk text replacement feature. Here is the [demo video](https://www.youtube.com/watch?v=j05gGT3xfCs).
 
 ## Manual Setup and Installation
 
@@ -53,7 +59,7 @@ Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
   "mcpServers": {
     "TalkToFigma": {
       "command": "bunx",
-      "args": ["cursor-talk-to-figma-mcp"]
+      "args": ["cursor-talk-to-figma-mcp@latest"]
     }
   }
 }

@@ -86,9 +86,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting document info: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -117,9 +116,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting selection: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting selection: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -141,7 +139,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(result)
+            text: JSON.stringify(filterFigmaNode(result))
           }
         ]
       };
@@ -150,15 +148,112 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting node info: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
     }
   }
 );
+
+function rgbaToHex(color: any): string {
+  const r = Math.round(color.r * 255);
+  const g = Math.round(color.g * 255);
+  const b = Math.round(color.b * 255);
+  const a = Math.round(color.a * 255);
+
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a === 255 ? '' : a.toString(16).padStart(2, '0')}`;
+}
+
+function filterFigmaNode(node: any) {
+  // Skip VECTOR type nodes
+  if (node.type === "VECTOR") {
+    return null;
+  }
+
+  const filtered: any = {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+  };
+
+  if (node.fills && node.fills.length > 0) {
+    filtered.fills = node.fills.map((fill: any) => {
+      const processedFill = { ...fill };
+
+      // Remove boundVariables and imageRef
+      delete processedFill.boundVariables;
+      delete processedFill.imageRef;
+
+      // Process gradientStops if present
+      if (processedFill.gradientStops) {
+        processedFill.gradientStops = processedFill.gradientStops.map((stop: any) => {
+          const processedStop = { ...stop };
+          // Convert color to hex if present
+          if (processedStop.color) {
+            processedStop.color = rgbaToHex(processedStop.color);
+          }
+          // Remove boundVariables
+          delete processedStop.boundVariables;
+          return processedStop;
+        });
+      }
+
+      // Convert solid fill colors to hex
+      if (processedFill.color) {
+        processedFill.color = rgbaToHex(processedFill.color);
+      }
+
+      return processedFill;
+    });
+  }
+
+  if (node.strokes && node.strokes.length > 0) {
+    filtered.strokes = node.strokes.map((stroke: any) => {
+      const processedStroke = { ...stroke };
+      // Remove boundVariables
+      delete processedStroke.boundVariables;
+      // Convert color to hex if present
+      if (processedStroke.color) {
+        processedStroke.color = rgbaToHex(processedStroke.color);
+      }
+      return processedStroke;
+    });
+  }
+
+  if (node.cornerRadius !== undefined) {
+    filtered.cornerRadius = node.cornerRadius;
+  }
+
+  if (node.absoluteBoundingBox) {
+    filtered.absoluteBoundingBox = node.absoluteBoundingBox;
+  }
+
+  if (node.characters) {
+    filtered.characters = node.characters;
+  }
+
+  if (node.style) {
+    filtered.style = {
+      fontFamily: node.style.fontFamily,
+      fontStyle: node.style.fontStyle,
+      fontWeight: node.style.fontWeight,
+      fontSize: node.style.fontSize,
+      textAlignHorizontal: node.style.textAlignHorizontal,
+      letterSpacing: node.style.letterSpacing,
+      lineHeightPx: node.style.lineHeightPx
+    };
+  }
+
+  if (node.children) {
+    filtered.children = node.children
+      .map((child: any) => filterFigmaNode(child))
+      .filter((child: any) => child !== null); // Remove null children (VECTOR nodes)
+  }
+
+  return filtered;
+}
 
 // Nodes Info Tool
 server.tool(
@@ -179,7 +274,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: JSON.stringify(results)
+            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
           }
         ]
       };
@@ -234,9 +329,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating rectangle: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating rectangle: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -325,9 +419,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating frame: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating frame: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -397,9 +490,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating text: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating text: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -429,9 +521,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set fill color of node "${
-              typedResult.name
-            }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+            text: `Set fill color of node "${typedResult.name
+              }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
           },
         ],
       };
@@ -440,9 +531,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting fill color: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting fill color: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -474,9 +564,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set stroke color of node "${
-              typedResult.name
-            }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
+            text: `Set stroke color of node "${typedResult.name
+              }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
           },
         ],
       };
@@ -485,9 +574,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting stroke color: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -521,9 +609,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error moving node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error moving node: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -595,9 +682,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error resizing node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error resizing node: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -628,9 +714,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error deleting node: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error deleting node: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -673,9 +758,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error exporting node as image: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -711,9 +795,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting text content: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -742,9 +825,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting styles: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting styles: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1032,16 +1114,6 @@ server.tool(
         y,
       });
       const typedResult = result as any;
-
-      // return {
-      //   content: [
-      //     {
-      //       type: "image",
-      //       data: typedResult.imageData,
-      //       mimeType: typedResult.mimeType || "image/png"
-      //     }
-      //   ]
-      // };
       return {
         content: [
           {
@@ -1055,47 +1127,14 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error creating component instance: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error creating component instance: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
     }
   }
 );
-
-// Execute Figma Code Tool
-// server.tool(
-//   "execute_figma_code",
-//   "Execute arbitrary JavaScript code in Figma (use with caution)",
-//   {
-//     code: z.string().describe("JavaScript code to execute in Figma")
-//   },
-//   async ({ code }) => {
-//     try {
-//       const result = await sendCommandToFigma('execute_code', { code });
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: `Code executed successfully: ${JSON.stringify(result, null, 2)}`
-//           }
-//         ]
-//       };
-//     } catch (error) {
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: `Error executing code: ${error instanceof Error ? error.message : String(error)}`
-//           }
-//         ]
-//       };
-//     }
-//   }
-// );
-
 
 // Set Corner Radius Tool
 server.tool(
@@ -1133,9 +1172,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting corner radius: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting corner radius: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1231,6 +1269,34 @@ Example Login Screen Structure:
   }
 );
 
+server.prompt(
+  "read_design_strategy",
+  "Best practices for reading Figma designs",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `When reading Figma designs, follow these best practices:
+
+1. Start with selection:
+   - First use get_selection() to understand the current selection
+   - If no selection ask user to select single or multiple nodes
+
+2. Get node infos of the selected nodes:
+   - Use get_nodes_info() to get the information of the selected nodes
+   - If no selection ask user to select single or multiple nodes
+`,
+          },
+        },
+      ],
+      description: "Best practices for reading Figma designs",
+    };
+  }
+);
+
 // Text Node Scanning Tool
 server.tool(
   "scan_text_nodes",
@@ -1247,7 +1313,7 @@ server.tool(
       };
 
       // Use the plugin's scan_text_nodes function with chunking flag
-      const result = await sendCommandToFigma("scan_text_nodes", { 
+      const result = await sendCommandToFigma("scan_text_nodes", {
         nodeId,
         useChunking: true,  // Enable chunking on the plugin side
         chunkSize: 10       // Process 10 nodes at a time
@@ -1565,13 +1631,13 @@ server.tool(
       // Track overall progress
       let totalProcessed = 0;
       const totalToProcess = text.length;
-      
+
       // Use the plugin's set_multiple_text_contents function with chunking
       const result = await sendCommandToFigma("set_multiple_text_contents", {
         nodeId,
         text,
       });
-      
+
       // Cast the result to a specific type to work with it safely
       interface TextReplaceResult {
         success: boolean;
@@ -1588,9 +1654,9 @@ server.tool(
           translatedText?: string;
         }>;
       }
-      
+
       const typedResult = result as TextReplaceResult;
-      
+
       // Format the results for display
       const success = typedResult.replacementsApplied && typedResult.replacementsApplied > 0;
       const progressText = `
@@ -1599,15 +1665,15 @@ server.tool(
       - ${typedResult.replacementsFailed || 0} failed
       - Processed in ${typedResult.completedInChunks || 1} batches
       `;
-      
+
       // Detailed results
       const detailedResults = typedResult.results || [];
       const failedResults = detailedResults.filter(item => !item.success);
-      
+
       // Create the detailed part of the response
       let detailedResponse = "";
       if (failedResults.length > 0) {
-        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item => 
+        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item =>
           `- ${item.nodeId}: ${item.error || "Unknown error"}`
         ).join('\n')}`;
       }
@@ -1626,9 +1692,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting multiple text contents: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting multiple text contents: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1845,7 +1910,6 @@ type FigmaCommand =
   | "get_team_components"
   | "create_component_instance"
   | "export_node_as_image"
-  | "execute_code"
   | "join"
   | "set_corner_radius"
   | "clone_node"
@@ -1992,8 +2056,7 @@ function processFigmaNodeResponse(result: unknown): any {
   if ("id" in resultObj && typeof resultObj.id === "string") {
     // It appears to be a node response, log the details
     console.info(
-      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${
-        resultObj.id
+      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${resultObj.id
       })`
     );
 
@@ -2036,23 +2099,23 @@ function connectToFigma(port: number = 3055) {
         id?: string;
         [key: string]: any; // Allow any other properties
       }
-      
+
       const json = JSON.parse(data) as ProgressMessage;
-      
+
       // Handle progress updates
       if (json.type === 'progress_update') {
         const progressData = json.message.data as CommandProgressUpdate;
         const requestId = json.id || '';
-        
+
         if (requestId && pendingRequests.has(requestId)) {
           const request = pendingRequests.get(requestId)!;
-          
+
           // Update last activity timestamp
           request.lastActivity = Date.now();
-          
+
           // Reset the timeout to prevent timeouts during long-running operations
           clearTimeout(request.timeout);
-          
+
           // Create a new timeout
           request.timeout = setTimeout(() => {
             if (pendingRequests.has(requestId)) {
@@ -2061,23 +2124,23 @@ function connectToFigma(port: number = 3055) {
               request.reject(new Error('Request to Figma timed out'));
             }
           }, 60000); // 60 second timeout for inactivity
-          
+
           // Log progress
           logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
-          
+
           // For completed updates, we could resolve the request early if desired
           if (progressData.status === 'completed' && progressData.progress === 100) {
             // Optionally resolve early with partial data
             // request.resolve(progressData.payload);
             // pendingRequests.delete(requestId);
-            
+
             // Instead, just log the completion, wait for final result from Figma
             logger.info(`Operation ${progressData.commandType} completed, waiting for final result`);
           }
         }
         return;
       }
-      
+
       // Handle regular responses
       const myResponse = json.message;
       logger.debug(`Received message: ${JSON.stringify(myResponse)}`);
@@ -2190,17 +2253,17 @@ function sendCommandToFigma(
     const timeout = setTimeout(() => {
       if (pendingRequests.has(id)) {
         pendingRequests.delete(id);
-        logger.error(`Request ${id} to Figma timed out after ${timeoutMs/1000} seconds`);
+        logger.error(`Request ${id} to Figma timed out after ${timeoutMs / 1000} seconds`);
         reject(new Error('Request to Figma timed out'));
       }
     }, timeoutMs);
 
     // Store the promise callbacks to resolve/reject later
-    pendingRequests.set(id, { 
-      resolve, 
-      reject, 
+    pendingRequests.set(id, {
+      resolve,
+      reject,
       timeout,
-      lastActivity: Date.now() 
+      lastActivity: Date.now()
     });
 
     // Send the request
@@ -2249,9 +2312,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error joining channel: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error joining channel: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
