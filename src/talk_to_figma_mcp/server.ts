@@ -723,6 +723,39 @@ server.tool(
   }
 );
 
+// Delete Multiple Nodes Tool
+server.tool(
+  "delete_multiple_nodes",
+  "Delete multiple nodes from Figma at once",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
+  },
+  async ({ nodeIds }) => {
+    try {
+      const result = await sendCommandToFigma("delete_multiple_nodes", { nodeIds });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting multiple nodes: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Export Node as Image Tool
 server.tool(
   "export_node_as_image",
@@ -1858,38 +1891,6 @@ This strategy focuses on practical implementation based on real-world usage patt
   }
 );
 
-// Delete Multiple Nodes Tool
-server.tool(
-  "delete_multiple_nodes",
-  "Delete multiple nodes from Figma at once",
-  {
-    nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
-  },
-  async ({ nodeIds }) => {
-    try {
-      const result = await sendCommandToFigma("delete_multiple_nodes", { nodeIds });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting multiple nodes: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Define command types and parameters
 type FigmaCommand =
