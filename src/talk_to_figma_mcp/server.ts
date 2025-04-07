@@ -723,6 +723,39 @@ server.tool(
   }
 );
 
+// Delete Multiple Nodes Tool
+server.tool(
+  "delete_multiple_nodes",
+  "Delete multiple nodes from Figma at once",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
+  },
+  async ({ nodeIds }) => {
+    try {
+      const result = await sendCommandToFigma("delete_multiple_nodes", { nodeIds });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error deleting multiple nodes: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Export Node as Image Tool
 server.tool(
   "export_node_as_image",
@@ -855,14 +888,247 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting local components: ${error instanceof Error ? error.message : String(error)
-              }`,
+            text: `Error getting local components: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
       };
     }
   }
 );
+
+// Get Annotations Tool
+server.tool(
+  "get_annotations",
+  "Get all annotations in the current document or specific node",
+  {
+    nodeId: z.string().optional().describe("Optional node ID to get annotations for specific node"),
+    includeCategories: z.boolean().optional().default(true).describe("Whether to include category information")
+  },
+  async ({ nodeId, includeCategories }) => {
+    try {
+      const result = await sendCommandToFigma("get_annotations", { 
+        nodeId,
+        includeCategories
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting annotations: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Set Annotation Tool
+server.tool(
+  "set_annotation",
+  "Create or update an annotation",
+  {
+    nodeId: z.string().describe("The ID of the node to annotate"),
+    annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
+    labelMarkdown: z.string().describe("The annotation text in markdown format"),
+    categoryId: z.string().optional().describe("The ID of the annotation category"),
+    properties: z.array(z.object({
+      type: z.string()
+    })).optional().describe("Additional properties for the annotation")
+  },
+  async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }) => {
+    try {
+      const result = await sendCommandToFigma("set_annotation", {
+        nodeId,
+        annotationId,
+        labelMarkdown,
+        categoryId,
+        properties
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+interface SetMultipleAnnotationsParams {
+  nodeId: string;
+  annotations: Array<{
+    nodeId: string;
+    labelMarkdown: string;
+    categoryId?: string;
+    annotationId?: string;
+    properties?: Array<{ type: string }>;
+  }>;
+}
+
+// Set Multiple Annotations Tool
+server.tool(
+  "set_multiple_annotations",
+  "Set multiple annotations parallelly in a node",
+  {
+    nodeId: z
+      .string()
+      .describe("The ID of the node containing the elements to annotate"),
+    annotations: z
+      .array(
+        z.object({
+          nodeId: z.string().describe("The ID of the node to annotate"),
+          labelMarkdown: z.string().describe("The annotation text in markdown format"),
+          categoryId: z.string().optional().describe("The ID of the annotation category"),
+          annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
+          properties: z.array(z.object({
+            type: z.string()
+          })).optional().describe("Additional properties for the annotation")
+        })
+      )
+      .describe("Array of annotations to apply"),
+  },
+  async ({ nodeId, annotations }, extra) => {
+    try {
+      if (!annotations || annotations.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No annotations provided",
+            },
+          ],
+        };
+      }
+
+      // Initial response to indicate we're starting the process
+      const initialStatus = {
+        type: "text" as const,
+        text: `Starting annotation process for ${annotations.length} nodes. This will be processed in batches of 5...`,
+      };
+
+      // Track overall progress
+      let totalProcessed = 0;
+      const totalToProcess = annotations.length;
+      
+      // Use the plugin's set_multiple_annotations function with chunking
+      const result = await sendCommandToFigma("set_multiple_annotations", {
+        nodeId,
+        annotations,
+      });
+      
+      // Cast the result to a specific type to work with it safely
+      interface AnnotationResult {
+        success: boolean;
+        nodeId: string;
+        annotationsApplied?: number;
+        annotationsFailed?: number;
+        totalAnnotations?: number;
+        completedInChunks?: number;
+        results?: Array<{
+          success: boolean;
+          nodeId: string;
+          error?: string;
+          annotationId?: string;
+        }>;
+      }
+      
+      const typedResult = result as AnnotationResult;
+      
+      // Format the results for display
+      const success = typedResult.annotationsApplied && typedResult.annotationsApplied > 0;
+      const progressText = `
+      Annotation process completed:
+      - ${typedResult.annotationsApplied || 0} of ${totalToProcess} successfully applied
+      - ${typedResult.annotationsFailed || 0} failed
+      - Processed in ${typedResult.completedInChunks || 1} batches
+      `;
+      
+      // Detailed results
+      const detailedResults = typedResult.results || [];
+      const failedResults = detailedResults.filter(item => !item.success);
+      
+      // Create the detailed part of the response
+      let detailedResponse = "";
+      if (failedResults.length > 0) {
+        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item => 
+          `- ${item.nodeId}: ${item.error || "Unknown error"}`
+        ).join('\n')}`;
+      }
+
+      return {
+        content: [
+          initialStatus,
+          {
+            type: "text" as const,
+            text: progressText + detailedResponse,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting multiple annotations: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Team Components Tool
+// server.tool(
+//   "get_team_components",
+//   "Get all team library components available in Figma",
+//   {},
+//   async () => {
+//     try {
+//       const result = await sendCommandToFigma('get_team_components');
+//       return {
+//         content: [
+//           {
+//             type: "text",
+//             text: JSON.stringify(result, null, 2)
+//           }
+//         ]
+//       };
+//     } catch (error) {
+//       return {
+//         content: [
+//           {
+//             type: "text",
+//             text: `Error getting team components: ${error instanceof Error ? error.message : String(error)}`
+//           }
+//         ]
+//       };
+//     }
+//   }
+// );
 
 // Create Component Instance Tool
 server.tool(
@@ -1132,8 +1398,92 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)
-              }`,
+            text: `Error scanning text nodes: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Node Type Scanning Tool
+server.tool(
+  "scan_nodes_by_types",
+  "Scan for nodes with specific types in the selected Figma node",
+  {
+    nodeId: z.string().describe("ID of the node to scan"),
+    types: z.array(z.string()).describe("Array of node types to find (e.g. ['COMPONENT', 'FRAME'])")
+  },
+  async ({ nodeId, types }) => {
+    try {
+      // Initial response to indicate we're starting the process
+      const initialStatus = {
+        type: "text" as const,
+        text: `Starting node type scanning for types: ${types.join(', ')}...`,
+      };
+
+      // Use the plugin's scan_nodes_by_types function
+      const result = await sendCommandToFigma("scan_nodes_by_types", { 
+        nodeId,
+        types
+      });
+
+      // Format the response
+      if (result && typeof result === 'object' && 'matchingNodes' in result) {
+        const typedResult = result as {
+          success: boolean,
+          count: number,
+          matchingNodes: Array<{
+            id: string,
+            name: string,
+            type: string,
+            bbox: {
+              x: number,
+              y: number,
+              width: number,
+              height: number
+            }
+          }>,
+          searchedTypes: Array<string>
+        };
+
+        const summaryText = `Scan completed: Found ${typedResult.count} nodes matching types: ${typedResult.searchedTypes.join(', ')}`;
+
+        return {
+          content: [
+            initialStatus,
+            {
+              type: "text" as const,
+              text: summaryText
+            },
+            {
+              type: "text" as const,
+              text: JSON.stringify(typedResult.matchingNodes, null, 2)
+            }
+          ],
+        };
+      }
+
+      // If the result is in an unexpected format, return it as is
+      return {
+        content: [
+          initialStatus,
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error scanning nodes by types: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
       };
@@ -1384,6 +1734,164 @@ server.tool(
   }
 );
 
+// Annotation Conversion Strategy Prompt
+server.prompt(
+  "annotation_conversion_strategy",
+  "Strategy for converting manual annotations to Figma's native annotations",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Automatic Annotation Conversion
+            
+## Process Overview
+
+The process of converting manual annotations (numbered/alphabetical indicators with connected descriptions) to Figma's native annotations:
+
+1. Get selected frame/component information
+2. Scan and collect all annotation text nodes
+3. Scan target UI elements (components, instances, frames)
+4. Match annotations to appropriate UI elements
+5. Apply native Figma annotations
+
+## Step 1: Get Selection and Initial Setup
+
+First, get the selected frame or component that contains annotations:
+
+\`\`\`typescript
+// Get the selected frame/component
+const selection = await get_selection();
+const selectedNodeId = selection[0].id
+
+// Get available annotation categories for later use
+const annotationData = await get_annotations({
+  nodeId: selectedNodeId,
+  includeCategories: true
+});
+const categories = annotationData.categories;
+\`\`\`
+
+## Step 2: Scan Annotation Text Nodes
+
+Scan all text nodes to identify annotations and their descriptions:
+
+\`\`\`typescript
+// Get all text nodes in the selection
+const textNodes = await scan_text_nodes({
+  nodeId: selectedNodeId
+});
+
+// Filter and group annotation markers and descriptions
+
+// Markers typically have these characteristics:
+// - Short text content (usually single digit/letter)
+// - Specific font styles (often bold)
+// - Located in a container with "Marker" or "Dot" in the name
+// - Have a clear naming pattern (e.g., "1", "2", "3" or "A", "B", "C")
+
+
+// Identify description nodes
+// Usually longer text nodes near markers or with matching numbers in path
+  
+\`\`\`
+
+## Step 3: Scan Target UI Elements
+
+Get all potential target elements that annotations might refer to:
+
+\`\`\`typescript
+// Scan for all UI elements that could be annotation targets
+const targetNodes = await scan_nodes_by_types({
+  nodeId: selectedNodeId,
+  types: [
+    "COMPONENT",
+    "INSTANCE",
+    "FRAME"
+  ]
+});
+\`\`\`
+
+## Step 4: Match Annotations to Targets
+
+Match each annotation to its target UI element using these strategies in order of priority:
+
+1. **Path-Based Matching**:
+   - Look at the marker's parent container name in the Figma layer hierarchy
+   - Remove any "Marker:" or "Annotation:" prefixes from the parent name
+   - Find UI elements that share the same parent name or have it in their path
+   - This works well when markers are grouped with their target elements
+
+2. **Name-Based Matching**:
+   - Extract key terms from the annotation description
+   - Look for UI elements whose names contain these key terms
+   - Consider both exact matches and semantic similarities
+   - Particularly effective for form fields, buttons, and labeled components
+
+3. **Proximity-Based Matching** (fallback):
+   - Calculate the center point of the marker
+   - Find the closest UI element by measuring distances to element centers
+   - Consider the marker's position relative to nearby elements
+   - Use this method when other matching strategies fail
+
+Additional Matching Considerations:
+- Give higher priority to matches found through path-based matching
+- Consider the type of UI element when evaluating matches
+- Take into account the annotation's context and content
+- Use a combination of strategies for more accurate matching
+
+## Step 5: Apply Native Annotations
+
+Convert matched annotations to Figma's native annotations using batch processing:
+
+\`\`\`typescript
+// Prepare annotations array for batch processing
+const annotationsToApply = Object.values(annotations).map(({ marker, description }) => {
+  // Find target using multiple strategies
+  const target = 
+    findTargetByPath(marker, targetNodes) ||
+    findTargetByName(description, targetNodes) ||
+    findTargetByProximity(marker, targetNodes);
+  
+  if (target) {
+    // Determine appropriate category based on content
+    const category = determineCategory(description.characters, categories);
+
+    // Determine appropriate additional annotationProperty based on content
+    const annotationProperty = determineProperties(description.characters, target.type);
+    
+    return {
+      nodeId: target.id,
+      labelMarkdown: description.characters,
+      categoryId: category.id,
+      properties: annotationProperty
+    };
+  }
+  return null;
+}).filter(Boolean); // Remove null entries
+
+// Apply annotations in batches using set_multiple_annotations
+if (annotationsToApply.length > 0) {
+  await set_multiple_annotations({
+    nodeId: selectedNodeId,
+    annotations: annotationsToApply
+  });
+}
+\`\`\`
+
+
+This strategy focuses on practical implementation based on real-world usage patterns, emphasizing the importance of handling various UI elements as annotation targets, not just text nodes.`
+          },
+        },
+      ],
+      description: "Strategy for converting manual annotations to Figma's native annotations",
+    };
+  }
+);
+
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -1397,6 +1905,7 @@ type FigmaCommand =
   | "move_node"
   | "resize_node"
   | "delete_node"
+  | "delete_multiple_nodes"
   | "get_styles"
   | "get_local_components"
   | "get_team_components"
@@ -1407,7 +1916,135 @@ type FigmaCommand =
   | "clone_node"
   | "set_text_content"
   | "scan_text_nodes"
-  | "set_multiple_text_contents";
+  | "set_multiple_text_contents"
+  | "get_annotations"
+  | "set_annotation"
+  | "set_multiple_annotations"
+  | "scan_nodes_by_types";
+
+type CommandParams = {
+  get_document_info: Record<string, never>;
+  get_selection: Record<string, never>;
+  get_node_info: { nodeId: string };
+  create_rectangle: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    name?: string;
+    parentId?: string;
+  };
+  create_frame: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    name?: string;
+    parentId?: string;
+    fillColor?: { r: number; g: number; b: number; a?: number };
+    strokeColor?: { r: number; g: number; b: number; a?: number };
+    strokeWeight?: number;
+  };
+  create_text: {
+    x: number;
+    y: number;
+    text: string;
+    fontSize?: number;
+    fontWeight?: number;
+    fontColor?: { r: number; g: number; b: number; a?: number };
+    name?: string;
+    parentId?: string;
+  };
+  set_fill_color: {
+    nodeId: string;
+    r: number;
+    g: number;
+    b: number;
+    a?: number;
+  };
+  set_stroke_color: {
+    nodeId: string;
+    r: number;
+    g: number;
+    b: number;
+    a?: number;
+    weight?: number;
+  };
+  move_node: {
+    nodeId: string;
+    x: number;
+    y: number;
+  };
+  resize_node: {
+    nodeId: string;
+    width: number;
+    height: number;
+  };
+  delete_node: {
+    nodeId: string;
+  };
+  delete_multiple_nodes: {
+    nodeIds: string[];
+  };
+  get_styles: Record<string, never>;
+  get_local_components: Record<string, never>;
+  get_team_components: Record<string, never>;
+  create_component_instance: {
+    componentKey: string;
+    x: number;
+    y: number;
+  };
+  export_node_as_image: {
+    nodeId: string;
+    format?: "PNG" | "JPG" | "SVG" | "PDF";
+    scale?: number;
+  };
+  execute_code: {
+    code: string;
+  };
+  join: {
+    channel: string;
+  };
+  set_corner_radius: {
+    nodeId: string;
+    radius: number;
+    corners?: boolean[];
+  };
+  clone_node: {
+    nodeId: string;
+    x?: number;
+    y?: number;
+  };
+  set_text_content: {
+    nodeId: string;
+    text: string;
+  };
+  scan_text_nodes: {
+    nodeId: string;
+    useChunking: boolean;
+    chunkSize: number;
+  };
+  set_multiple_text_contents: {
+    nodeId: string;
+    text: Array<{ nodeId: string; text: string }>;
+  };
+  get_annotations: {
+    nodeId?: string;
+    includeCategories?: boolean;
+  };
+  set_annotation: {
+    nodeId: string;
+    annotationId?: string;
+    labelMarkdown: string;
+    categoryId?: string;
+    properties?: Array<{ type: string }>;
+  };
+  set_multiple_annotations: SetMultipleAnnotationsParams;
+  scan_nodes_by_types: {
+    nodeId: string;
+    types: Array<string>;
+  };
+};
 
 // Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
@@ -1684,8 +2321,6 @@ server.tool(
     }
   }
 );
-
-
 
 // Start the server
 async function main() {
