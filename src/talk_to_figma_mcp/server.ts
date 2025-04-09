@@ -125,6 +125,36 @@ server.tool(
   }
 );
 
+// Read My Design Tool
+server.tool(
+  "read_my_design",
+  "Get detailed information about the current selection in Figma, including all node details",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("read_my_design", {});
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Node Info Tool
 server.tool(
   "get_node_info",
@@ -746,9 +776,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error deleting multiple nodes: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error deleting multiple nodes: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -888,9 +917,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting local components: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error getting local components: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -908,7 +936,7 @@ server.tool(
   },
   async ({ nodeId, includeCategories }) => {
     try {
-      const result = await sendCommandToFigma("get_annotations", { 
+      const result = await sendCommandToFigma("get_annotations", {
         nodeId,
         includeCategories
       });
@@ -1031,13 +1059,13 @@ server.tool(
       // Track overall progress
       let totalProcessed = 0;
       const totalToProcess = annotations.length;
-      
+
       // Use the plugin's set_multiple_annotations function with chunking
       const result = await sendCommandToFigma("set_multiple_annotations", {
         nodeId,
         annotations,
       });
-      
+
       // Cast the result to a specific type to work with it safely
       interface AnnotationResult {
         success: boolean;
@@ -1053,9 +1081,9 @@ server.tool(
           annotationId?: string;
         }>;
       }
-      
+
       const typedResult = result as AnnotationResult;
-      
+
       // Format the results for display
       const success = typedResult.annotationsApplied && typedResult.annotationsApplied > 0;
       const progressText = `
@@ -1064,15 +1092,15 @@ server.tool(
       - ${typedResult.annotationsFailed || 0} failed
       - Processed in ${typedResult.completedInChunks || 1} batches
       `;
-      
+
       // Detailed results
       const detailedResults = typedResult.results || [];
       const failedResults = detailedResults.filter(item => !item.success);
-      
+
       // Create the detailed part of the response
       let detailedResponse = "";
       if (failedResults.length > 0) {
-        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item => 
+        detailedResponse = `\n\nNodes that failed:\n${failedResults.map(item =>
           `- ${item.nodeId}: ${item.error || "Unknown error"}`
         ).join('\n')}`;
       }
@@ -1091,9 +1119,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting multiple annotations: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error setting multiple annotations: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1315,11 +1342,7 @@ server.prompt(
             text: `When reading Figma designs, follow these best practices:
 
 1. Start with selection:
-   - First use get_selection() to understand the current selection
-   - If no selection ask user to select single or multiple nodes
-
-2. Get node infos of the selected nodes:
-   - Use get_nodes_info() to get the information of the selected nodes
+   - First use read_my_design() to understand the current selection
    - If no selection ask user to select single or multiple nodes
 `,
           },
@@ -1398,9 +1421,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error scanning text nodes: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1425,7 +1447,7 @@ server.tool(
       };
 
       // Use the plugin's scan_nodes_by_types function
-      const result = await sendCommandToFigma("scan_nodes_by_types", { 
+      const result = await sendCommandToFigma("scan_nodes_by_types", {
         nodeId,
         types
       });
@@ -1481,9 +1503,8 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error scanning nodes by types: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error scanning nodes by types: ${error instanceof Error ? error.message : String(error)
+              }`,
           },
         ],
       };
@@ -1897,6 +1918,8 @@ type FigmaCommand =
   | "get_document_info"
   | "get_selection"
   | "get_node_info"
+  | "get_nodes_info"
+  | "read_my_design"
   | "create_rectangle"
   | "create_frame"
   | "create_text"
@@ -1926,6 +1949,7 @@ type CommandParams = {
   get_document_info: Record<string, never>;
   get_selection: Record<string, never>;
   get_node_info: { nodeId: string };
+  get_nodes_info: { nodeIds: string[] };
   create_rectangle: {
     x: number;
     y: number;

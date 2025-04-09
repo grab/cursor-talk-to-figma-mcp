@@ -117,6 +117,7 @@ The MCP server provides the following tools for interacting with Figma:
 
 - `get_document_info` - Get information about the current Figma document
 - `get_selection` - Get information about the current selection
+- `read_my_design` - Get detailed node information about the current selection without parameters
 - `get_node_info` - Get detailed information about a specific node
 - `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
 
@@ -207,11 +208,10 @@ When working with the Figma MCP:
     - Scan text nodes to identify numbered markers and descriptions
     - Use `scan_nodes_by_types` to find UI elements that annotations refer to
     - Match markers with their target elements using path, name, or proximity
-    - Categorize annotations appropriately with `get_annotations` 
+    - Categorize annotations appropriately with `get_annotations`
     - Create native annotations with `set_multiple_annotations` in batches
     - Verify all annotations are properly linked to their targets
     - Delete legacy annotation nodes after successful conversion
-
 
 ## License
 

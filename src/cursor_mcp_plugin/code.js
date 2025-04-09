@@ -7,9 +7,18 @@ const state = {
 };
 
 // Helper function for progress updates
-function sendProgressUpdate(commandId, commandType, status, progress, totalItems, processedItems, message, payload = null) {
+function sendProgressUpdate(
+  commandId,
+  commandType,
+  status,
+  progress,
+  totalItems,
+  processedItems,
+  message,
+  payload = null
+) {
   const update = {
-    type: 'command_progress',
+    type: "command_progress",
     commandId,
     commandType,
     status,
@@ -17,23 +26,26 @@ function sendProgressUpdate(commandId, commandType, status, progress, totalItems
     totalItems,
     processedItems,
     message,
-    timestamp: Date.now()
+    timestamp: Date.now(),
   };
-  
+
   // Add optional chunk information if present
   if (payload) {
-    if (payload.currentChunk !== undefined && payload.totalChunks !== undefined) {
+    if (
+      payload.currentChunk !== undefined &&
+      payload.totalChunks !== undefined
+    ) {
       update.currentChunk = payload.currentChunk;
       update.totalChunks = payload.totalChunks;
       update.chunkSize = payload.chunkSize;
     }
     update.payload = payload;
   }
-  
+
   // Send to UI
   figma.ui.postMessage(update);
   console.log(`Progress update: ${status} - ${progress}% - ${message}`);
-  
+
   return update;
 }
 
@@ -106,6 +118,8 @@ async function handleCommand(command, params) {
         throw new Error("Missing or invalid nodeIds parameter");
       }
       return await getNodesInfo(params.nodeIds);
+    case "read_my_design":
+      return await readMyDesign();
     case "create_rectangle":
       return await createRectangle(params);
     case "create_frame":
@@ -198,6 +212,119 @@ async function getSelection() {
   };
 }
 
+function rgbaToHex(color) {
+  var r = Math.round(color.r * 255);
+  var g = Math.round(color.g * 255);
+  var b = Math.round(color.b * 255);
+  var a = color.a !== undefined ? Math.round(color.a * 255) : 255;
+
+  if (a === 255) {
+    return (
+      "#" +
+      [r, g, b]
+        .map((x) => {
+          return x.toString(16).padStart(2, "0");
+        })
+        .join("")
+    );
+  }
+
+  return (
+    "#" +
+    [r, g, b, a]
+      .map((x) => {
+        return x.toString(16).padStart(2, "0");
+      })
+      .join("")
+  );
+}
+
+function filterFigmaNode(node) {
+  if (node.type === "VECTOR") {
+    return null;
+  }
+
+  var filtered = {
+    id: node.id,
+    name: node.name,
+    type: node.type,
+  };
+
+  if (node.fills && node.fills.length > 0) {
+    filtered.fills = node.fills.map((fill) => {
+      var processedFill = Object.assign({}, fill);
+      delete processedFill.boundVariables;
+      delete processedFill.imageRef;
+
+      if (processedFill.gradientStops) {
+        processedFill.gradientStops = processedFill.gradientStops.map(
+          (stop) => {
+            var processedStop = Object.assign({}, stop);
+            if (processedStop.color) {
+              processedStop.color = rgbaToHex(processedStop.color);
+            }
+            delete processedStop.boundVariables;
+            return processedStop;
+          }
+        );
+      }
+
+      if (processedFill.color) {
+        processedFill.color = rgbaToHex(processedFill.color);
+      }
+
+      return processedFill;
+    });
+  }
+
+  if (node.strokes && node.strokes.length > 0) {
+    filtered.strokes = node.strokes.map((stroke) => {
+      var processedStroke = Object.assign({}, stroke);
+      delete processedStroke.boundVariables;
+      if (processedStroke.color) {
+        processedStroke.color = rgbaToHex(processedStroke.color);
+      }
+      return processedStroke;
+    });
+  }
+
+  if (node.cornerRadius !== undefined) {
+    filtered.cornerRadius = node.cornerRadius;
+  }
+
+  if (node.absoluteBoundingBox) {
+    filtered.absoluteBoundingBox = node.absoluteBoundingBox;
+  }
+
+  if (node.characters) {
+    filtered.characters = node.characters;
+  }
+
+  if (node.style) {
+    filtered.style = {
+      fontFamily: node.style.fontFamily,
+      fontStyle: node.style.fontStyle,
+      fontWeight: node.style.fontWeight,
+      fontSize: node.style.fontSize,
+      textAlignHorizontal: node.style.textAlignHorizontal,
+      letterSpacing: node.style.letterSpacing,
+      lineHeightPx: node.style.lineHeightPx,
+    };
+  }
+
+  if (node.children) {
+    filtered.children = node.children
+      .map((child) => {
+        return filterFigmaNode(child);
+      })
+      .filter((child) => {
+        return child !== null;
+      });
+  }
+
+  return filtered;
+}
+
 async function getNodeInfo(nodeId) {
   const node = await figma.getNodeByIdAsync(nodeId);
 
@@ -209,7 +336,7 @@ async function getNodeInfo(nodeId) {
     format: "JSON_REST_V1",
   });
 
-  return response.document;
+  return filterFigmaNode(response.document);
 }
 
 async function getNodesInfo(nodeIds) {
@@ -230,7 +357,36 @@ async function getNodesInfo(nodeIds) {
         });
         return {
           nodeId: node.id,
-          document: response.document,
+          document: filterFigmaNode(response.document),
+        };
+      })
+    );
+
+    return responses;
+  } catch (error) {
+    throw new Error(`Error getting nodes info: ${error.message}`);
+  }
+}
+
+async function readMyDesign() {
+  try {
+    // Load all selected nodes in parallel
+    const nodes = await Promise.all(
+      figma.currentPage.selection.map((node) => figma.getNodeByIdAsync(node.id))
+    );
+
+    // Filter out any null values (nodes that weren't found)
+    const validNodes = nodes.filter((node) => node !== null);
+
+    // Export all valid nodes in parallel
+    const responses = await Promise.all(
+      validNodes.map(async (node) => {
+        const response = await node.exportAsync({
+          format: "JSON_REST_V1",
+        });
+        return {
+          nodeId: node.id,
+          document: filterFigmaNode(response.document),
         };
       })
     );
@@ -1229,8 +1385,13 @@ async function cloneNode(params) {
 
 async function scanTextNodes(params) {
   console.log(`Starting to scan text nodes from node ID: ${params.nodeId}`);
-  const { nodeId, useChunking = true, chunkSize = 10, commandId = generateCommandId() } = params || {};
-  
+  const {
+    nodeId,
+    useChunking = true,
+    chunkSize = 10,
+    commandId = generateCommandId(),
+  } = params || {};
+
   const node = await figma.getNodeByIdAsync(nodeId);
 
   if (!node) {
@@ -1238,8 +1399,8 @@ async function scanTextNodes(params) {
     // Send error progress update
     sendProgressUpdate(
       commandId,
-      'scan_text_nodes',
-      'error',
+      "scan_text_nodes",
+      "error",
       0,
       0,
       0,
@@ -1256,8 +1417,8 @@ async function scanTextNodes(params) {
       // Send started progress update
       sendProgressUpdate(
         commandId,
-        'scan_text_nodes',
-        'started',
+        "scan_text_nodes",
+        "started",
         0,
         1, // Not known yet how many nodes there are
         0,
@@ -1266,12 +1427,12 @@ async function scanTextNodes(params) {
       );
 
       await findTextNodes(node, [], 0, textNodes);
-      
+
       // Send completed progress update
       sendProgressUpdate(
         commandId,
-        'scan_text_nodes',
-        'completed',
+        "scan_text_nodes",
+        "completed",
         100,
         textNodes.length,
         textNodes.length,
@@ -1283,60 +1444,60 @@ async function scanTextNodes(params) {
         success: true,
         message: `Scanned ${textNodes.length} text nodes.`,
         count: textNodes.length,
-        textNodes: textNodes, 
-        commandId
+        textNodes: textNodes,
+        commandId,
       };
     } catch (error) {
       console.error("Error scanning text nodes:", error);
-      
+
       // Send error progress update
       sendProgressUpdate(
         commandId,
-        'scan_text_nodes',
-        'error',
+        "scan_text_nodes",
+        "error",
         0,
         0,
         0,
         `Error scanning text nodes: ${error.message}`,
         { error: error.message }
       );
-      
+
       throw new Error(`Error scanning text nodes: ${error.message}`);
     }
   }
-  
+
   // Chunked implementation
   console.log(`Using chunked scanning with chunk size: ${chunkSize}`);
-  
+
   // First, collect all nodes to process (without processing them yet)
   const nodesToProcess = [];
-  
+
   // Send started progress update
   sendProgressUpdate(
     commandId,
-    'scan_text_nodes',
-    'started',
+    "scan_text_nodes",
+    "started",
     0,
     0, // Not known yet how many nodes there are
     0,
     `Starting chunked scan of node "${node.name || nodeId}"`,
     { chunkSize }
   );
-  
+
   await collectNodesToProcess(node, [], 0, nodesToProcess);
-  
+
   const totalNodes = nodesToProcess.length;
   console.log(`Found ${totalNodes} total nodes to process`);
-  
+
   // Calculate number of chunks needed
   const totalChunks = Math.ceil(totalNodes / chunkSize);
   console.log(`Will process in ${totalChunks} chunks`);
-  
+
   // Send update after node collection
   sendProgressUpdate(
     commandId,
-    'scan_text_nodes',
-    'in_progress',
+    "scan_text_nodes",
+    "in_progress",
     5, // 5% progress for collection phase
     totalNodes,
     0,
@@ -1344,43 +1505,51 @@ async function scanTextNodes(params) {
     {
       totalNodes,
       totalChunks,
-      chunkSize
+      chunkSize,
     }
   );
-  
+
   // Process nodes in chunks
   const allTextNodes = [];
   let processedNodes = 0;
   let chunksProcessed = 0;
-  
+
   for (let i = 0; i < totalNodes; i += chunkSize) {
     const chunkEnd = Math.min(i + chunkSize, totalNodes);
-    console.log(`Processing chunk ${chunksProcessed + 1}/${totalChunks} (nodes ${i} to ${chunkEnd - 1})`);
-    
+    console.log(
+      `Processing chunk ${chunksProcessed + 1}/${totalChunks} (nodes ${i} to ${
+        chunkEnd - 1
+      })`
+    );
+
     // Send update before processing chunk
     sendProgressUpdate(
       commandId,
-      'scan_text_nodes',
-      'in_progress',
-      Math.round(5 + ((chunksProcessed / totalChunks) * 90)), // 5-95% for processing
+      "scan_text_nodes",
+      "in_progress",
+      Math.round(5 + (chunksProcessed / totalChunks) * 90), // 5-95% for processing
       totalNodes,
       processedNodes,
       `Processing chunk ${chunksProcessed + 1}/${totalChunks}`,
       {
         currentChunk: chunksProcessed + 1,
         totalChunks,
-        textNodesFound: allTextNodes.length
+        textNodesFound: allTextNodes.length,
       }
     );
-    
+
     const chunkNodes = nodesToProcess.slice(i, chunkEnd);
     const chunkTextNodes = [];
-    
+
     // Process each node in this chunk
     for (const nodeInfo of chunkNodes) {
       if (nodeInfo.node.type === "TEXT") {
         try {
-          const textNodeInfo = await processTextNode(nodeInfo.node, nodeInfo.parentPath, nodeInfo.depth);
+          const textNodeInfo = await processTextNode(
+            nodeInfo.node,
+            nodeInfo.parentPath,
+            nodeInfo.depth
+          );
           if (textNodeInfo) {
             chunkTextNodes.push(textNodeInfo);
           }
@@ -1389,22 +1558,22 @@ async function scanTextNodes(params) {
           // Continue with other nodes
         }
       }
-      
+
       // Brief delay to allow UI updates and prevent freezing
       await delay(5);
     }
-    
+
     // Add results from this chunk
     allTextNodes.push(...chunkTextNodes);
     processedNodes += chunkNodes.length;
     chunksProcessed++;
-    
+
     // Send update after processing chunk
     sendProgressUpdate(
       commandId,
-      'scan_text_nodes',
-      'in_progress',
-      Math.round(5 + ((chunksProcessed / totalChunks) * 90)), // 5-95% for processing
+      "scan_text_nodes",
+      "in_progress",
+      Math.round(5 + (chunksProcessed / totalChunks) * 90), // 5-95% for processing
       totalNodes,
       processedNodes,
       `Processed chunk ${chunksProcessed}/${totalChunks}. Found ${allTextNodes.length} text nodes so far.`,
@@ -1413,21 +1582,21 @@ async function scanTextNodes(params) {
         totalChunks,
         processedNodes,
         textNodesFound: allTextNodes.length,
-        chunkResult: chunkTextNodes
+        chunkResult: chunkTextNodes,
       }
     );
-    
+
     // Small delay between chunks to prevent UI freezing
     if (i + chunkSize < totalNodes) {
       await delay(50);
     }
   }
-  
+
   // Send completed progress update
   sendProgressUpdate(
     commandId,
-    'scan_text_nodes',
-    'completed',
+    "scan_text_nodes",
+    "completed",
     100,
     totalNodes,
     processedNodes,
@@ -1435,10 +1604,10 @@ async function scanTextNodes(params) {
     {
       textNodes: allTextNodes,
       processedNodes,
-      chunks: chunksProcessed
+      chunks: chunksProcessed,
     }
   );
-  
+
   return {
     success: true,
     message: `Chunked scan complete. Found ${allTextNodes.length} text nodes.`,
@@ -1446,25 +1615,30 @@ async function scanTextNodes(params) {
     processedNodes: processedNodes,
     chunks: chunksProcessed,
     textNodes: allTextNodes,
-    commandId
+    commandId,
   };
 }
 
 // Helper function to collect all nodes that need to be processed
-async function collectNodesToProcess(node, parentPath = [], depth = 0, nodesToProcess = []) {
+async function collectNodesToProcess(
+  node,
+  parentPath = [],
+  depth = 0,
+  nodesToProcess = []
+) {
   // Skip invisible nodes
   if (node.visible === false) return;
-  
+
   // Get the path to this node
   const nodePath = [...parentPath, node.name || `Unnamed ${node.type}`];
-  
+
   // Add this node to the processing list
   nodesToProcess.push({
     node: node,
     parentPath: nodePath,
-    depth: depth
+    depth: depth,
   });
-  
+
   // Recursively add children
   if ("children" in node) {
     for (const child of node.children) {
@@ -1476,7 +1650,7 @@ async function collectNodesToProcess(node, parentPath = [], depth = 0, nodesToPr
 // Process a single text node
 async function processTextNode(node, parentPath, depth) {
   if (node.type !== "TEXT") return null;
-  
+
   try {
     // Safely extract font information
     let fontFamily = "";
@@ -1519,7 +1693,7 @@ async function processTextNode(node, parentPath, depth) {
 
       // Brief delay for the highlight to be visible
       await delay(100);
-      
+
       try {
         node.fills = originalFills;
       } catch (err) {
@@ -1539,7 +1713,7 @@ async function processTextNode(node, parentPath, depth) {
 
 // A delay function that returns a promise
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Keep the original findTextNodes for backward compatibility
@@ -1594,7 +1768,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
 
         // Promise-based delay instead of setTimeout
         await delay(500);
-        
+
         try {
           node.fills = originalFills;
         } catch (err) {
@@ -1627,31 +1801,31 @@ async function setMultipleTextContents(params) {
 
   if (!nodeId || !text || !Array.isArray(text)) {
     const errorMsg = "Missing required parameters: nodeId and text array";
-    
+
     // Send error progress update
     sendProgressUpdate(
       commandId,
-      'set_multiple_text_contents',
-      'error',
+      "set_multiple_text_contents",
+      "error",
       0,
       0,
       0,
       errorMsg,
       { error: errorMsg }
     );
-    
+
     throw new Error(errorMsg);
   }
 
   console.log(
     `Starting text replacement for node: ${nodeId} with ${text.length} text replacements`
   );
-  
+
   // Send started progress update
   sendProgressUpdate(
     commandId,
-    'set_multiple_text_contents',
-    'started',
+    "set_multiple_text_contents",
+    "started",
     0,
     text.length,
     0,
@@ -1667,18 +1841,18 @@ async function setMultipleTextContents(params) {
   // Split text replacements into chunks of 5
   const CHUNK_SIZE = 5;
   const chunks = [];
-  
+
   for (let i = 0; i < text.length; i += CHUNK_SIZE) {
     chunks.push(text.slice(i, i + CHUNK_SIZE));
   }
-  
+
   console.log(`Split ${text.length} replacements into ${chunks.length} chunks`);
-  
+
   // Send chunking info update
   sendProgressUpdate(
     commandId,
-    'set_multiple_text_contents',
-    'in_progress',
+    "set_multiple_text_contents",
+    "in_progress",
     5, // 5% progress for planning phase
     text.length,
     0,
@@ -1686,21 +1860,25 @@ async function setMultipleTextContents(params) {
     {
       totalReplacements: text.length,
       chunks: chunks.length,
-      chunkSize: CHUNK_SIZE
+      chunkSize: CHUNK_SIZE,
     }
   );
 
   // Process each chunk sequentially
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    console.log(`Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} replacements`);
-    
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${
+        chunk.length
+      } replacements`
+    );
+
     // Send chunk processing start update
     sendProgressUpdate(
       commandId,
-      'set_multiple_text_contents',
-      'in_progress',
-      Math.round(5 + ((chunkIndex / chunks.length) * 90)), // 5-95% for processing
+      "set_multiple_text_contents",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90), // 5-95% for processing
       text.length,
       successCount + failureCount,
       `Processing text replacements chunk ${chunkIndex + 1}/${chunks.length}`,
@@ -1708,10 +1886,10 @@ async function setMultipleTextContents(params) {
         currentChunk: chunkIndex + 1,
         totalChunks: chunks.length,
         successCount,
-        failureCount
+        failureCount,
       }
     );
-    
+
     // Process replacements within a chunk in parallel
     const chunkPromises = chunk.map(async (replacement) => {
       if (!replacement.nodeId || replacement.text === undefined) {
@@ -1719,12 +1897,14 @@ async function setMultipleTextContents(params) {
         return {
           success: false,
           nodeId: replacement.nodeId || "unknown",
-          error: "Missing nodeId or text in replacement entry"
+          error: "Missing nodeId or text in replacement entry",
         };
       }
 
       try {
-        console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
+        console.log(
+          `Attempting to replace text in node: ${replacement.nodeId}`
+        );
 
         // Get the text node to update (just to check it exists and get original text)
         const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
@@ -1734,16 +1914,18 @@ async function setMultipleTextContents(params) {
           return {
             success: false,
             nodeId: replacement.nodeId,
-            error: `Node not found: ${replacement.nodeId}`
+            error: `Node not found: ${replacement.nodeId}`,
           };
         }
 
         if (textNode.type !== "TEXT") {
-          console.error(`Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`);
+          console.error(
+            `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
+          );
           return {
             success: false,
             nodeId: replacement.nodeId,
-            error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
+            error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`,
           };
         }
 
@@ -1766,14 +1948,16 @@ async function setMultipleTextContents(params) {
             },
           ];
         } catch (highlightErr) {
-          console.error(`Error highlighting text node: ${highlightErr.message}`);
+          console.error(
+            `Error highlighting text node: ${highlightErr.message}`
+          );
           // Continue anyway, highlighting is just visual feedback
         }
 
         // Use the existing setTextContent function to handle font loading and text setting
         await setTextContent({
           nodeId: replacement.nodeId,
-          text: replacement.text
+          text: replacement.text,
         });
 
         // Keep highlight for a moment after text change, then restore original fills
@@ -1787,28 +1971,32 @@ async function setMultipleTextContents(params) {
           }
         }
 
-        console.log(`Successfully replaced text in node: ${replacement.nodeId}`);
+        console.log(
+          `Successfully replaced text in node: ${replacement.nodeId}`
+        );
         return {
           success: true,
           nodeId: replacement.nodeId,
           originalText: originalText,
-          translatedText: replacement.text
+          translatedText: replacement.text,
         };
       } catch (error) {
-        console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+        console.error(
+          `Error replacing text in node ${replacement.nodeId}: ${error.message}`
+        );
         return {
           success: false,
           nodeId: replacement.nodeId,
-          error: `Error applying replacement: ${error.message}`
+          error: `Error applying replacement: ${error.message}`,
         };
       }
     });
 
     // Wait for all replacements in this chunk to complete
     const chunkResults = await Promise.all(chunkPromises);
-    
+
     // Process results for this chunk
-    chunkResults.forEach(result => {
+    chunkResults.forEach((result) => {
       if (result.success) {
         successCount++;
       } else {
@@ -1816,28 +2004,30 @@ async function setMultipleTextContents(params) {
       }
       results.push(result);
     });
-    
+
     // Send chunk processing complete update with partial results
     sendProgressUpdate(
       commandId,
-      'set_multiple_text_contents',
-      'in_progress',
-      Math.round(5 + (((chunkIndex + 1) / chunks.length) * 90)), // 5-95% for processing
+      "set_multiple_text_contents",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90), // 5-95% for processing
       text.length,
       successCount + failureCount,
-      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      `Completed chunk ${chunkIndex + 1}/${
+        chunks.length
+      }. ${successCount} successful, ${failureCount} failed so far.`,
       {
         currentChunk: chunkIndex + 1,
         totalChunks: chunks.length,
         successCount,
         failureCount,
-        chunkResults: chunkResults
+        chunkResults: chunkResults,
       }
     );
-    
+
     // Add a small delay between chunks to avoid overloading Figma
     if (chunkIndex < chunks.length - 1) {
-      console.log('Pausing between chunks to avoid overloading Figma...');
+      console.log("Pausing between chunks to avoid overloading Figma...");
       await delay(1000); // 1 second delay between chunks
     }
   }
@@ -1845,12 +2035,12 @@ async function setMultipleTextContents(params) {
   console.log(
     `Replacement complete: ${successCount} successful, ${failureCount} failed`
   );
-  
+
   // Send completed progress update
   sendProgressUpdate(
     commandId,
-    'set_multiple_text_contents',
-    'completed',
+    "set_multiple_text_contents",
+    "completed",
     100,
     text.length,
     successCount + failureCount,
@@ -1860,7 +2050,7 @@ async function setMultipleTextContents(params) {
       replacementsApplied: successCount,
       replacementsFailed: failureCount,
       completedInChunks: chunks.length,
-      results: results
+      results: results,
     }
   );
 
@@ -1872,15 +2062,18 @@ async function setMultipleTextContents(params) {
     totalReplacements: text.length,
     results: results,
     completedInChunks: chunks.length,
-    commandId
+    commandId,
   };
 }
 
 // Function to generate simple UUIDs for command IDs
 function generateCommandId() {
-  return 'cmd_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return (
+    "cmd_" +
+    Math.random().toString(36).substring(2, 15) +
+    Math.random().toString(36).substring(2, 15)
+  );
 }
-
 
 async function getAnnotations(params) {
   try {
@@ -1895,7 +2088,7 @@ async function getAnnotations(params) {
           id: category.id,
           label: category.label,
           color: category.color,
-          isPreset: category.isPreset
+          isPreset: category.isPreset,
         };
         return map;
       }, {});
@@ -1908,14 +2101,14 @@ async function getAnnotations(params) {
         throw new Error(`Node not found: ${nodeId}`);
       }
 
-      if (!('annotations' in node)) {
+      if (!("annotations" in node)) {
         throw new Error(`Node type ${node.type} does not support annotations`);
       }
 
       const result = {
         nodeId: node.id,
         name: node.name,
-        annotations: node.annotations || []
+        annotations: node.annotations || [],
       };
 
       if (includeCategories) {
@@ -1927,14 +2120,18 @@ async function getAnnotations(params) {
       // Get all annotations in the current page
       const annotations = [];
       const processNode = async (node) => {
-        if ('annotations' in node && node.annotations && node.annotations.length > 0) {
+        if (
+          "annotations" in node &&
+          node.annotations &&
+          node.annotations.length > 0
+        ) {
           annotations.push({
             nodeId: node.id,
             name: node.name,
-            annotations: node.annotations
+            annotations: node.annotations,
           });
         }
-        if ('children' in node) {
+        if ("children" in node) {
           for (const child of node.children) {
             await processNode(child);
           }
@@ -1945,7 +2142,7 @@ async function getAnnotations(params) {
       await processNode(figma.currentPage);
 
       const result = {
-        annotatedNodes: annotations
+        annotatedNodes: annotations,
       };
 
       if (includeCategories) {
@@ -1955,94 +2152,104 @@ async function getAnnotations(params) {
       return result;
     }
   } catch (error) {
-    console.error('Error in getAnnotations:', error);
+    console.error("Error in getAnnotations:", error);
     throw error;
   }
 }
 
 async function setAnnotation(params) {
   try {
-    console.log('=== setAnnotation Debug Start ===');
-    console.log('Input params:', JSON.stringify(params, null, 2));
-    
-    const { nodeId, annotationId, labelMarkdown, categoryId, properties } = params;
+    console.log("=== setAnnotation Debug Start ===");
+    console.log("Input params:", JSON.stringify(params, null, 2));
+
+    const { nodeId, annotationId, labelMarkdown, categoryId, properties } =
+      params;
 
     // Validate required parameters
     if (!nodeId) {
-      console.error('Validation failed: Missing nodeId');
-      return { success: false, error: 'Missing nodeId' };
+      console.error("Validation failed: Missing nodeId");
+      return { success: false, error: "Missing nodeId" };
     }
 
     if (!labelMarkdown) {
-      console.error('Validation failed: Missing labelMarkdown');
-      return { success: false, error: 'Missing labelMarkdown' };
+      console.error("Validation failed: Missing labelMarkdown");
+      return { success: false, error: "Missing labelMarkdown" };
     }
 
-    console.log('Attempting to get node:', nodeId);
+    console.log("Attempting to get node:", nodeId);
     // Get and validate node
     const node = await figma.getNodeByIdAsync(nodeId);
-    console.log('Node lookup result:', {
+    console.log("Node lookup result:", {
       id: nodeId,
       found: !!node,
       type: node ? node.type : undefined,
       name: node ? node.name : undefined,
-      hasAnnotations: node ? 'annotations' in node : false
+      hasAnnotations: node ? "annotations" in node : false,
     });
-    
+
     if (!node) {
-      console.error('Node lookup failed:', nodeId);
+      console.error("Node lookup failed:", nodeId);
       return { success: false, error: `Node not found: ${nodeId}` };
     }
 
     // Validate node supports annotations
-    if (!('annotations' in node)) {
-      console.error('Node annotation support check failed:', {
+    if (!("annotations" in node)) {
+      console.error("Node annotation support check failed:", {
         nodeType: node.type,
-        nodeId: node.id
+        nodeId: node.id,
       });
-      return { success: false, error: `Node type ${node.type} does not support annotations` };
+      return {
+        success: false,
+        error: `Node type ${node.type} does not support annotations`,
+      };
     }
 
     // Create the annotation object
     const newAnnotation = {
-      labelMarkdown
+      labelMarkdown,
     };
 
     // Validate and add categoryId if provided
     if (categoryId) {
-      console.log('Adding categoryId to annotation:', categoryId);
+      console.log("Adding categoryId to annotation:", categoryId);
       newAnnotation.categoryId = categoryId;
     }
 
     // Validate and add properties if provided
     if (properties && Array.isArray(properties) && properties.length > 0) {
-      console.log('Adding properties to annotation:', JSON.stringify(properties, null, 2));
+      console.log(
+        "Adding properties to annotation:",
+        JSON.stringify(properties, null, 2)
+      );
       newAnnotation.properties = properties;
     }
 
     // Log current annotations before update
-    console.log('Current node annotations:', node.annotations);
-    
+    console.log("Current node annotations:", node.annotations);
+
     // Overwrite annotations
-    console.log('Setting new annotation:', JSON.stringify(newAnnotation, null, 2));
+    console.log(
+      "Setting new annotation:",
+      JSON.stringify(newAnnotation, null, 2)
+    );
     node.annotations = [newAnnotation];
-    
+
     // Verify the update
-    console.log('Updated node annotations:', node.annotations);
-    console.log('=== setAnnotation Debug End ===');
+    console.log("Updated node annotations:", node.annotations);
+    console.log("=== setAnnotation Debug End ===");
 
     return {
       success: true,
       nodeId: node.id,
       name: node.name,
-      annotations: node.annotations
+      annotations: node.annotations,
     };
   } catch (error) {
-    console.error('=== setAnnotation Error ===');
-    console.error('Error details:', {
+    console.error("=== setAnnotation Error ===");
+    console.error("Error details:", {
       message: error.message,
       stack: error.stack,
-      params: JSON.stringify(params, null, 2)
+      params: JSON.stringify(params, null, 2),
     });
     return { success: false, error: error.message };
   }
@@ -2058,11 +2265,11 @@ async function setAnnotation(params) {
 async function scanNodesByTypes(params) {
   console.log(`Starting to scan nodes by types from node ID: ${params.nodeId}`);
   const { nodeId, types = [] } = params || {};
-  
+
   if (!types || types.length === 0) {
     throw new Error("No types specified to search for");
   }
-  
+
   const node = await figma.getNodeByIdAsync(nodeId);
 
   if (!node) {
@@ -2071,28 +2278,30 @@ async function scanNodesByTypes(params) {
 
   // Simple implementation without chunking
   const matchingNodes = [];
-  
+
   // Send a single progress update to notify start
   const commandId = generateCommandId();
   sendProgressUpdate(
     commandId,
-    'scan_nodes_by_types',
-    'started',
+    "scan_nodes_by_types",
+    "started",
     0,
     1,
     0,
-    `Starting scan of node "${node.name || nodeId}" for types: ${types.join(', ')}`,
+    `Starting scan of node "${node.name || nodeId}" for types: ${types.join(
+      ", "
+    )}`,
     null
   );
 
   // Recursively find nodes with specified types
   await findNodesByTypes(node, types, matchingNodes);
-  
+
   // Send completion update
   sendProgressUpdate(
     commandId,
-    'scan_nodes_by_types',
-    'completed',
+    "scan_nodes_by_types",
+    "completed",
     100,
     matchingNodes.length,
     matchingNodes.length,
@@ -2105,7 +2314,7 @@ async function scanNodesByTypes(params) {
     message: `Found ${matchingNodes.length} matching nodes.`,
     count: matchingNodes.length,
     matchingNodes: matchingNodes,
-    searchedTypes: types
+    searchedTypes: types,
   };
 }
 
@@ -2131,8 +2340,8 @@ async function findNodesByTypes(node, types, matchingNodes = []) {
         x: typeof node.x === "number" ? node.x : 0,
         y: typeof node.y === "number" ? node.y : 0,
         width: typeof node.width === "number" ? node.width : 0,
-        height: typeof node.height === "number" ? node.height : 0
-      }
+        height: typeof node.height === "number" ? node.height : 0,
+      },
     });
   }
 
@@ -2146,18 +2355,20 @@ async function findNodesByTypes(node, types, matchingNodes = []) {
 
 // Set multiple annotations with async progress updates
 async function setMultipleAnnotations(params) {
-  console.log('=== setMultipleAnnotations Debug Start ===');
-  console.log('Input params:', JSON.stringify(params, null, 2));
-  
+  console.log("=== setMultipleAnnotations Debug Start ===");
+  console.log("Input params:", JSON.stringify(params, null, 2));
+
   const { nodeId, annotations } = params;
-  
+
   if (!annotations || annotations.length === 0) {
-    console.error('Validation failed: No annotations provided');
+    console.error("Validation failed: No annotations provided");
     return { success: false, error: "No annotations provided" };
   }
 
-  console.log(`Processing ${annotations.length} annotations for node ${nodeId}`);
-  
+  console.log(
+    `Processing ${annotations.length} annotations for node ${nodeId}`
+  );
+
   const results = [];
   let successCount = 0;
   let failureCount = 0;
@@ -2165,42 +2376,53 @@ async function setMultipleAnnotations(params) {
   // Process annotations sequentially
   for (let i = 0; i < annotations.length; i++) {
     const annotation = annotations[i];
-    console.log(`\nProcessing annotation ${i + 1}/${annotations.length}:`, JSON.stringify(annotation, null, 2));
-    
+    console.log(
+      `\nProcessing annotation ${i + 1}/${annotations.length}:`,
+      JSON.stringify(annotation, null, 2)
+    );
+
     try {
-      console.log('Calling setAnnotation with params:', {
+      console.log("Calling setAnnotation with params:", {
         nodeId: annotation.nodeId,
         labelMarkdown: annotation.labelMarkdown,
         categoryId: annotation.categoryId,
-        properties: annotation.properties
+        properties: annotation.properties,
       });
-      
+
       const result = await setAnnotation({
         nodeId: annotation.nodeId,
         labelMarkdown: annotation.labelMarkdown,
         categoryId: annotation.categoryId,
-        properties: annotation.properties
+        properties: annotation.properties,
       });
-      
-      console.log('setAnnotation result:', JSON.stringify(result, null, 2));
-      
+
+      console.log("setAnnotation result:", JSON.stringify(result, null, 2));
+
       if (result.success) {
         successCount++;
         results.push({ success: true, nodeId: annotation.nodeId });
         console.log(`✓ Annotation ${i + 1} applied successfully`);
       } else {
         failureCount++;
-        results.push({ success: false, nodeId: annotation.nodeId, error: result.error });
+        results.push({
+          success: false,
+          nodeId: annotation.nodeId,
+          error: result.error,
+        });
         console.error(`✗ Annotation ${i + 1} failed:`, result.error);
       }
     } catch (error) {
       failureCount++;
-      const errorResult = { success: false, nodeId: annotation.nodeId, error: error.message };
+      const errorResult = {
+        success: false,
+        nodeId: annotation.nodeId,
+        error: error.message,
+      };
       results.push(errorResult);
       console.error(`✗ Annotation ${i + 1} failed with error:`, error);
-      console.error('Error details:', {
+      console.error("Error details:", {
         message: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
     }
   }
@@ -2210,12 +2432,12 @@ async function setMultipleAnnotations(params) {
     annotationsApplied: successCount,
     annotationsFailed: failureCount,
     totalAnnotations: annotations.length,
-    results: results
+    results: results,
   };
 
-  console.log('\n=== setMultipleAnnotations Summary ===');
+  console.log("\n=== setMultipleAnnotations Summary ===");
   console.log(JSON.stringify(summary, null, 2));
-  console.log('=== setMultipleAnnotations Debug End ===');
+  console.log("=== setMultipleAnnotations Debug End ===");
 
   return summary;
 }
@@ -2228,8 +2450,8 @@ async function deleteMultipleNodes(params) {
     const errorMsg = "Missing or invalid nodeIds parameter";
     sendProgressUpdate(
       commandId,
-      'delete_multiple_nodes',
-      'error',
+      "delete_multiple_nodes",
+      "error",
       0,
       0,
       0,
@@ -2240,12 +2462,12 @@ async function deleteMultipleNodes(params) {
   }
 
   console.log(`Starting deletion of ${nodeIds.length} nodes`);
-  
+
   // Send started progress update
   sendProgressUpdate(
     commandId,
-    'delete_multiple_nodes',
-    'started',
+    "delete_multiple_nodes",
+    "started",
     0,
     nodeIds.length,
     0,
@@ -2260,18 +2482,18 @@ async function deleteMultipleNodes(params) {
   // Process nodes in chunks of 5 to avoid overwhelming Figma
   const CHUNK_SIZE = 5;
   const chunks = [];
-  
+
   for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
     chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
   }
-  
+
   console.log(`Split ${nodeIds.length} deletions into ${chunks.length} chunks`);
-  
+
   // Send chunking info update
   sendProgressUpdate(
     commandId,
-    'delete_multiple_nodes',
-    'in_progress',
+    "delete_multiple_nodes",
+    "in_progress",
     5,
     nodeIds.length,
     0,
@@ -2279,21 +2501,25 @@ async function deleteMultipleNodes(params) {
     {
       totalNodes: nodeIds.length,
       chunks: chunks.length,
-      chunkSize: CHUNK_SIZE
+      chunkSize: CHUNK_SIZE,
     }
   );
 
   // Process each chunk sequentially
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
     const chunk = chunks[chunkIndex];
-    console.log(`Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`);
-    
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${
+        chunk.length
+      } nodes`
+    );
+
     // Send chunk processing start update
     sendProgressUpdate(
       commandId,
-      'delete_multiple_nodes',
-      'in_progress',
-      Math.round(5 + ((chunkIndex / chunks.length) * 90)),
+      "delete_multiple_nodes",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
       nodeIds.length,
       successCount + failureCount,
       `Processing deletion chunk ${chunkIndex + 1}/${chunks.length}`,
@@ -2301,21 +2527,21 @@ async function deleteMultipleNodes(params) {
         currentChunk: chunkIndex + 1,
         totalChunks: chunks.length,
         successCount,
-        failureCount
+        failureCount,
       }
     );
-    
+
     // Process deletions within a chunk in parallel
     const chunkPromises = chunk.map(async (nodeId) => {
       try {
         const node = await figma.getNodeByIdAsync(nodeId);
-        
+
         if (!node) {
           console.error(`Node not found: ${nodeId}`);
           return {
             success: false,
             nodeId: nodeId,
-            error: `Node not found: ${nodeId}`
+            error: `Node not found: ${nodeId}`,
           };
         }
 
@@ -2323,7 +2549,7 @@ async function deleteMultipleNodes(params) {
         const nodeInfo = {
           id: node.id,
           name: node.name,
-          type: node.type
+          type: node.type,
         };
 
         // Delete the node
@@ -2333,23 +2559,23 @@ async function deleteMultipleNodes(params) {
         return {
           success: true,
           nodeId: nodeId,
-          nodeInfo: nodeInfo
+          nodeInfo: nodeInfo,
         };
       } catch (error) {
         console.error(`Error deleting node ${nodeId}: ${error.message}`);
         return {
           success: false,
           nodeId: nodeId,
-          error: error.message
+          error: error.message,
         };
       }
     });
 
     // Wait for all deletions in this chunk to complete
     const chunkResults = await Promise.all(chunkPromises);
-    
+
     // Process results for this chunk
-    chunkResults.forEach(result => {
+    chunkResults.forEach((result) => {
       if (result.success) {
         successCount++;
       } else {
@@ -2357,28 +2583,30 @@ async function deleteMultipleNodes(params) {
       }
       results.push(result);
     });
-    
+
     // Send chunk processing complete update
     sendProgressUpdate(
       commandId,
-      'delete_multiple_nodes',
-      'in_progress',
-      Math.round(5 + (((chunkIndex + 1) / chunks.length) * 90)),
+      "delete_multiple_nodes",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
       nodeIds.length,
       successCount + failureCount,
-      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      `Completed chunk ${chunkIndex + 1}/${
+        chunks.length
+      }. ${successCount} successful, ${failureCount} failed so far.`,
       {
         currentChunk: chunkIndex + 1,
         totalChunks: chunks.length,
         successCount,
         failureCount,
-        chunkResults: chunkResults
+        chunkResults: chunkResults,
       }
     );
-    
+
     // Add a small delay between chunks
     if (chunkIndex < chunks.length - 1) {
-      console.log('Pausing between chunks...');
+      console.log("Pausing between chunks...");
       await delay(1000);
     }
   }
@@ -2386,12 +2614,12 @@ async function deleteMultipleNodes(params) {
   console.log(
     `Deletion complete: ${successCount} successful, ${failureCount} failed`
   );
-  
+
   // Send completed progress update
   sendProgressUpdate(
     commandId,
-    'delete_multiple_nodes',
-    'completed',
+    "delete_multiple_nodes",
+    "completed",
     100,
     nodeIds.length,
     successCount + failureCount,
@@ -2401,7 +2629,7 @@ async function deleteMultipleNodes(params) {
       nodesDeleted: successCount,
       nodesFailed: failureCount,
       completedInChunks: chunks.length,
-      results: results
+      results: results,
     }
   );
 
@@ -2412,6 +2640,6 @@ async function deleteMultipleNodes(params) {
     totalNodes: nodeIds.length,
     results: results,
     completedInChunks: chunks.length,
-    commandId
+    commandId,
   };
 }
