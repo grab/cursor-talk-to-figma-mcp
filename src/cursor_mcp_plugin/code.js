@@ -166,6 +166,8 @@ async function handleCommand(command, params) {
       return await scanNodesByTypes(params);
     case "set_multiple_annotations":
       return await setMultipleAnnotations(params);
+    case "set_layout_mode":
+      return await setLayoutMode(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -449,6 +451,8 @@ async function createFrame(params) {
     fillColor,
     strokeColor,
     strokeWeight,
+    layoutMode = "NONE",
+    layoutWrap = "NO_WRAP"
   } = params || {};
 
   const frame = figma.createFrame();
@@ -456,6 +460,12 @@ async function createFrame(params) {
   frame.y = y;
   frame.resize(width, height);
   frame.name = name;
+
+  // Set layout mode if provided
+  if (layoutMode !== "NONE") {
+    frame.layoutMode = layoutMode;
+    frame.layoutWrap = layoutWrap;
+  }
 
   // Set fill color if provided
   if (fillColor) {
@@ -514,6 +524,8 @@ async function createFrame(params) {
     fills: frame.fills,
     strokes: frame.strokes,
     strokeWeight: frame.strokeWeight,
+    layoutMode: frame.layoutMode,
+    layoutWrap: frame.layoutWrap,
     parentId: frame.parent ? frame.parent.id : undefined,
   };
 }
@@ -2641,5 +2653,30 @@ async function deleteMultipleNodes(params) {
     results: results,
     completedInChunks: chunks.length,
     commandId,
+  };
+}
+
+async function setLayoutMode(params) {
+  const { nodeId, layoutMode, layoutWrap = "NO_WRAP" } = params;
+
+  // Get the node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  // Check if the node is a frame
+  if (node.type !== "FRAME") {
+    throw new Error(`Node with ID ${nodeId} is not a frame`);
+  }
+
+  // Set layout mode and wrap
+  node.layoutMode = layoutMode;
+  node.layoutWrap = layoutWrap;
+
+  return {
+    name: node.name,
+    layoutMode: node.layoutMode,
+    layoutWrap: node.layoutWrap
   };
 }

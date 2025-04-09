@@ -411,6 +411,8 @@ server.tool(
       .optional()
       .describe("Stroke color in RGBA format"),
     strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+    layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional().describe("Auto-layout mode for the frame"),
+    layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children")
   },
   async ({
     x,
@@ -422,6 +424,8 @@ server.tool(
     fillColor,
     strokeColor,
     strokeWeight,
+    layoutMode,
+    layoutWrap
   }) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
@@ -434,6 +438,8 @@ server.tool(
         fillColor: fillColor || { r: 1, g: 1, b: 1, a: 1 },
         strokeColor: strokeColor,
         strokeWeight: strokeWeight,
+        layoutMode,
+        layoutWrap
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -1912,6 +1918,43 @@ This strategy focuses on practical implementation based on real-world usage patt
   }
 );
 
+// Set Layout Mode Tool
+server.tool(
+  "set_layout_mode",
+  "Set the layout mode and wrap behavior of a frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).describe("Layout mode for the frame"),
+    layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children")
+  },
+  async ({ nodeId, layoutMode, layoutWrap }) => {
+    try {
+      const result = await sendCommandToFigma("set_layout_mode", {
+        nodeId,
+        layoutMode,
+        layoutWrap: layoutWrap || "NO_WRAP"
+      });
+      const typedResult = result as { name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set layout mode of frame "${typedResult.name}" to ${layoutMode}${layoutWrap ? ` with ${layoutWrap}` : ''}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting layout mode: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
 
 // Define command types and parameters
 type FigmaCommand =
@@ -1943,7 +1986,8 @@ type FigmaCommand =
   | "get_annotations"
   | "set_annotation"
   | "set_multiple_annotations"
-  | "scan_nodes_by_types";
+  | "scan_nodes_by_types"
+  | "set_layout_mode";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -1968,6 +2012,8 @@ type CommandParams = {
     fillColor?: { r: number; g: number; b: number; a?: number };
     strokeColor?: { r: number; g: number; b: number; a?: number };
     strokeWeight?: number;
+    layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL";
+    layoutWrap?: "NO_WRAP" | "WRAP";
   };
   create_text: {
     x: number;
@@ -2067,6 +2113,11 @@ type CommandParams = {
   scan_nodes_by_types: {
     nodeId: string;
     types: Array<string>;
+  };
+  set_layout_mode: {
+    nodeId: string;
+    layoutMode: "NONE" | "HORIZONTAL" | "VERTICAL";
+    layoutWrap?: "NO_WRAP" | "WRAP";
   };
 };
 
