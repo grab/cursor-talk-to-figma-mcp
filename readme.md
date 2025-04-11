@@ -40,7 +40,7 @@ bunx cursor-talk-to-figma-mcp
 
 ## Quick Video Tutorial
 
-[![image](images/tutorial.jpg)](https://www.linkedin.com/posts/sonnylazuardi_just-wanted-to-share-my-latest-experiment-activity-7307821553654657024-yrh8)
+[Video Link](https://www.linkedin.com/posts/sonnylazuardi_just-wanted-to-share-my-latest-experiment-activity-7307821553654657024-yrh8)
 
 ## Design Automation Example
 
