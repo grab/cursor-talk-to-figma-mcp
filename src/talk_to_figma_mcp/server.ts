@@ -188,6 +188,11 @@ server.tool(
 );
 
 function rgbaToHex(color: any): string {
+  // skip if color is already hex
+  if (color.startsWith('#')) {
+    return color;
+  }
+
   const r = Math.round(color.r * 255);
   const g = Math.round(color.g * 255);
   const b = Math.round(color.b * 255);
