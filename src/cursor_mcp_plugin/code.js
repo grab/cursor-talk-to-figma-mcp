@@ -83,60 +83,6 @@ figma.ui.onmessage = async (msg) => {
         });
       }
       break;
-    case "copy-overrides":
-      // Handle direct copy overrides request from UI
-      // Check if an instance node ID is provided
-      if (msg.instanceNodeId) {
-        try {
-          // Get the instance node by ID
-          const instanceNode = await figma.getNodeByIdAsync(msg.instanceNodeId);
-          if (!instanceNode) {
-            figma.notify(`Instance node not found with ID: ${msg.instanceNodeId}`);
-            console.error(`Instance node not found with ID: ${msg.instanceNodeId}`);
-            break;
-          }
-          await copyOverrides(instanceNode);
-        } catch (error) {
-          console.error("Error in copy-overrides with instance ID:", error);
-          figma.notify(`Error: ${error.message}`);
-        }
-      } else {
-        // Use selection if no instance node ID provided
-        await copyOverrides();
-      }
-      break;
-    case "paste-overrides":
-      // Handle direct paste overrides request from UI
-      // Check if instance node IDs are provided
-      if (msg.instanceNodeIds && Array.isArray(msg.instanceNodeIds)) {
-        try {
-          // Get the instance nodes by IDs
-          const instanceNodes = [];
-          for (const nodeId of msg.instanceNodeIds) {
-            const node = await figma.getNodeByIdAsync(nodeId);
-            if (node) {
-              instanceNodes.push(node);
-            } else {
-              console.warn(`Instance node not found with ID: ${nodeId}`);
-            }
-          }
-          
-          if (instanceNodes.length === 0) {
-            figma.notify("None of the provided instance nodes were found");
-            console.error("None of the provided instance nodes were found");
-            break;
-          }
-          
-          await pasteOverrides(instanceNodes);
-        } catch (error) {
-          console.error("Error in paste-overrides with instance IDs:", error);
-          figma.notify(`Error: ${error.message}`);
-        }
-      } else {
-        // Use selection if no instance node IDs provided
-        await pasteOverrides();
-      }
-      break;
   }
 };
 
@@ -233,6 +179,7 @@ async function handleCommand(command, params) {
       }
       // Call without instance node if not provided
       return await copyOverrides();
+    
     case "pasteOverrides":
       // Check if instanceNodeIds parameter is provided
       if (params && params.instanceNodeIds) {
@@ -256,10 +203,22 @@ async function handleCommand(command, params) {
           throw new Error("None of the provided instance node IDs were found");
         }
         
-        return await pasteOverrides(instanceNodes);
+        // Use savedData from params if provided
+        if (params.savedData) {
+          return await pasteOverrides(instanceNodes, params.savedData);
+        } else {
+          throw new Error("No override data provided in params.savedData");
+        }
       }
-      // Call without instance nodes if not provided
-      return await pasteOverrides();
+      
+      // Validate that savedData is provided when no nodes are specified
+      if (!params || !params.savedData) {
+        throw new Error("No override data provided in params.savedData");
+      }
+      
+      // Call with null instances (will use selection) and savedData
+      return await pasteOverrides(null, params.savedData);
+      
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -2791,19 +2750,14 @@ async function copyOverrides(instanceNode = null) {
     const overrides = sourceInstance.overrides || [];
     console.log(`  Raw Overrides:`, overrides);
     
-    
-    // Store the main component information in plugin data
+    // Create component data object to return
     const componentData = {
       sourceInstanceId: sourceInstance.id,
       overrides: sourceInstance.overrides
     };
     
-    // Save to plugin storage
-    await figma.clientStorage.setAsync('savedComponentData', componentData);
-    
-    console.log("Saved component data to plugin storage:", componentData);
+    console.log("Component data to return to MCP server:", componentData);
     figma.notify(`Copied component information from "${sourceInstance.name}"`);
-    
     
     return {
       success: true,
@@ -2913,14 +2867,12 @@ async function getValidTargetInstances(instanceNodes = null) {
 
 /**
  * Helper function to validate and get saved override data
+ * @param {Object} savedData - Override data provided by MCP server
  * @returns {Promise<Object>} - Validation result with saved data or error
  */
-async function getSavedOverrideData() {
-  const STORAGE_KEY = 'savedComponentData';
-  const savedData = await figma.clientStorage.getAsync(STORAGE_KEY);
-  
+async function getSavedOverrideData(savedData) {
   if (!savedData || !savedData.overrides || !savedData.sourceInstanceId) {
-    return { success: false, message: "No overrides found" };
+    return { success: false, message: "Invalid override data format" };
   }
   
   // Get source instance and main component
@@ -2982,6 +2934,8 @@ async function processInstance({ targetInstance, mainComponent, savedData }) {
       targetInstance.id
     );
     
+    console.log(`Prepared overrides for "${targetInstance.name}":`, preparedOverrides);
+    
     let appliedCount = 0;
     
     for (let i = 0; i < preparedOverrides.length; i++) {
@@ -2989,14 +2943,23 @@ async function processInstance({ targetInstance, mainComponent, savedData }) {
       if (!override.id) continue;
       
       const targetNode = await figma.getNodeByIdAsync(override.id);
-      if (!targetNode) continue;
+      if (!targetNode) {
+        console.log(`Target node not found: ${override.id}`);
+        continue;
+      }
       
       const sourceNodeId = savedData.overrides[i].id;
       const sourceNode = await figma.getNodeByIdAsync(sourceNodeId);
-      if (!sourceNode) continue;
+      if (!sourceNode) {
+        console.log(`Source node not found: ${sourceNodeId}`);
+        continue;
+      }
       
       const { success } = await applyNodeOverrides({ targetNode, sourceNode, override });
-      if (success) appliedCount++;
+      if (success) {
+        appliedCount++;
+        console.log(`Applied overrides to node: ${targetNode.name}`);
+      }
     }
     
     return {
@@ -3007,6 +2970,7 @@ async function processInstance({ targetInstance, mainComponent, savedData }) {
     };
     
   } catch (error) {
+    console.error(`Error processing instance "${targetInstance.name}":`, error);
     return {
       success: false,
       instanceId: targetInstance.id,
@@ -3019,10 +2983,18 @@ async function processInstance({ targetInstance, mainComponent, savedData }) {
 /**
  * Pastes saved overrides to the selected component instance(s)
  * @param {SceneNode[] | null} instanceNodes - Optional array of instance nodes to paste to
+ * @param {Object} savedData - Override data provided by MCP server
  * @returns {Promise<Object>} - Result of the paste operation
  */
-async function pasteOverrides(instanceNodes = null) {
+async function pasteOverrides(instanceNodes = null, savedData = null) {
   try {
+    // Check if saved data was provided
+    if (!savedData) {
+      const message = "No override data provided";
+      figma.notify(message);
+      return { success: false, message };
+    }
+    
     // Get and validate target instances
     const instancesResult = await getValidTargetInstances(instanceNodes);
     if (!instancesResult.success) {
@@ -3031,14 +3003,14 @@ async function pasteOverrides(instanceNodes = null) {
     }
     
     // Get and validate saved override data
-    const savedDataResult = await getSavedOverrideData();
+    const savedDataResult = await getSavedOverrideData(savedData);
     if (!savedDataResult.success) {
       figma.notify(savedDataResult.message);
       return { success: false, message: savedDataResult.message };
     }
     
     const { targetInstances } = instancesResult;
-    const { savedData, mainComponent } = savedDataResult;
+    const { mainComponent } = savedDataResult;
     
     console.log(`Processing ${targetInstances.length} instances`);
     
