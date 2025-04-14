@@ -416,6 +416,23 @@ server.tool(
       .optional()
       .describe("Stroke color in RGBA format"),
     strokeWeight: z.number().positive().optional().describe("Stroke weight"),
+    layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional().describe("Auto-layout mode for the frame"),
+    layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children"),
+    paddingTop: z.number().optional().describe("Top padding for auto-layout frame"),
+    paddingRight: z.number().optional().describe("Right padding for auto-layout frame"),
+    paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame"),
+    paddingLeft: z.number().optional().describe("Left padding for auto-layout frame"),
+    primaryAxisAlignItems: z
+      .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
+      .optional()
+      .describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
+    counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
+    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
+    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    itemSpacing: z
+      .number()
+      .optional()
+      .describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
   },
   async ({
     x,
@@ -427,6 +444,17 @@ server.tool(
     fillColor,
     strokeColor,
     strokeWeight,
+    layoutMode,
+    layoutWrap,
+    paddingTop,
+    paddingRight,
+    paddingBottom,
+    paddingLeft,
+    primaryAxisAlignItems,
+    counterAxisAlignItems,
+    layoutSizingHorizontal,
+    layoutSizingVertical,
+    itemSpacing
   }) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
@@ -439,6 +467,17 @@ server.tool(
         fillColor: fillColor || { r: 1, g: 1, b: 1, a: 1 },
         strokeColor: strokeColor,
         strokeWeight: strokeWeight,
+        layoutMode,
+        layoutWrap,
+        paddingTop,
+        paddingRight,
+        paddingBottom,
+        paddingLeft,
+        primaryAxisAlignItems,
+        counterAxisAlignItems,
+        layoutSizingHorizontal,
+        layoutSizingVertical,
+        itemSpacing
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -1888,6 +1927,242 @@ This strategy focuses on practical implementation based on real-world usage patt
   }
 );
 
+// Set Layout Mode Tool
+server.tool(
+  "set_layout_mode",
+  "Set the layout mode and wrap behavior of a frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).describe("Layout mode for the frame"),
+    layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children")
+  },
+  async ({ nodeId, layoutMode, layoutWrap }) => {
+    try {
+      const result = await sendCommandToFigma("set_layout_mode", {
+        nodeId,
+        layoutMode,
+        layoutWrap: layoutWrap || "NO_WRAP"
+      });
+      const typedResult = result as { name: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set layout mode of frame "${typedResult.name}" to ${layoutMode}${layoutWrap ? ` with ${layoutWrap}` : ''}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting layout mode: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Padding Tool
+server.tool(
+  "set_padding",
+  "Set padding values for an auto-layout frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    paddingTop: z.number().optional().describe("Top padding value"),
+    paddingRight: z.number().optional().describe("Right padding value"),
+    paddingBottom: z.number().optional().describe("Bottom padding value"),
+    paddingLeft: z.number().optional().describe("Left padding value"),
+  },
+  async ({ nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft }) => {
+    try {
+      const result = await sendCommandToFigma("set_padding", {
+        nodeId,
+        paddingTop,
+        paddingRight,
+        paddingBottom,
+        paddingLeft,
+      });
+      const typedResult = result as { name: string };
+      
+      // Create a message about which padding values were set
+      const paddingMessages = [];
+      if (paddingTop !== undefined) paddingMessages.push(`top: ${paddingTop}`);
+      if (paddingRight !== undefined) paddingMessages.push(`right: ${paddingRight}`);
+      if (paddingBottom !== undefined) paddingMessages.push(`bottom: ${paddingBottom}`);
+      if (paddingLeft !== undefined) paddingMessages.push(`left: ${paddingLeft}`);
+      
+      const paddingText = paddingMessages.length > 0 
+        ? `padding (${paddingMessages.join(', ')})` 
+        : "padding";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set ${paddingText} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting padding: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Axis Align Tool
+server.tool(
+  "set_axis_align",
+  "Set primary and counter axis alignment for an auto-layout frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    primaryAxisAlignItems: z
+      .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
+      .optional()
+      .describe("Primary axis alignment (MIN/MAX = left/right in horizontal, top/bottom in vertical). Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
+    counterAxisAlignItems: z
+      .enum(["MIN", "MAX", "CENTER", "BASELINE"])
+      .optional()
+      .describe("Counter axis alignment (MIN/MAX = top/bottom in horizontal, left/right in vertical)")
+  },
+  async ({ nodeId, primaryAxisAlignItems, counterAxisAlignItems }) => {
+    try {
+      const result = await sendCommandToFigma("set_axis_align", {
+        nodeId,
+        primaryAxisAlignItems,
+        counterAxisAlignItems
+      });
+      const typedResult = result as { name: string };
+      
+      // Create a message about which alignments were set
+      const alignMessages = [];
+      if (primaryAxisAlignItems !== undefined) alignMessages.push(`primary: ${primaryAxisAlignItems}`);
+      if (counterAxisAlignItems !== undefined) alignMessages.push(`counter: ${counterAxisAlignItems}`);
+      
+      const alignText = alignMessages.length > 0 
+        ? `axis alignment (${alignMessages.join(', ')})` 
+        : "axis alignment";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set ${alignText} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting axis alignment: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Layout Sizing Tool
+server.tool(
+  "set_layout_sizing",
+  "Set horizontal and vertical sizing modes for an auto-layout frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    layoutSizingHorizontal: z
+      .enum(["FIXED", "HUG", "FILL"])
+      .optional()
+      .describe("Horizontal sizing mode (HUG for frames/text only, FILL for auto-layout children only)"),
+    layoutSizingVertical: z
+      .enum(["FIXED", "HUG", "FILL"])
+      .optional()
+      .describe("Vertical sizing mode (HUG for frames/text only, FILL for auto-layout children only)")
+  },
+  async ({ nodeId, layoutSizingHorizontal, layoutSizingVertical }) => {
+    try {
+      const result = await sendCommandToFigma("set_layout_sizing", {
+        nodeId,
+        layoutSizingHorizontal,
+        layoutSizingVertical
+      });
+      const typedResult = result as { name: string };
+      
+      // Create a message about which sizing modes were set
+      const sizingMessages = [];
+      if (layoutSizingHorizontal !== undefined) sizingMessages.push(`horizontal: ${layoutSizingHorizontal}`);
+      if (layoutSizingVertical !== undefined) sizingMessages.push(`vertical: ${layoutSizingVertical}`);
+      
+      const sizingText = sizingMessages.length > 0 
+        ? `layout sizing (${sizingMessages.join(', ')})` 
+        : "layout sizing";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set ${sizingText} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting layout sizing: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Item Spacing Tool
+server.tool(
+  "set_item_spacing",
+  "Set distance between children in an auto-layout frame",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    itemSpacing: z.number().describe("Distance between children. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
+  },
+  async ({ nodeId, itemSpacing }) => {
+    try {
+      const result = await sendCommandToFigma("set_item_spacing", {
+        nodeId,
+        itemSpacing
+      });
+      const typedResult = result as { name: string };
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set item spacing to ${itemSpacing} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting item spacing: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
 
 // Define command types and parameters
 type FigmaCommand =
@@ -1918,7 +2193,12 @@ type FigmaCommand =
   | "get_annotations"
   | "set_annotation"
   | "set_multiple_annotations"
-  | "scan_nodes_by_types";
+  | "scan_nodes_by_types"
+  | "set_layout_mode"
+  | "set_padding"
+  | "set_axis_align"
+  | "set_layout_sizing"
+  | "set_item_spacing";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -1943,6 +2223,17 @@ type CommandParams = {
     fillColor?: { r: number; g: number; b: number; a?: number };
     strokeColor?: { r: number; g: number; b: number; a?: number };
     strokeWeight?: number;
+    layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL";
+    layoutWrap?: "NO_WRAP" | "WRAP";
+    paddingTop?: number;
+    paddingRight?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
+    primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
+    counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
+    layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
+    layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
+    itemSpacing?: number;
   };
   create_text: {
     x: number;
@@ -2039,6 +2330,32 @@ type CommandParams = {
   scan_nodes_by_types: {
     nodeId: string;
     types: Array<string>;
+  };
+  set_layout_mode: {
+    nodeId: string;
+    layoutMode: "NONE" | "HORIZONTAL" | "VERTICAL";
+    layoutWrap?: "NO_WRAP" | "WRAP";
+  };
+  set_padding: {
+    nodeId: string;
+    paddingTop?: number;
+    paddingRight?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
+  };
+  set_axis_align: {
+    nodeId: string;
+    primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
+    counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
+  };
+  set_layout_sizing: {
+    nodeId: string;
+    layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
+    layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
+  };
+  set_item_spacing: {
+    nodeId: string;
+    itemSpacing: number;
   };
 };
 
