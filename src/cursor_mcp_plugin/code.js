@@ -170,6 +170,8 @@ async function handleCommand(command, params) {
       return await setLayoutMode(params);
     case "set_padding":
       return await setPadding(params);
+    case "set_axis_align":
+      return await setAxisAlign(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -458,7 +460,9 @@ async function createFrame(params) {
     paddingTop = 10,
     paddingRight = 10,
     paddingBottom = 10,
-    paddingLeft = 10
+    paddingLeft = 10,
+    primaryAxisAlignItems = "MIN",
+    counterAxisAlignItems = "MIN"
   } = params || {};
 
   const frame = figma.createFrame();
@@ -477,6 +481,10 @@ async function createFrame(params) {
     frame.paddingRight = paddingRight;
     frame.paddingBottom = paddingBottom;
     frame.paddingLeft = paddingLeft;
+
+    // Set axis alignment only when layoutMode is not NONE
+    frame.primaryAxisAlignItems = primaryAxisAlignItems;
+    frame.counterAxisAlignItems = counterAxisAlignItems;
   }
 
   // Set fill color if provided
@@ -2746,5 +2754,62 @@ async function setPadding(params) {
     paddingRight: node.paddingRight,
     paddingBottom: node.paddingBottom,
     paddingLeft: node.paddingLeft
+  };
+}
+
+async function setAxisAlign(params) {
+  const { 
+    nodeId, 
+    primaryAxisAlignItems,
+    counterAxisAlignItems
+  } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports axis alignment
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support axis alignment`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error("Axis alignment can only be set on auto-layout frames (layoutMode must not be NONE)");
+  }
+
+  // Validate and set primaryAxisAlignItems if provided
+  if (primaryAxisAlignItems !== undefined) {
+    if (!["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)) {
+      throw new Error("Invalid primaryAxisAlignItems value. Must be one of: MIN, MAX, CENTER, SPACE_BETWEEN");
+    }
+    node.primaryAxisAlignItems = primaryAxisAlignItems;
+  }
+
+  // Validate and set counterAxisAlignItems if provided
+  if (counterAxisAlignItems !== undefined) {
+    if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
+      throw new Error("Invalid counterAxisAlignItems value. Must be one of: MIN, MAX, CENTER, BASELINE");
+    }
+    // BASELINE is only valid for horizontal layout
+    if (counterAxisAlignItems === "BASELINE" && node.layoutMode !== "HORIZONTAL") {
+      throw new Error("BASELINE alignment is only valid for horizontal auto-layout frames");
+    }
+    node.counterAxisAlignItems = counterAxisAlignItems;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    primaryAxisAlignItems: node.primaryAxisAlignItems,
+    counterAxisAlignItems: node.counterAxisAlignItems,
+    layoutMode: node.layoutMode
   };
 }

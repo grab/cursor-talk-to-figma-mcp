@@ -421,7 +421,9 @@ server.tool(
     paddingTop: z.number().optional().describe("Top padding for auto-layout frame"),
     paddingRight: z.number().optional().describe("Right padding for auto-layout frame"),
     paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame"),
-    paddingLeft: z.number().optional().describe("Left padding for auto-layout frame")
+    paddingLeft: z.number().optional().describe("Left padding for auto-layout frame"),
+    primaryAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame"),
+    counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame")
   },
   async ({
     x,
@@ -438,7 +440,9 @@ server.tool(
     paddingTop,
     paddingRight,
     paddingBottom,
-    paddingLeft
+    paddingLeft,
+    primaryAxisAlignItems,
+    counterAxisAlignItems
   }) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
@@ -456,7 +460,9 @@ server.tool(
         paddingTop,
         paddingRight,
         paddingBottom,
-        paddingLeft
+        paddingLeft,
+        primaryAxisAlignItems,
+        counterAxisAlignItems
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -1998,6 +2004,60 @@ server.tool(
   }
 );
 
+// Set Axis Align Tool
+server.tool(
+  "set_axis_align",
+  "Set primary and counter axis alignment for an auto-layout frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    primaryAxisAlignItems: z
+      .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
+      .optional()
+      .describe("Primary axis alignment (MIN/MAX = left/right in horizontal, top/bottom in vertical)"),
+    counterAxisAlignItems: z
+      .enum(["MIN", "MAX", "CENTER", "BASELINE"])
+      .optional()
+      .describe("Counter axis alignment (MIN/MAX = top/bottom in horizontal, left/right in vertical)")
+  },
+  async ({ nodeId, primaryAxisAlignItems, counterAxisAlignItems }) => {
+    try {
+      const result = await sendCommandToFigma("set_axis_align", {
+        nodeId,
+        primaryAxisAlignItems,
+        counterAxisAlignItems
+      });
+      const typedResult = result as { name: string };
+      
+      // Create a message about which alignments were set
+      const alignMessages = [];
+      if (primaryAxisAlignItems !== undefined) alignMessages.push(`primary: ${primaryAxisAlignItems}`);
+      if (counterAxisAlignItems !== undefined) alignMessages.push(`counter: ${counterAxisAlignItems}`);
+      
+      const alignText = alignMessages.length > 0 
+        ? `axis alignment (${alignMessages.join(', ')})` 
+        : "axis alignment";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set ${alignText} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting axis alignment: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -2029,7 +2089,8 @@ type FigmaCommand =
   | "set_multiple_annotations"
   | "scan_nodes_by_types"
   | "set_layout_mode"
-  | "set_padding";
+  | "set_padding"
+  | "set_axis_align";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2060,6 +2121,8 @@ type CommandParams = {
     paddingRight?: number;
     paddingBottom?: number;
     paddingLeft?: number;
+    primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
+    counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
   };
   create_text: {
     x: number;
@@ -2168,6 +2231,11 @@ type CommandParams = {
     paddingRight?: number;
     paddingBottom?: number;
     paddingLeft?: number;
+  };
+  set_axis_align: {
+    nodeId: string;
+    primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
+    counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
   };
 };
 
