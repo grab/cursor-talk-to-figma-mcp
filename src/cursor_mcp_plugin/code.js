@@ -2672,7 +2672,7 @@ async function setLayoutMode(params) {
   const { nodeId, layoutMode = "NONE", layoutWrap = "NO_WRAP" } = params || {};
 
   // Get the target node
-  const node = figma.getNodeById(nodeId);
+  const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
     throw new Error(`Node with ID ${nodeId} not found`);
   }
@@ -2713,7 +2713,7 @@ async function setPadding(params) {
   } = params || {};
 
   // Get the target node
-  const node = figma.getNodeById(nodeId);
+  const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) {
     throw new Error(`Node with ID ${nodeId} not found`);
   }
