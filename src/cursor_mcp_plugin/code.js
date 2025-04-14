@@ -167,7 +167,7 @@ async function handleCommand(command, params) {
       return await scanNodesByTypes(params);
     case "set_multiple_annotations":
       return await setMultipleAnnotations(params);
-    case "copy_overrides":
+    case "copy_instance_overrides":
       // Check if instanceNode parameter is provided
       if (params && params.instanceNodeId) {
         // Get the instance node by ID
@@ -175,12 +175,12 @@ async function handleCommand(command, params) {
         if (!instanceNode) {
           throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
         }
-        return await copyOverrides(instanceNode);
+        return await copyInstanceOverrides(instanceNode);
       }
       // Call without instance node if not provided
-      return await copyOverrides();
+      return await copyInstanceOverrides();
     
-    case "paste_overrides":
+    case "paste_instance_overrides":
       // Check if instanceNodeIds parameter is provided
       if (params && params.instanceNodeIds) {
         // Validate that instanceNodeIds is an array
@@ -205,7 +205,7 @@ async function handleCommand(command, params) {
         
         // Use savedData from params if provided
         if (params.savedData) {
-          return await pasteOverrides(instanceNodes, params.savedData);
+          return await pasteInstanceOverrides(instanceNodes, params.savedData);
         } else {
           throw new Error("No override data provided in params.savedData");
         }
@@ -217,7 +217,7 @@ async function handleCommand(command, params) {
       }
       
       // Call with null instances (will use selection) and savedData
-      return await pasteOverrides(null, params.savedData);
+      return await pasteInstanceOverrides(null, params.savedData);
       
     default:
       throw new Error(`Unknown command: ${command}`);
@@ -2697,9 +2697,9 @@ async function deleteMultipleNodes(params) {
   };
 }
 
-// Implementation for copyOverrides function
-async function copyOverrides(instanceNode = null) {
-  console.log("=== copyOverrides called ===");
+// Implementation for copyInstanceOverrides function
+async function copyInstanceOverrides(instanceNode = null) {
+  console.log("=== copyInstanceOverrides called ===");
   
   let sourceInstance = null;
   
@@ -2765,7 +2765,7 @@ async function copyOverrides(instanceNode = null) {
       componentData
     };
   } catch (error) {
-    console.error("Error in copyOverrides:", error);
+    console.error("Error in copyInstanceOverrides:", error);
     figma.notify(`Error: ${error.message}`);
     return {
       success: false,
@@ -2986,7 +2986,7 @@ async function processInstance({ targetInstance, mainComponent, savedData }) {
  * @param {Object} savedData - Override data provided by MCP server
  * @returns {Promise<Object>} - Result of the paste operation
  */
-async function pasteOverrides(instanceNodes = null, savedData = null) {
+async function pasteInstanceOverrides(instanceNodes = null, savedData = null) {
   try {
     // Check if saved data was provided
     if (!savedData) {
@@ -3049,7 +3049,7 @@ async function pasteOverrides(instanceNodes = null, savedData = null) {
     }
     
   } catch (error) {
-    console.error("Error in pasteOverrides:", error);
+    console.error("Error in pasteInstanceOverrides:", error);
     const message = `Error: ${error.message}`;
     figma.notify(message);
     return { success: false, message };

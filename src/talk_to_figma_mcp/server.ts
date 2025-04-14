@@ -1231,6 +1231,99 @@ server.tool(
   }
 );
 
+// Copy Instance Overrides Tool
+server.tool(
+  "copy_instance_overrides",
+  "Copy all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
+  {
+    nodeId: z.string().optional().describe("Optional ID of the component instance to copy overrides from. If not provided, currently selected instance will be used."),
+  },
+  async ({ nodeId }) => {
+    try {
+      const result = await sendCommandToFigma("copy_instance_overrides", { 
+        instanceNodeId: nodeId || null 
+      });
+      const typedResult = result as CopyOverridesResult;
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.success 
+              ? `Successfully copied instance overrides: ${typedResult.message}`
+              : `Failed to copy instance overrides: ${typedResult.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error copying instance overrides: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Paste Instance Overrides Tool
+server.tool(
+  "paste_instance_overrides",
+  "Apply previously copied overrides to selected component instances. Target instances will be swapped to the source component and all copied override properties will be applied.",
+  {
+    overrideData: z.object({
+      sourceInstanceId: z.string().describe("ID of the source component instance"),
+      overrides: z.array(z.object({
+        id: z.string().describe("ID of the override node"),
+        overriddenFields: z.array(z.string()).describe("Array of property names that were overridden")
+      })).describe("Array of overrides from the source instance")
+    }).describe("Override data previously copied from an instance"),
+    targetNodeIds: z.array(z.string()).optional().describe("Optional array of target instance IDs. If not provided, currently selected instances will be used.")
+  },
+  async ({ overrideData, targetNodeIds }) => {
+    try {
+      const result = await sendCommandToFigma("paste_instance_overrides", {
+        instanceNodes: targetNodeIds ? targetNodeIds.map(id => ({ id })) : null,
+        savedData: overrideData
+      });
+      const typedResult = result as PasteOverridesResult;
+      
+      if (typedResult.success) {
+        const successCount = typedResult.results?.filter(r => r.success).length || 0;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully applied ${typedResult.totalCount || 0} overrides to ${successCount} instances.`
+            }
+          ]
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to paste instance overrides: ${typedResult.message}`
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error pasting instance overrides: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
@@ -1947,97 +2040,6 @@ This strategy focuses on practical implementation based on real-world usage patt
   }
 );
 
-// Add copy_instance_overrides tool before the final main function
-server.tool(
-  "copy_instance_overrides",
-  "Copy all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
-  {
-    nodeId: z.string().optional().describe("Optional ID of the component instance to copy overrides from. If not provided, currently selected instance will be used."),
-  },
-  async ({ nodeId }) => {
-    try {
-      const result = await sendCommandToFigma("copy_overrides", { 
-        instanceNode: nodeId ? { id: nodeId } : null 
-      });
-      const typedResult = result as CopyOverridesResult;
-      
-      return {
-        content: [
-          {
-            type: "text",
-            text: typedResult.success 
-              ? `Successfully copied instance overrides: ${typedResult.message}`
-              : `Failed to copy instance overrides: ${typedResult.message}`
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error copying instance overrides: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
-// Add paste_instance_overrides tool
-server.tool(
-  "paste_instance_overrides",
-  "Apply previously copied overrides to selected component instances. Target instances will be swapped to the source component and all copied override properties will be applied.",
-  {
-    overrideData: z.object({
-      sourceInstanceId: z.string().describe("ID of the source component instance"),
-      overrides: z.array(z.object({
-        id: z.string().describe("ID of the override node"),
-        overriddenFields: z.array(z.string()).describe("Array of property names that were overridden")
-      })).describe("Array of overrides from the source instance")
-    }).describe("Override data previously copied from an instance"),
-    targetNodeIds: z.array(z.string()).optional().describe("Optional array of target instance IDs. If not provided, currently selected instances will be used.")
-  },
-  async ({ overrideData, targetNodeIds }) => {
-    try {
-      const result = await sendCommandToFigma("paste_overrides", {
-        instanceNodes: targetNodeIds ? targetNodeIds.map(id => ({ id })) : null,
-        savedData: overrideData
-      });
-      const typedResult = result as PasteOverridesResult;
-      
-      if (typedResult.success) {
-        const successCount = typedResult.results?.filter(r => r.success).length || 0;
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Successfully applied ${typedResult.totalCount || 0} overrides to ${successCount} instances.`
-            }
-          ]
-        };
-      } else {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Failed to paste instance overrides: ${typedResult.message}`
-            }
-          ]
-        };
-      }
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error pasting instance overrides: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
 
 // Define command types and parameters
 type FigmaCommand =
@@ -2059,6 +2061,8 @@ type FigmaCommand =
   | "get_local_components"
   | "get_team_components"
   | "create_component_instance"
+  | "copy_instance_overrides"
+  | "paste_instance_overrides"
   | "export_node_as_image"
   | "join"
   | "set_corner_radius"
@@ -2069,9 +2073,8 @@ type FigmaCommand =
   | "get_annotations"
   | "set_annotation"
   | "set_multiple_annotations"
-  | "scan_nodes_by_types"
-  | "copy_overrides"
-  | "paste_overrides";
+  | "scan_nodes_by_types";
+
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2146,6 +2149,13 @@ type CommandParams = {
     x: number;
     y: number;
   };
+  copy_instance_overrides: {
+    instanceNodeId: string | null;
+  };
+  paste_instance_overrides: {
+    instanceNodes: Array<{ id: string }> | null;
+    savedData: ComponentOverrideData;
+  };
   export_node_as_image: {
     nodeId: string;
     format?: "PNG" | "JPG" | "SVG" | "PDF";
@@ -2195,13 +2205,6 @@ type CommandParams = {
   scan_nodes_by_types: {
     nodeId: string;
     types: Array<string>;
-  };
-  copy_overrides: {
-    instanceNode: { id: string } | null;
-  };
-  paste_overrides: {
-    instanceNodes: Array<{ id: string }> | null;
-    savedData: ComponentOverrideData;
   };
 };
 
@@ -2502,4 +2505,6 @@ main().catch(error => {
   logger.error(`Error starting FigmaMCP server: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });
+
+
 
