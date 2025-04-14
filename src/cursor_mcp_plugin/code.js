@@ -174,6 +174,8 @@ async function handleCommand(command, params) {
       return await setAxisAlign(params);
     case "set_layout_sizing":
       return await setLayoutSizing(params);
+    case "set_item_spacing":
+      return await setItemSpacing(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -466,7 +468,8 @@ async function createFrame(params) {
     primaryAxisAlignItems = "MIN",
     counterAxisAlignItems = "MIN",
     layoutSizingHorizontal = "FIXED",
-    layoutSizingVertical = "FIXED"
+    layoutSizingVertical = "FIXED",
+    itemSpacing = 0
   } = params || {};
 
   const frame = figma.createFrame();
@@ -493,6 +496,9 @@ async function createFrame(params) {
     // Set layout sizing only when layoutMode is not NONE
     frame.layoutSizingHorizontal = layoutSizingHorizontal;
     frame.layoutSizingVertical = layoutSizingVertical;
+
+    // Set item spacing only when layoutMode is not NONE
+    frame.itemSpacing = itemSpacing;
   }
 
   // Set fill color if provided
@@ -2887,6 +2893,49 @@ async function setLayoutSizing(params) {
     name: node.name,
     layoutSizingHorizontal: node.layoutSizingHorizontal,
     layoutSizingVertical: node.layoutSizingVertical,
+    layoutMode: node.layoutMode
+  };
+}
+
+async function setItemSpacing(params) {
+  const { 
+    nodeId, 
+    itemSpacing
+  } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports item spacing
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support item spacing`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error("Item spacing can only be set on auto-layout frames (layoutMode must not be NONE)");
+  }
+
+  // Set item spacing
+  if (itemSpacing !== undefined) {
+    if (typeof itemSpacing !== "number") {
+      throw new Error("Item spacing must be a number");
+    }
+    node.itemSpacing = itemSpacing;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    itemSpacing: node.itemSpacing,
     layoutMode: node.layoutMode
   };
 }

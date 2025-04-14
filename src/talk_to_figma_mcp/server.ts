@@ -422,10 +422,17 @@ server.tool(
     paddingRight: z.number().optional().describe("Right padding for auto-layout frame"),
     paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame"),
     paddingLeft: z.number().optional().describe("Left padding for auto-layout frame"),
-    primaryAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame"),
+    primaryAxisAlignItems: z
+      .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
+      .optional()
+      .describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
     layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame")
+    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    itemSpacing: z
+      .number()
+      .optional()
+      .describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
   },
   async ({
     x,
@@ -446,7 +453,8 @@ server.tool(
     primaryAxisAlignItems,
     counterAxisAlignItems,
     layoutSizingHorizontal,
-    layoutSizingVertical
+    layoutSizingVertical,
+    itemSpacing
   }) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
@@ -468,7 +476,8 @@ server.tool(
         primaryAxisAlignItems,
         counterAxisAlignItems,
         layoutSizingHorizontal,
-        layoutSizingVertical
+        layoutSizingVertical,
+        itemSpacing
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -2019,7 +2028,7 @@ server.tool(
     primaryAxisAlignItems: z
       .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
       .optional()
-      .describe("Primary axis alignment (MIN/MAX = left/right in horizontal, top/bottom in vertical)"),
+      .describe("Primary axis alignment (MIN/MAX = left/right in horizontal, top/bottom in vertical). Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: z
       .enum(["MIN", "MAX", "CENTER", "BASELINE"])
       .optional()
@@ -2118,6 +2127,43 @@ server.tool(
   }
 );
 
+// Set Item Spacing Tool
+server.tool(
+  "set_item_spacing",
+  "Set distance between children in an auto-layout frame",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    itemSpacing: z.number().describe("Distance between children. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
+  },
+  async ({ nodeId, itemSpacing }) => {
+    try {
+      const result = await sendCommandToFigma("set_item_spacing", {
+        nodeId,
+        itemSpacing
+      });
+      const typedResult = result as { name: string };
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set item spacing to ${itemSpacing} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting item spacing: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -2151,7 +2197,8 @@ type FigmaCommand =
   | "set_layout_mode"
   | "set_padding"
   | "set_axis_align"
-  | "set_layout_sizing";
+  | "set_layout_sizing"
+  | "set_item_spacing";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2186,6 +2233,7 @@ type CommandParams = {
     counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
     layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
     layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
+    itemSpacing?: number;
   };
   create_text: {
     x: number;
@@ -2304,6 +2352,10 @@ type CommandParams = {
     nodeId: string;
     layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
     layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
+  };
+  set_item_spacing: {
+    nodeId: string;
+    itemSpacing: number;
   };
 };
 
