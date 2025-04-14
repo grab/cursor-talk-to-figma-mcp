@@ -6,8 +6,6 @@ import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 
-import path from "path";
-
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
   id: string;
@@ -532,7 +530,7 @@ server.tool(
     name: z
       .string()
       .optional()
-      .describe("Optional name for the text node by default following text"),
+      .describe("Semantic layer name for the text node"),
     parentId: z
       .string()
       .optional()
@@ -1986,18 +1984,18 @@ server.tool(
         paddingLeft,
       });
       const typedResult = result as { name: string };
-      
+
       // Create a message about which padding values were set
       const paddingMessages = [];
       if (paddingTop !== undefined) paddingMessages.push(`top: ${paddingTop}`);
       if (paddingRight !== undefined) paddingMessages.push(`right: ${paddingRight}`);
       if (paddingBottom !== undefined) paddingMessages.push(`bottom: ${paddingBottom}`);
       if (paddingLeft !== undefined) paddingMessages.push(`left: ${paddingLeft}`);
-      
-      const paddingText = paddingMessages.length > 0 
-        ? `padding (${paddingMessages.join(', ')})` 
+
+      const paddingText = paddingMessages.length > 0
+        ? `padding (${paddingMessages.join(', ')})`
         : "padding";
-      
+
       return {
         content: [
           {
@@ -2042,16 +2040,16 @@ server.tool(
         counterAxisAlignItems
       });
       const typedResult = result as { name: string };
-      
+
       // Create a message about which alignments were set
       const alignMessages = [];
       if (primaryAxisAlignItems !== undefined) alignMessages.push(`primary: ${primaryAxisAlignItems}`);
       if (counterAxisAlignItems !== undefined) alignMessages.push(`counter: ${counterAxisAlignItems}`);
-      
-      const alignText = alignMessages.length > 0 
-        ? `axis alignment (${alignMessages.join(', ')})` 
+
+      const alignText = alignMessages.length > 0
+        ? `axis alignment (${alignMessages.join(', ')})`
         : "axis alignment";
-      
+
       return {
         content: [
           {
@@ -2096,16 +2094,16 @@ server.tool(
         layoutSizingVertical
       });
       const typedResult = result as { name: string };
-      
+
       // Create a message about which sizing modes were set
       const sizingMessages = [];
       if (layoutSizingHorizontal !== undefined) sizingMessages.push(`horizontal: ${layoutSizingHorizontal}`);
       if (layoutSizingVertical !== undefined) sizingMessages.push(`vertical: ${layoutSizingVertical}`);
-      
-      const sizingText = sizingMessages.length > 0 
-        ? `layout sizing (${sizingMessages.join(', ')})` 
+
+      const sizingText = sizingMessages.length > 0
+        ? `layout sizing (${sizingMessages.join(', ')})`
         : "layout sizing";
-      
+
       return {
         content: [
           {
@@ -2142,7 +2140,7 @@ server.tool(
         itemSpacing
       });
       const typedResult = result as { name: string };
-      
+
       return {
         content: [
           {
@@ -2199,192 +2197,6 @@ type FigmaCommand =
   | "set_axis_align"
   | "set_layout_sizing"
   | "set_item_spacing";
-
-type CommandParams = {
-  get_document_info: Record<string, never>;
-  get_selection: Record<string, never>;
-  get_node_info: { nodeId: string };
-  get_nodes_info: { nodeIds: string[] };
-  create_rectangle: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    name?: string;
-    parentId?: string;
-  };
-  create_frame: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    name?: string;
-    parentId?: string;
-    fillColor?: { r: number; g: number; b: number; a?: number };
-    strokeColor?: { r: number; g: number; b: number; a?: number };
-    strokeWeight?: number;
-    layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL";
-    layoutWrap?: "NO_WRAP" | "WRAP";
-    paddingTop?: number;
-    paddingRight?: number;
-    paddingBottom?: number;
-    paddingLeft?: number;
-    primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
-    counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
-    layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
-    layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
-    itemSpacing?: number;
-  };
-  create_text: {
-    x: number;
-    y: number;
-    text: string;
-    fontSize?: number;
-    fontWeight?: number;
-    fontColor?: { r: number; g: number; b: number; a?: number };
-    name?: string;
-    parentId?: string;
-  };
-  set_fill_color: {
-    nodeId: string;
-    r: number;
-    g: number;
-    b: number;
-    a?: number;
-  };
-  set_stroke_color: {
-    nodeId: string;
-    r: number;
-    g: number;
-    b: number;
-    a?: number;
-    weight?: number;
-  };
-  move_node: {
-    nodeId: string;
-    x: number;
-    y: number;
-  };
-  resize_node: {
-    nodeId: string;
-    width: number;
-    height: number;
-  };
-  delete_node: {
-    nodeId: string;
-  };
-  delete_multiple_nodes: {
-    nodeIds: string[];
-  };
-  get_styles: Record<string, never>;
-  get_local_components: Record<string, never>;
-  get_team_components: Record<string, never>;
-  create_component_instance: {
-    componentKey: string;
-    x: number;
-    y: number;
-  };
-  export_node_as_image: {
-    nodeId: string;
-    format?: "PNG" | "JPG" | "SVG" | "PDF";
-    scale?: number;
-  };
-  join: {
-    channel: string;
-  };
-  set_corner_radius: {
-    nodeId: string;
-    radius: number;
-    corners?: boolean[];
-  };
-  clone_node: {
-    nodeId: string;
-    x?: number;
-    y?: number;
-  };
-  set_text_content: {
-    nodeId: string;
-    text: string;
-  };
-  scan_text_nodes: {
-    nodeId: string;
-    useChunking: boolean;
-    chunkSize: number;
-  };
-  set_multiple_text_contents: {
-    nodeId: string;
-    text: Array<{ nodeId: string; text: string }>;
-  };
-  get_annotations: {
-    nodeId?: string;
-    includeCategories?: boolean;
-  };
-  set_annotation: {
-    nodeId: string;
-    annotationId?: string;
-    labelMarkdown: string;
-    categoryId?: string;
-    properties?: Array<{ type: string }>;
-  };
-  set_multiple_annotations: SetMultipleAnnotationsParams;
-  scan_nodes_by_types: {
-    nodeId: string;
-    types: Array<string>;
-  };
-  set_layout_mode: {
-    nodeId: string;
-    layoutMode: "NONE" | "HORIZONTAL" | "VERTICAL";
-    layoutWrap?: "NO_WRAP" | "WRAP";
-  };
-  set_padding: {
-    nodeId: string;
-    paddingTop?: number;
-    paddingRight?: number;
-    paddingBottom?: number;
-    paddingLeft?: number;
-  };
-  set_axis_align: {
-    nodeId: string;
-    primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
-    counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
-  };
-  set_layout_sizing: {
-    nodeId: string;
-    layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
-    layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
-  };
-  set_item_spacing: {
-    nodeId: string;
-    itemSpacing: number;
-  };
-};
-
-// Helper function to process Figma node responses
-function processFigmaNodeResponse(result: unknown): any {
-  if (!result || typeof result !== "object") {
-    return result;
-  }
-
-  // Check if this looks like a node response
-  const resultObj = result as Record<string, unknown>;
-  if ("id" in resultObj && typeof resultObj.id === "string") {
-    // It appears to be a node response, log the details
-    console.info(
-      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${resultObj.id
-      })`
-    );
-
-    if ("x" in resultObj && "y" in resultObj) {
-      console.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
-    }
-
-    if ("width" in resultObj && "height" in resultObj) {
-      console.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
-    }
-  }
-
-  return result;
-}
 
 // Update the connectToFigma function
 function connectToFigma(port: number = 3055) {

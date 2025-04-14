@@ -469,7 +469,7 @@ async function createFrame(params) {
     counterAxisAlignItems = "MIN",
     layoutSizingHorizontal = "FIXED",
     layoutSizingVertical = "FIXED",
-    itemSpacing = 0
+    itemSpacing = 0,
   } = params || {};
 
   const frame = figma.createFrame();
@@ -482,7 +482,7 @@ async function createFrame(params) {
   if (layoutMode !== "NONE") {
     frame.layoutMode = layoutMode;
     frame.layoutWrap = layoutWrap;
-    
+
     // Set padding values only when layoutMode is not NONE
     frame.paddingTop = paddingTop;
     frame.paddingRight = paddingRight;
@@ -572,7 +572,7 @@ async function createText(params) {
     fontSize = 14,
     fontWeight = 400,
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
-    name = "Text",
+    name = "",
     parentId,
   } = params || {};
 
@@ -605,7 +605,7 @@ async function createText(params) {
   const textNode = figma.createText();
   textNode.x = x;
   textNode.y = y;
-  textNode.name = name;
+  textNode.name = name || text;
   try {
     await figma.loadFontAsync({
       family: "Inter",
@@ -2726,13 +2726,8 @@ async function setLayoutMode(params) {
 }
 
 async function setPadding(params) {
-  const { 
-    nodeId, 
-    paddingTop, 
-    paddingRight, 
-    paddingBottom, 
-    paddingLeft 
-  } = params || {};
+  const { nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft } =
+    params || {};
 
   // Get the target node
   const node = await figma.getNodeByIdAsync(nodeId);
@@ -2752,9 +2747,11 @@ async function setPadding(params) {
 
   // Check if the node has auto-layout enabled
   if (node.layoutMode === "NONE") {
-    throw new Error("Padding can only be set on auto-layout frames (layoutMode must not be NONE)");
+    throw new Error(
+      "Padding can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
   }
-  
+
   // Set padding values if provided
   if (paddingTop !== undefined) node.paddingTop = paddingTop;
   if (paddingRight !== undefined) node.paddingRight = paddingRight;
@@ -2767,16 +2764,12 @@ async function setPadding(params) {
     paddingTop: node.paddingTop,
     paddingRight: node.paddingRight,
     paddingBottom: node.paddingBottom,
-    paddingLeft: node.paddingLeft
+    paddingLeft: node.paddingLeft,
   };
 }
 
 async function setAxisAlign(params) {
-  const { 
-    nodeId, 
-    primaryAxisAlignItems,
-    counterAxisAlignItems
-  } = params || {};
+  const { nodeId, primaryAxisAlignItems, counterAxisAlignItems } = params || {};
 
   // Get the target node
   const node = await figma.getNodeByIdAsync(nodeId);
@@ -2796,13 +2789,19 @@ async function setAxisAlign(params) {
 
   // Check if the node has auto-layout enabled
   if (node.layoutMode === "NONE") {
-    throw new Error("Axis alignment can only be set on auto-layout frames (layoutMode must not be NONE)");
+    throw new Error(
+      "Axis alignment can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
   }
 
   // Validate and set primaryAxisAlignItems if provided
   if (primaryAxisAlignItems !== undefined) {
-    if (!["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)) {
-      throw new Error("Invalid primaryAxisAlignItems value. Must be one of: MIN, MAX, CENTER, SPACE_BETWEEN");
+    if (
+      !["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)
+    ) {
+      throw new Error(
+        "Invalid primaryAxisAlignItems value. Must be one of: MIN, MAX, CENTER, SPACE_BETWEEN"
+      );
     }
     node.primaryAxisAlignItems = primaryAxisAlignItems;
   }
@@ -2810,11 +2809,18 @@ async function setAxisAlign(params) {
   // Validate and set counterAxisAlignItems if provided
   if (counterAxisAlignItems !== undefined) {
     if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
-      throw new Error("Invalid counterAxisAlignItems value. Must be one of: MIN, MAX, CENTER, BASELINE");
+      throw new Error(
+        "Invalid counterAxisAlignItems value. Must be one of: MIN, MAX, CENTER, BASELINE"
+      );
     }
     // BASELINE is only valid for horizontal layout
-    if (counterAxisAlignItems === "BASELINE" && node.layoutMode !== "HORIZONTAL") {
-      throw new Error("BASELINE alignment is only valid for horizontal auto-layout frames");
+    if (
+      counterAxisAlignItems === "BASELINE" &&
+      node.layoutMode !== "HORIZONTAL"
+    ) {
+      throw new Error(
+        "BASELINE alignment is only valid for horizontal auto-layout frames"
+      );
     }
     node.counterAxisAlignItems = counterAxisAlignItems;
   }
@@ -2824,16 +2830,12 @@ async function setAxisAlign(params) {
     name: node.name,
     primaryAxisAlignItems: node.primaryAxisAlignItems,
     counterAxisAlignItems: node.counterAxisAlignItems,
-    layoutMode: node.layoutMode
+    layoutMode: node.layoutMode,
   };
 }
 
 async function setLayoutSizing(params) {
-  const { 
-    nodeId, 
-    layoutSizingHorizontal,
-    layoutSizingVertical
-  } = params || {};
+  const { nodeId, layoutSizingHorizontal, layoutSizingVertical } = params || {};
 
   // Get the target node
   const node = await figma.getNodeByIdAsync(nodeId);
@@ -2853,20 +2855,32 @@ async function setLayoutSizing(params) {
 
   // Check if the node has auto-layout enabled
   if (node.layoutMode === "NONE") {
-    throw new Error("Layout sizing can only be set on auto-layout frames (layoutMode must not be NONE)");
+    throw new Error(
+      "Layout sizing can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
   }
 
   // Validate and set layoutSizingHorizontal if provided
   if (layoutSizingHorizontal !== undefined) {
     if (!["FIXED", "HUG", "FILL"].includes(layoutSizingHorizontal)) {
-      throw new Error("Invalid layoutSizingHorizontal value. Must be one of: FIXED, HUG, FILL");
+      throw new Error(
+        "Invalid layoutSizingHorizontal value. Must be one of: FIXED, HUG, FILL"
+      );
     }
     // HUG is only valid on auto-layout frames and text nodes
-    if (layoutSizingHorizontal === "HUG" && !["FRAME", "TEXT"].includes(node.type)) {
-      throw new Error("HUG sizing is only valid on auto-layout frames and text nodes");
+    if (
+      layoutSizingHorizontal === "HUG" &&
+      !["FRAME", "TEXT"].includes(node.type)
+    ) {
+      throw new Error(
+        "HUG sizing is only valid on auto-layout frames and text nodes"
+      );
     }
     // FILL is only valid on auto-layout children
-    if (layoutSizingHorizontal === "FILL" && (!node.parent || node.parent.layoutMode === "NONE")) {
+    if (
+      layoutSizingHorizontal === "FILL" &&
+      (!node.parent || node.parent.layoutMode === "NONE")
+    ) {
       throw new Error("FILL sizing is only valid on auto-layout children");
     }
     node.layoutSizingHorizontal = layoutSizingHorizontal;
@@ -2875,14 +2889,24 @@ async function setLayoutSizing(params) {
   // Validate and set layoutSizingVertical if provided
   if (layoutSizingVertical !== undefined) {
     if (!["FIXED", "HUG", "FILL"].includes(layoutSizingVertical)) {
-      throw new Error("Invalid layoutSizingVertical value. Must be one of: FIXED, HUG, FILL");
+      throw new Error(
+        "Invalid layoutSizingVertical value. Must be one of: FIXED, HUG, FILL"
+      );
     }
     // HUG is only valid on auto-layout frames and text nodes
-    if (layoutSizingVertical === "HUG" && !["FRAME", "TEXT"].includes(node.type)) {
-      throw new Error("HUG sizing is only valid on auto-layout frames and text nodes");
+    if (
+      layoutSizingVertical === "HUG" &&
+      !["FRAME", "TEXT"].includes(node.type)
+    ) {
+      throw new Error(
+        "HUG sizing is only valid on auto-layout frames and text nodes"
+      );
     }
     // FILL is only valid on auto-layout children
-    if (layoutSizingVertical === "FILL" && (!node.parent || node.parent.layoutMode === "NONE")) {
+    if (
+      layoutSizingVertical === "FILL" &&
+      (!node.parent || node.parent.layoutMode === "NONE")
+    ) {
       throw new Error("FILL sizing is only valid on auto-layout children");
     }
     node.layoutSizingVertical = layoutSizingVertical;
@@ -2893,15 +2917,12 @@ async function setLayoutSizing(params) {
     name: node.name,
     layoutSizingHorizontal: node.layoutSizingHorizontal,
     layoutSizingVertical: node.layoutSizingVertical,
-    layoutMode: node.layoutMode
+    layoutMode: node.layoutMode,
   };
 }
 
 async function setItemSpacing(params) {
-  const { 
-    nodeId, 
-    itemSpacing
-  } = params || {};
+  const { nodeId, itemSpacing } = params || {};
 
   // Get the target node
   const node = await figma.getNodeByIdAsync(nodeId);
@@ -2921,7 +2942,9 @@ async function setItemSpacing(params) {
 
   // Check if the node has auto-layout enabled
   if (node.layoutMode === "NONE") {
-    throw new Error("Item spacing can only be set on auto-layout frames (layoutMode must not be NONE)");
+    throw new Error(
+      "Item spacing can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
   }
 
   // Set item spacing
@@ -2936,6 +2959,6 @@ async function setItemSpacing(params) {
     id: node.id,
     name: node.name,
     itemSpacing: node.itemSpacing,
-    layoutMode: node.layoutMode
+    layoutMode: node.layoutMode,
   };
 }
