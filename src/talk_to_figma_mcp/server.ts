@@ -188,6 +188,11 @@ server.tool(
 );
 
 function rgbaToHex(color: any): string {
+  // skip if color is already hex
+  if (color.startsWith('#')) {
+    return color;
+  }
+
   const r = Math.round(color.r * 255);
   const g = Math.round(color.g * 255);
   const b = Math.round(color.b * 255);
@@ -1134,35 +1139,6 @@ server.tool(
   }
 );
 
-// Get Team Components Tool
-// server.tool(
-//   "get_team_components",
-//   "Get all team library components available in Figma",
-//   {},
-//   async () => {
-//     try {
-//       const result = await sendCommandToFigma('get_team_components');
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: JSON.stringify(result, null, 2)
-//           }
-//         ]
-//       };
-//     } catch (error) {
-//       return {
-//         content: [
-//           {
-//             type: "text",
-//             text: `Error getting team components: ${error instanceof Error ? error.message : String(error)}`
-//           }
-//         ]
-//       };
-//     }
-//   }
-// );
-
 // Create Component Instance Tool
 server.tool(
   "create_component_instance",
@@ -1974,7 +1950,6 @@ type FigmaCommand =
   | "delete_multiple_nodes"
   | "get_styles"
   | "get_local_components"
-  | "get_team_components"
   | "create_component_instance"
   | "export_node_as_image"
   | "join"
@@ -2068,9 +2043,6 @@ type CommandParams = {
     nodeId: string;
     format?: "PNG" | "JPG" | "SVG" | "PDF";
     scale?: number;
-  };
-  execute_code: {
-    code: string;
   };
   join: {
     channel: string;
