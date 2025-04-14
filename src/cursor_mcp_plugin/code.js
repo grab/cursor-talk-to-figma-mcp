@@ -2865,196 +2865,221 @@ async function prepareOverridesForTarget(sourceInstanceId, overrides, targetInst
 }
 
 /**
- * Pastes saved overrides to the selected component instance
- * @param {SceneNode[] | null} instanceNodes - Optional array of instance nodes to paste to, uses selection if not provided
- * @returns {Promise<Object>} - Result of the paste operation
+ * Helper function to validate and get target instances
+ * @param {SceneNode[] | null} instanceNodes - Optional array of instance nodes
+ * @returns {Object} - Validation result with target instances or error
  */
-async function pasteOverrides(instanceNodes = null) {
-  try {
-    let targetInstance = null;
-    
-    // Check if instance nodes were passed directly
-    if (instanceNodes) {
-      console.log("Using provided instance nodes");
-      
-      // Handle array of instances or single instance
-      if (Array.isArray(instanceNodes)) {
-        if (instanceNodes.length === 0) {
-          figma.notify("No instances provided");
-          return { success: false, message: "No instances provided" };
-        }
-        // Use the first valid instance
-        for (const node of instanceNodes) {
-          if (node && node.type === "INSTANCE") {
-            targetInstance = node;
-            break;
-          }
-        }
-      } else if (instanceNodes.type === "INSTANCE") {
-        // Single instance node provided
-        targetInstance = instanceNodes;
+async function getValidTargetInstances(instanceNodes = null) {
+  let targetInstances = [];
+  
+  if (instanceNodes) {
+    // Handle array of instances or single instance
+    if (Array.isArray(instanceNodes)) {
+      if (instanceNodes.length === 0) {
+        return { success: false, message: "No instances provided" };
       }
-      
-      if (!targetInstance) {
-        figma.notify("No valid component instances provided");
-        return { success: false, message: "No valid instances provided" };
+      targetInstances = instanceNodes.filter(node => node && node.type === "INSTANCE");
+    } else if (instanceNodes.type === "INSTANCE") {
+      targetInstances = [instanceNodes];
+    }
+    
+    if (targetInstances.length === 0) {
+      return { success: false, message: "No valid instances provided" };
+    }
+  } else {
+    // Use current selection
+    const selection = figma.currentPage.selection;
+    
+    if (selection.length === 0) {
+      return { success: false, message: "No nodes selected" };
+    }
+    
+    targetInstances = selection.filter(node => node.type === "INSTANCE");
+    
+    // Notify about non-instance nodes
+    if (selection.length > targetInstances.length) {
+      const nonInstanceCount = selection.length - targetInstances.length;
+      console.log(`Selection includes ${nonInstanceCount} non-instance nodes that will be ignored`);
+      figma.notify(`Ignoring ${nonInstanceCount} non-instance nodes`);
+    }
+    
+    if (targetInstances.length === 0) {
+      return { success: false, message: "No instance found in selection" };
+    }
+  }
+  
+  return { success: true, targetInstances };
+}
+
+/**
+ * Helper function to validate and get saved override data
+ * @returns {Promise<Object>} - Validation result with saved data or error
+ */
+async function getSavedOverrideData() {
+  const STORAGE_KEY = 'savedComponentData';
+  const savedData = await figma.clientStorage.getAsync(STORAGE_KEY);
+  
+  if (!savedData || !savedData.overrides || !savedData.sourceInstanceId) {
+    return { success: false, message: "No overrides found" };
+  }
+  
+  // Get source instance and main component
+  const sourceInstance = await figma.getNodeByIdAsync(savedData.sourceInstanceId);
+  if (!sourceInstance) {
+    return { success: false, message: "Source instance not found. The original instance may have been deleted." };
+  }
+  
+  const mainComponent = await sourceInstance.getMainComponentAsync();
+  if (!mainComponent) {
+    return { success: false, message: "Failed to get main component from source instance." };
+  }
+  
+  return { success: true, savedData, sourceInstance, mainComponent };
+}
+
+/**
+ * Helper function to apply overrides to a single node
+ * @param {Object} params - Parameters for applying overrides
+ * @returns {Promise<Object>} - Result of applying overrides
+ */
+async function applyNodeOverrides({ targetNode, sourceNode, override }) {
+  let applied = false;
+  
+  for (const field of override.overriddenFields) {
+    if (field === "componentProperties") {
+      // Apply component properties
+      for (const key in sourceNode.componentProperties) {
+        if (key in targetNode.componentProperties) {
+          targetNode.setProperties({ [key]: sourceNode.componentProperties[key].value });
+          applied = true;
+        }
       }
     } else {
-
-      // No nodes provided, use selection
-      console.log("No nodes provided, using current selection");
-      
-      // Get the current selection
-      const selection = figma.currentPage.selection;
-      
-      // Check if there's anything selected
-      if (selection.length === 0) {
-        figma.notify("Please select at least one component instance");
-        return { success: false, message: "No nodes selected" };
-      }
-      
-      // Filter for instances in the selection
-      const instances = selection.filter(node => node.type === "INSTANCE");
-      
-      // Notify if there are non-instance nodes in the selection
-      if (selection.length > instances.length) {
-        const nonInstanceCount = selection.length - instances.length;
-        console.log(`Selection includes ${nonInstanceCount} non-instance nodes that will be ignored`);
-        figma.notify(`Ignoring ${nonInstanceCount} non-instance nodes`);
-      }
-      
-      if (instances.length === 0) {
-        figma.notify("Please select at least one component instance");
-        return { success: false, message: "No instance found in selection" };
-      }
-      
-      // Use the first instance from the filtered list
-      targetInstance = instances[0];
-      console.log(`Using first instance "${targetInstance.name}" from selection of ${instances.length} instances`);
-      
-      if (instances.length > 1) {
-        figma.notify(`Multiple instances selected, using "${targetInstance.name}"`);
-      }
+      // Direct property assignment
+      targetNode[field] = sourceNode[field];
+      applied = true;
     }
+  }
+  
+  return { success: applied };
+}
 
-    console.log("Target instance:", targetInstance);
-
-    // Retrieve saved overrides data
-    const STORAGE_KEY = 'savedComponentData';
-    const savedData = await figma.clientStorage.getAsync(STORAGE_KEY);
-    if (!savedData || !savedData.overrides || !savedData.sourceInstanceId) {
-      figma.notify("No overrides found to paste");
-      return { success: false, message: "No overrides found" };
-    }
-
-    console.log("Retrieved saved component data:", savedData);
-
-    // Get the source instance to retrieve override values
-    const sourceInstance = await figma.getNodeByIdAsync(savedData.sourceInstanceId);
-    if (!sourceInstance) {
-      figma.notify("Source instance not found. The original instance may have been deleted.");
-      return { success: false, message: "Source instance not found" };
-    }
-
-    // Get the main component from the source instance
-    const mainComponent = await sourceInstance.getMainComponentAsync();
-    if (!mainComponent) {
-      figma.notify("Failed to get main component from source instance.");
-      return { success: false, message: "Failed to get main component" };
-    }
-
-    // Swap the target instance's component
-    try {
-      targetInstance.swapComponent(mainComponent);
-      console.log("Swapped target instance component");
-    } catch (error) {
-      console.error("Error swapping component:", error);
-      figma.notify("Error swapping component: " + error.message);
-      return { success: false, message: "Error swapping component" };
-    }
-
-    // Prepare overrides for the target instance
+/**
+ * Helper function to process a single instance
+ * @param {Object} params - Parameters for processing instance
+ * @returns {Promise<Object>} - Result of processing instance
+ */
+async function processInstance({ targetInstance, mainComponent, savedData }) {
+  try {
+    // Swap component
+    targetInstance.swapComponent(mainComponent);
+    console.log(`Swapped component for instance "${targetInstance.name}"`);
+    
+    // Prepare and apply overrides
     const preparedOverrides = await prepareOverridesForTarget(
       savedData.sourceInstanceId,
       savedData.overrides,
       targetInstance.id
     );
-
-    console.log("Prepared overrides:", preparedOverrides);
-
-    // Apply the prepared overrides
+    
     let appliedCount = 0;
     
     for (let i = 0; i < preparedOverrides.length; i++) {
       const override = preparedOverrides[i];
       if (!override.id) continue;
       
-      try {
-        // Get the target node
-        const targetNode = await figma.getNodeByIdAsync(override.id);
-        if (!targetNode) {
-          console.log(`Target node not found: ${override.id}`);
-          continue;
-        }
-        
-        // Get the source node to retrieve original values
-        const sourceNodeId = savedData.overrides[i].id;
-        const sourceNode = await figma.getNodeByIdAsync(sourceNodeId);
-        if (!sourceNode) {
-          console.log(`Source node not found: ${sourceNodeId}`);
-          continue;
-        }
-        
-        // Apply overrides based on overriddenFields
-        let applied = false;
-        
-        for (let j = 0; j < override.overriddenFields.length; j++) {
-          const field = override.overriddenFields[j];
-          
-          // Special handling for component properties and text
-          if (field === "componentProperties" ) {
-            // Apply component properties using dedicated method
-            for (const key in sourceNode.componentProperties) {
-              if (key in targetNode.componentProperties) {
-                targetNode.setProperties({ [key]: sourceNode.componentProperties[key].value });
-                applied = true;
-              }
-            }
-          }
-
-          // Direct property assignment for other properties
-          else {
-            // Direct property copy for standard properties
-            targetNode[field] = sourceNode[field];
-            applied = true;
-          }
-        }
-        
-        if (applied) {
-          appliedCount++;
-          console.log(`Applied overrides to node: ${targetNode.name}`);
-        }
-      } catch (err) {
-        console.error(`Error applying override for node ${override.id}:`, err);
-      }
+      const targetNode = await figma.getNodeByIdAsync(override.id);
+      if (!targetNode) continue;
+      
+      const sourceNodeId = savedData.overrides[i].id;
+      const sourceNode = await figma.getNodeByIdAsync(sourceNodeId);
+      if (!sourceNode) continue;
+      
+      const { success } = await applyNodeOverrides({ targetNode, sourceNode, override });
+      if (success) appliedCount++;
     }
     
-    // Notify the user of the results
-    if (appliedCount > 0) {
-      figma.notify(`Successfully applied ${appliedCount} override${appliedCount > 1 ? 's' : ''}`);
+    return {
+      success: true,
+      instanceId: targetInstance.id,
+      instanceName: targetInstance.name,
+      appliedCount
+    };
+    
+  } catch (error) {
+    return {
+      success: false,
+      instanceId: targetInstance.id,
+      instanceName: targetInstance.name,
+      message: `Error: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Pastes saved overrides to the selected component instance(s)
+ * @param {SceneNode[] | null} instanceNodes - Optional array of instance nodes to paste to
+ * @returns {Promise<Object>} - Result of the paste operation
+ */
+async function pasteOverrides(instanceNodes = null) {
+  try {
+    // Get and validate target instances
+    const instancesResult = await getValidTargetInstances(instanceNodes);
+    if (!instancesResult.success) {
+      figma.notify(instancesResult.message);
+      return { success: false, message: instancesResult.message };
+    }
+    
+    // Get and validate saved override data
+    const savedDataResult = await getSavedOverrideData();
+    if (!savedDataResult.success) {
+      figma.notify(savedDataResult.message);
+      return { success: false, message: savedDataResult.message };
+    }
+    
+    const { targetInstances } = instancesResult;
+    const { savedData, mainComponent } = savedDataResult;
+    
+    console.log(`Processing ${targetInstances.length} instances`);
+    
+    // Process all instances
+    const results = [];
+    let totalAppliedCount = 0;
+    
+    for (const targetInstance of targetInstances) {
+      const result = await processInstance({
+        targetInstance,
+        mainComponent,
+        savedData
+      });
+      
+      if (result.success) {
+        totalAppliedCount += result.appliedCount;
+      }
+      results.push(result);
+    }
+    
+    // Return results
+    if (totalAppliedCount > 0) {
+      const instanceCount = results.filter(r => r.success).length;
+      const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
+      figma.notify(message);
       return { 
         success: true, 
-        message: `Applied ${appliedCount} overrides`, 
-        count: appliedCount,
-        targetInstance: targetInstance.id
+        message, 
+        totalCount: totalAppliedCount,
+        results 
       };
     } else {
-      figma.notify("No overrides applied");
-      return { success: false, message: "No overrides applied" };
+      const message = "No overrides applied to any instance";
+      figma.notify(message);
+      return { success: false, message, results };
     }
+    
   } catch (error) {
     console.error("Error in pasteOverrides:", error);
-    figma.notify("Error pasting overrides: " + error.message);
-    return { success: false, message: `Error: ${error.message}` };
+    const message = `Error: ${error.message}`;
+    figma.notify(message);
+    return { success: false, message };
   }
 }
