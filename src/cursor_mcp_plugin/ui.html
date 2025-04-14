@@ -215,6 +215,22 @@
           </button>
         </div>
         
+        <!-- Add Component Styles Section -->
+        <div class="section">
+          <h2>Component Overrides</h2>
+          <div style="display: flex; gap: 8px">
+            <button id="btn-copy-overrides" class="primary">
+              Copy Overrides
+            </button>
+            <button id="btn-paste-overrides" class="primary">
+              Paste Overrides
+            </button>
+          </div>
+          <div id="style-result" class="status info hidden">
+            No results yet.
+          </div>
+        </div>
+        
         <!-- Add Progress Bar Section -->
         <div id="progress-container" class="section hidden">
           <h2>Operation Progress</h2>
@@ -648,8 +664,34 @@
             // Forward progress update to server
             sendProgressUpdateToServer(message);
             break;
+          
         }
       };
+
+      // Component Style Overrides functionality
+      const copyOverridesButton = document.getElementById("btn-copy-overrides");
+      const pasteOverridesButton = document.getElementById("btn-paste-overrides");
+      const styleResultElement = document.getElementById("style-result");
+      
+      // Handle component override buttons
+      function handleOverridesButton(action) {
+        styleResultElement.textContent = `${action === "copy" ? "Copying" : "Pasting"} component overrides...`;
+        styleResultElement.className = "status info";
+        styleResultElement.classList.remove("hidden");
+        
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: `${action}-overrides`
+            }
+          },
+          "*"
+        );
+      }
+      
+      // Set up event listeners
+      copyOverridesButton.addEventListener("click", () => handleOverridesButton("copy"));
+      pasteOverridesButton.addEventListener("click", () => handleOverridesButton("paste"));
     </script>
   </body>
 </html>
