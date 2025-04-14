@@ -167,7 +167,7 @@ async function handleCommand(command, params) {
       return await scanNodesByTypes(params);
     case "set_multiple_annotations":
       return await setMultipleAnnotations(params);
-    case "copyOverrides":
+    case "copy_overrides":
       // Check if instanceNode parameter is provided
       if (params && params.instanceNodeId) {
         // Get the instance node by ID
@@ -180,7 +180,7 @@ async function handleCommand(command, params) {
       // Call without instance node if not provided
       return await copyOverrides();
     
-    case "pasteOverrides":
+    case "paste_overrides":
       // Check if instanceNodeIds parameter is provided
       if (params && params.instanceNodeIds) {
         // Validate that instanceNodeIds is an array
