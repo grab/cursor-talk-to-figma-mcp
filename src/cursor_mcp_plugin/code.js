@@ -2906,8 +2906,18 @@ async function applyNodeOverrides({ targetNode, sourceNode, override }) {
           applied = true;
         }
       }
+    } else if (field === "characters" && targetNode.type === "TEXT") {
+      // Handle text nodes by loading fonts first
+      try {
+        await figma.loadFontAsync(targetNode.fontName);
+        targetNode.characters = sourceNode.characters;
+        applied = true;
+      } catch (err) {
+        console.warn(`Failed to load font for text node: ${err.message}`);
+        throw new Error(`in set_characters: ${err.message}`);
+      }
     } else {
-      // Direct property assignment
+      // Direct property assignment for other properties
       targetNode[field] = sourceNode[field];
       applied = true;
     }
