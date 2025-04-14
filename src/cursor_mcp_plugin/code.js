@@ -172,6 +172,8 @@ async function handleCommand(command, params) {
       return await setPadding(params);
     case "set_axis_align":
       return await setAxisAlign(params);
+    case "set_layout_sizing":
+      return await setLayoutSizing(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -462,7 +464,9 @@ async function createFrame(params) {
     paddingBottom = 10,
     paddingLeft = 10,
     primaryAxisAlignItems = "MIN",
-    counterAxisAlignItems = "MIN"
+    counterAxisAlignItems = "MIN",
+    layoutSizingHorizontal = "FIXED",
+    layoutSizingVertical = "FIXED"
   } = params || {};
 
   const frame = figma.createFrame();
@@ -485,6 +489,10 @@ async function createFrame(params) {
     // Set axis alignment only when layoutMode is not NONE
     frame.primaryAxisAlignItems = primaryAxisAlignItems;
     frame.counterAxisAlignItems = counterAxisAlignItems;
+
+    // Set layout sizing only when layoutMode is not NONE
+    frame.layoutSizingHorizontal = layoutSizingHorizontal;
+    frame.layoutSizingVertical = layoutSizingVertical;
   }
 
   // Set fill color if provided
@@ -2810,6 +2818,75 @@ async function setAxisAlign(params) {
     name: node.name,
     primaryAxisAlignItems: node.primaryAxisAlignItems,
     counterAxisAlignItems: node.counterAxisAlignItems,
+    layoutMode: node.layoutMode
+  };
+}
+
+async function setLayoutSizing(params) {
+  const { 
+    nodeId, 
+    layoutSizingHorizontal,
+    layoutSizingVertical
+  } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports layout sizing
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support layout sizing`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error("Layout sizing can only be set on auto-layout frames (layoutMode must not be NONE)");
+  }
+
+  // Validate and set layoutSizingHorizontal if provided
+  if (layoutSizingHorizontal !== undefined) {
+    if (!["FIXED", "HUG", "FILL"].includes(layoutSizingHorizontal)) {
+      throw new Error("Invalid layoutSizingHorizontal value. Must be one of: FIXED, HUG, FILL");
+    }
+    // HUG is only valid on auto-layout frames and text nodes
+    if (layoutSizingHorizontal === "HUG" && !["FRAME", "TEXT"].includes(node.type)) {
+      throw new Error("HUG sizing is only valid on auto-layout frames and text nodes");
+    }
+    // FILL is only valid on auto-layout children
+    if (layoutSizingHorizontal === "FILL" && (!node.parent || node.parent.layoutMode === "NONE")) {
+      throw new Error("FILL sizing is only valid on auto-layout children");
+    }
+    node.layoutSizingHorizontal = layoutSizingHorizontal;
+  }
+
+  // Validate and set layoutSizingVertical if provided
+  if (layoutSizingVertical !== undefined) {
+    if (!["FIXED", "HUG", "FILL"].includes(layoutSizingVertical)) {
+      throw new Error("Invalid layoutSizingVertical value. Must be one of: FIXED, HUG, FILL");
+    }
+    // HUG is only valid on auto-layout frames and text nodes
+    if (layoutSizingVertical === "HUG" && !["FRAME", "TEXT"].includes(node.type)) {
+      throw new Error("HUG sizing is only valid on auto-layout frames and text nodes");
+    }
+    // FILL is only valid on auto-layout children
+    if (layoutSizingVertical === "FILL" && (!node.parent || node.parent.layoutMode === "NONE")) {
+      throw new Error("FILL sizing is only valid on auto-layout children");
+    }
+    node.layoutSizingVertical = layoutSizingVertical;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    layoutSizingHorizontal: node.layoutSizingHorizontal,
+    layoutSizingVertical: node.layoutSizingVertical,
     layoutMode: node.layoutMode
   };
 }

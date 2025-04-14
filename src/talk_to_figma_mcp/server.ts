@@ -423,7 +423,9 @@ server.tool(
     paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame"),
     paddingLeft: z.number().optional().describe("Left padding for auto-layout frame"),
     primaryAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame"),
-    counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame")
+    counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
+    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
+    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame")
   },
   async ({
     x,
@@ -442,7 +444,9 @@ server.tool(
     paddingBottom,
     paddingLeft,
     primaryAxisAlignItems,
-    counterAxisAlignItems
+    counterAxisAlignItems,
+    layoutSizingHorizontal,
+    layoutSizingVertical
   }) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
@@ -462,7 +466,9 @@ server.tool(
         paddingBottom,
         paddingLeft,
         primaryAxisAlignItems,
-        counterAxisAlignItems
+        counterAxisAlignItems,
+        layoutSizingHorizontal,
+        layoutSizingVertical
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -2058,6 +2064,60 @@ server.tool(
   }
 );
 
+// Set Layout Sizing Tool
+server.tool(
+  "set_layout_sizing",
+  "Set horizontal and vertical sizing modes for an auto-layout frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    layoutSizingHorizontal: z
+      .enum(["FIXED", "HUG", "FILL"])
+      .optional()
+      .describe("Horizontal sizing mode (HUG for frames/text only, FILL for auto-layout children only)"),
+    layoutSizingVertical: z
+      .enum(["FIXED", "HUG", "FILL"])
+      .optional()
+      .describe("Vertical sizing mode (HUG for frames/text only, FILL for auto-layout children only)")
+  },
+  async ({ nodeId, layoutSizingHorizontal, layoutSizingVertical }) => {
+    try {
+      const result = await sendCommandToFigma("set_layout_sizing", {
+        nodeId,
+        layoutSizingHorizontal,
+        layoutSizingVertical
+      });
+      const typedResult = result as { name: string };
+      
+      // Create a message about which sizing modes were set
+      const sizingMessages = [];
+      if (layoutSizingHorizontal !== undefined) sizingMessages.push(`horizontal: ${layoutSizingHorizontal}`);
+      if (layoutSizingVertical !== undefined) sizingMessages.push(`vertical: ${layoutSizingVertical}`);
+      
+      const sizingText = sizingMessages.length > 0 
+        ? `layout sizing (${sizingMessages.join(', ')})` 
+        : "layout sizing";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set ${sizingText} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting layout sizing: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -2090,7 +2150,8 @@ type FigmaCommand =
   | "scan_nodes_by_types"
   | "set_layout_mode"
   | "set_padding"
-  | "set_axis_align";
+  | "set_axis_align"
+  | "set_layout_sizing";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2123,6 +2184,8 @@ type CommandParams = {
     paddingLeft?: number;
     primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
     counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
+    layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
+    layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
   };
   create_text: {
     x: number;
@@ -2236,6 +2299,11 @@ type CommandParams = {
     nodeId: string;
     primaryAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "SPACE_BETWEEN";
     counterAxisAlignItems?: "MIN" | "MAX" | "CENTER" | "BASELINE";
+  };
+  set_layout_sizing: {
+    nodeId: string;
+    layoutSizingHorizontal?: "FIXED" | "HUG" | "FILL";
+    layoutSizingVertical?: "FIXED" | "HUG" | "FILL";
   };
 };
 
