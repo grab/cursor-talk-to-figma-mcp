@@ -417,7 +417,11 @@ server.tool(
       .describe("Stroke color in RGBA format"),
     strokeWeight: z.number().positive().optional().describe("Stroke weight"),
     layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).optional().describe("Auto-layout mode for the frame"),
-    layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children")
+    layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children"),
+    paddingTop: z.number().optional().describe("Top padding for auto-layout frame"),
+    paddingRight: z.number().optional().describe("Right padding for auto-layout frame"),
+    paddingBottom: z.number().optional().describe("Bottom padding for auto-layout frame"),
+    paddingLeft: z.number().optional().describe("Left padding for auto-layout frame")
   },
   async ({
     x,
@@ -430,7 +434,11 @@ server.tool(
     strokeColor,
     strokeWeight,
     layoutMode,
-    layoutWrap
+    layoutWrap,
+    paddingTop,
+    paddingRight,
+    paddingBottom,
+    paddingLeft
   }) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
@@ -444,7 +452,11 @@ server.tool(
         strokeColor: strokeColor,
         strokeWeight: strokeWeight,
         layoutMode,
-        layoutWrap
+        layoutWrap,
+        paddingTop,
+        paddingRight,
+        paddingBottom,
+        paddingLeft
       });
       const typedResult = result as { name: string; id: string };
       return {
@@ -1932,6 +1944,60 @@ server.tool(
   }
 );
 
+// Set Padding Tool
+server.tool(
+  "set_padding",
+  "Set padding values for an auto-layout frame in Figma",
+  {
+    nodeId: z.string().describe("The ID of the frame to modify"),
+    paddingTop: z.number().optional().describe("Top padding value"),
+    paddingRight: z.number().optional().describe("Right padding value"),
+    paddingBottom: z.number().optional().describe("Bottom padding value"),
+    paddingLeft: z.number().optional().describe("Left padding value"),
+  },
+  async ({ nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft }) => {
+    try {
+      const result = await sendCommandToFigma("set_padding", {
+        nodeId,
+        paddingTop,
+        paddingRight,
+        paddingBottom,
+        paddingLeft,
+      });
+      const typedResult = result as { name: string };
+      
+      // Create a message about which padding values were set
+      const paddingMessages = [];
+      if (paddingTop !== undefined) paddingMessages.push(`top: ${paddingTop}`);
+      if (paddingRight !== undefined) paddingMessages.push(`right: ${paddingRight}`);
+      if (paddingBottom !== undefined) paddingMessages.push(`bottom: ${paddingBottom}`);
+      if (paddingLeft !== undefined) paddingMessages.push(`left: ${paddingLeft}`);
+      
+      const paddingText = paddingMessages.length > 0 
+        ? `padding (${paddingMessages.join(', ')})` 
+        : "padding";
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set ${paddingText} for frame "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting padding: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -1962,7 +2028,8 @@ type FigmaCommand =
   | "set_annotation"
   | "set_multiple_annotations"
   | "scan_nodes_by_types"
-  | "set_layout_mode";
+  | "set_layout_mode"
+  | "set_padding";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -1989,6 +2056,10 @@ type CommandParams = {
     strokeWeight?: number;
     layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL";
     layoutWrap?: "NO_WRAP" | "WRAP";
+    paddingTop?: number;
+    paddingRight?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
   };
   create_text: {
     x: number;
@@ -2090,6 +2161,13 @@ type CommandParams = {
     nodeId: string;
     layoutMode: "NONE" | "HORIZONTAL" | "VERTICAL";
     layoutWrap?: "NO_WRAP" | "WRAP";
+  };
+  set_padding: {
+    nodeId: string;
+    paddingTop?: number;
+    paddingRight?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
   };
 };
 

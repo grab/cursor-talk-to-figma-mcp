@@ -168,6 +168,8 @@ async function handleCommand(command, params) {
       return await setMultipleAnnotations(params);
     case "set_layout_mode":
       return await setLayoutMode(params);
+    case "set_padding":
+      return await setPadding(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -452,7 +454,11 @@ async function createFrame(params) {
     strokeColor,
     strokeWeight,
     layoutMode = "NONE",
-    layoutWrap = "NO_WRAP"
+    layoutWrap = "NO_WRAP",
+    paddingTop = 10,
+    paddingRight = 10,
+    paddingBottom = 10,
+    paddingLeft = 10
   } = params || {};
 
   const frame = figma.createFrame();
@@ -465,6 +471,12 @@ async function createFrame(params) {
   if (layoutMode !== "NONE") {
     frame.layoutMode = layoutMode;
     frame.layoutWrap = layoutWrap;
+    
+    // Set padding values only when layoutMode is not NONE
+    frame.paddingTop = paddingTop;
+    frame.paddingRight = paddingRight;
+    frame.paddingBottom = paddingBottom;
+    frame.paddingLeft = paddingLeft;
   }
 
   // Set fill color if provided
@@ -2657,26 +2669,82 @@ async function deleteMultipleNodes(params) {
 }
 
 async function setLayoutMode(params) {
-  const { nodeId, layoutMode, layoutWrap = "NO_WRAP" } = params;
+  const { nodeId, layoutMode = "NONE", layoutWrap = "NO_WRAP" } = params || {};
 
-  // Get the node
-  const node = await figma.getNodeByIdAsync(nodeId);
+  // Get the target node
+  const node = figma.getNodeById(nodeId);
   if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
+    throw new Error(`Node with ID ${nodeId} not found`);
   }
 
-  // Check if the node is a frame
-  if (node.type !== "FRAME") {
-    throw new Error(`Node with ID ${nodeId} is not a frame`);
+  // Check if node is a frame or component that supports layoutMode
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support layoutMode`);
   }
 
-  // Set layout mode and wrap
+  // Set layout mode
   node.layoutMode = layoutMode;
-  node.layoutWrap = layoutWrap;
+
+  // Set layoutWrap if applicable
+  if (layoutMode !== "NONE") {
+    node.layoutWrap = layoutWrap;
+  }
 
   return {
+    id: node.id,
     name: node.name,
     layoutMode: node.layoutMode,
-    layoutWrap: node.layoutWrap
+    layoutWrap: node.layoutWrap,
+  };
+}
+
+async function setPadding(params) {
+  const { 
+    nodeId, 
+    paddingTop, 
+    paddingRight, 
+    paddingBottom, 
+    paddingLeft 
+  } = params || {};
+
+  // Get the target node
+  const node = figma.getNodeById(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports padding
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support padding`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error("Padding can only be set on auto-layout frames (layoutMode must not be NONE)");
+  }
+  
+  // Set padding values if provided
+  if (paddingTop !== undefined) node.paddingTop = paddingTop;
+  if (paddingRight !== undefined) node.paddingRight = paddingRight;
+  if (paddingBottom !== undefined) node.paddingBottom = paddingBottom;
+  if (paddingLeft !== undefined) node.paddingLeft = paddingLeft;
+
+  return {
+    id: node.id,
+    name: node.name,
+    paddingTop: node.paddingTop,
+    paddingRight: node.paddingRight,
+    paddingBottom: node.paddingBottom,
+    paddingLeft: node.paddingLeft
   };
 }
