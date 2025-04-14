@@ -167,7 +167,7 @@ async function handleCommand(command, params) {
       return await scanNodesByTypes(params);
     case "set_multiple_annotations":
       return await setMultipleAnnotations(params);
-    case "copy_instance_overrides":
+    case "get_instance_overrides":
       // Check if instanceNode parameter is provided
       if (params && params.instanceNodeId) {
         // Get the instance node by ID
@@ -175,12 +175,12 @@ async function handleCommand(command, params) {
         if (!instanceNode) {
           throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
         }
-        return await copyInstanceOverrides(instanceNode);
+        return await getInstanceOverrides(instanceNode);
       }
       // Call without instance node if not provided
-      return await copyInstanceOverrides();
+      return await getInstanceOverrides();
     
-    case "paste_instance_overrides":
+    case "set_instance_overrides":
       // Check if instanceNodeIds parameter is provided
       if (params && params.instanceNodeIds) {
         // Validate that instanceNodeIds is an array
@@ -205,7 +205,7 @@ async function handleCommand(command, params) {
         
         // Use savedData from params if provided
         if (params.savedData) {
-          return await pasteInstanceOverrides(instanceNodes, params.savedData);
+          return await setInstanceOverrides(instanceNodes, params.savedData);
         } else {
           throw new Error("No override data provided in params.savedData");
         }
@@ -217,7 +217,7 @@ async function handleCommand(command, params) {
       }
       
       // Call with null instances (will use selection) and savedData
-      return await pasteInstanceOverrides(null, params.savedData);
+      return await setInstanceOverrides(null, params.savedData);
       
     default:
       throw new Error(`Unknown command: ${command}`);
@@ -2697,9 +2697,9 @@ async function deleteMultipleNodes(params) {
   };
 }
 
-// Implementation for copyInstanceOverrides function
-async function copyInstanceOverrides(instanceNode = null) {
-  console.log("=== copyInstanceOverrides called ===");
+// Implementation for getInstanceOverrides function
+async function getInstanceOverrides(instanceNode = null) {
+  console.log("=== getInstanceOverrides called ===");
   
   let sourceInstance = null;
   
@@ -2743,7 +2743,7 @@ async function copyInstanceOverrides(instanceNode = null) {
   }
   
   try {
-    console.log(`Copying instance information:`);
+    console.log(`Getting instance information:`);
     console.log(sourceInstance);
     
     // Get component overrides
@@ -2757,15 +2757,15 @@ async function copyInstanceOverrides(instanceNode = null) {
     };
     
     console.log("Component data to return to MCP server:", componentData);
-    figma.notify(`Copied component information from "${sourceInstance.name}"`);
+    figma.notify(`Got component information from "${sourceInstance.name}"`);
     
     return {
       success: true,
-      message: `Copied component information from "${sourceInstance.name}"`,
+      message: `Got component information from "${sourceInstance.name}"`,
       componentData
     };
   } catch (error) {
-    console.error("Error in copyInstanceOverrides:", error);
+    console.error("Error in getInstanceOverrides:", error);
     figma.notify(`Error: ${error.message}`);
     return {
       success: false,
@@ -2981,12 +2981,12 @@ async function processInstance({ targetInstance, mainComponent, savedData }) {
 }
 
 /**
- * Pastes saved overrides to the selected component instance(s)
- * @param {SceneNode[] | null} instanceNodes - Optional array of instance nodes to paste to
+ * Sets saved overrides to the selected component instance(s)
+ * @param {SceneNode[] | null} instanceNodes - Optional array of instance nodes to set overrides to
  * @param {Object} savedData - Override data provided by MCP server
- * @returns {Promise<Object>} - Result of the paste operation
+ * @returns {Promise<Object>} - Result of the set operation
  */
-async function pasteInstanceOverrides(instanceNodes = null, savedData = null) {
+async function setInstanceOverrides(instanceNodes = null, savedData = null) {
   try {
     // Check if saved data was provided
     if (!savedData) {
@@ -3049,7 +3049,7 @@ async function pasteInstanceOverrides(instanceNodes = null, savedData = null) {
     }
     
   } catch (error) {
-    console.error("Error in pasteInstanceOverrides:", error);
+    console.error("Error in setInstanceOverrides:", error);
     const message = `Error: ${error.message}`;
     figma.notify(message);
     return { success: false, message };

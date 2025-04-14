@@ -43,13 +43,13 @@ interface ComponentOverrideData {
   overrides: ComponentOverride[];
 }
 
-interface CopyOverridesResult {
+interface getInstanceOverridesResult {
   success: boolean;
   message: string;
   componentData?: ComponentOverrideData;
 }
 
-interface PasteOverridesResult {
+interface setInstanceOverridesResult {
   success: boolean;
   message: string;
   totalCount?: number;
@@ -1233,25 +1233,25 @@ server.tool(
 
 // Copy Instance Overrides Tool
 server.tool(
-  "copy_instance_overrides",
-  "Copy all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
+  "get_instance_overrides",
+  "Get all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
   {
-    nodeId: z.string().optional().describe("Optional ID of the component instance to copy overrides from. If not provided, currently selected instance will be used."),
+    nodeId: z.string().optional().describe("Optional ID of the component instance to get overrides from. If not provided, currently selected instance will be used."),
   },
   async ({ nodeId }) => {
     try {
-      const result = await sendCommandToFigma("copy_instance_overrides", { 
+      const result = await sendCommandToFigma("get_instance_overrides", { 
         instanceNodeId: nodeId || null 
       });
-      const typedResult = result as CopyOverridesResult;
+      const typedResult = result as getInstanceOverridesResult;
       
       return {
         content: [
           {
             type: "text",
             text: typedResult.success 
-              ? `Successfully copied instance overrides: ${typedResult.message}`
-              : `Failed to copy instance overrides: ${typedResult.message}`
+              ? `Successfully got instance overrides: ${typedResult.message}`
+              : `Failed to get instance overrides: ${typedResult.message}`
           }
         ]
       };
@@ -1268,9 +1268,9 @@ server.tool(
   }
 );
 
-// Paste Instance Overrides Tool
+// Set Instance Overrides Tool
 server.tool(
-  "paste_instance_overrides",
+  "set_instance_overrides",
   "Apply previously copied overrides to selected component instances. Target instances will be swapped to the source component and all copied override properties will be applied.",
   {
     overrideData: z.object({
@@ -1284,11 +1284,11 @@ server.tool(
   },
   async ({ overrideData, targetNodeIds }) => {
     try {
-      const result = await sendCommandToFigma("paste_instance_overrides", {
+      const result = await sendCommandToFigma("set_instance_overrides", {
         instanceNodes: targetNodeIds ? targetNodeIds.map(id => ({ id })) : null,
         savedData: overrideData
       });
-      const typedResult = result as PasteOverridesResult;
+      const typedResult = result as setInstanceOverridesResult;
       
       if (typedResult.success) {
         const successCount = typedResult.results?.filter(r => r.success).length || 0;
@@ -1305,7 +1305,7 @@ server.tool(
           content: [
             {
               type: "text",
-              text: `Failed to paste instance overrides: ${typedResult.message}`
+              text: `Failed to set instance overrides: ${typedResult.message}`
             }
           ]
         };
@@ -1315,7 +1315,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error pasting instance overrides: ${error instanceof Error ? error.message : String(error)}`
+            text: `Error setting instance overrides: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
       };
@@ -2061,8 +2061,8 @@ type FigmaCommand =
   | "get_local_components"
   | "get_team_components"
   | "create_component_instance"
-  | "copy_instance_overrides"
-  | "paste_instance_overrides"
+  | "get_instance_overrides"
+  | "set_instance_overrides"
   | "export_node_as_image"
   | "join"
   | "set_corner_radius"
@@ -2149,10 +2149,10 @@ type CommandParams = {
     x: number;
     y: number;
   };
-  copy_instance_overrides: {
+  get_instance_overrides: {
     instanceNodeId: string | null;
   };
-  paste_instance_overrides: {
+  set_instance_overrides: {
     instanceNodes: Array<{ id: string }> | null;
     savedData: ComponentOverrideData;
   };
