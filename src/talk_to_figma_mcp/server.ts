@@ -38,15 +38,13 @@ interface ComponentOverride {
   overriddenFields: string[];
 }
 
-interface ComponentOverrideData {
-  sourceInstanceId: string;
-  overrides: ComponentOverride[];
-}
-
+// Update the getInstanceOverridesResult interface to match the plugin implementation
 interface getInstanceOverridesResult {
   success: boolean;
   message: string;
-  componentData?: ComponentOverrideData;
+  sourceInstanceId: string;
+  mainComponentId: string;
+  overridesCount: number;
 }
 
 interface setInstanceOverridesResult {
@@ -1273,20 +1271,14 @@ server.tool(
   "set_instance_overrides",
   "Apply previously copied overrides to selected component instances. Target instances will be swapped to the source component and all copied override properties will be applied.",
   {
-    overrideData: z.object({
-      sourceInstanceId: z.string().describe("ID of the source component instance"),
-      overrides: z.array(z.object({
-        id: z.string().describe("ID of the override node"),
-        overriddenFields: z.array(z.string()).describe("Array of property names that were overridden")
-      })).describe("Array of overrides from the source instance")
-    }).describe("Override data previously copied from an instance"),
-    targetNodeIds: z.array(z.string()).optional().describe("Optional array of target instance IDs. If not provided, currently selected instances will be used.")
+    sourceInstanceId: z.string().describe("ID of the source component instance"),
+    targetNodeIds: z.array(z.string()).describe("Array of target instance IDs. Currently selected instances will be used.")
   },
-  async ({ overrideData, targetNodeIds }) => {
+  async ({ sourceInstanceId, targetNodeIds }) => {
     try {
       const result = await sendCommandToFigma("set_instance_overrides", {
-        instanceNodes: targetNodeIds ? targetNodeIds.map(id => ({ id })) : null,
-        savedData: overrideData
+        sourceInstanceId: sourceInstanceId,
+        targetNodeIds: targetNodeIds || []
       });
       const typedResult = result as setInstanceOverridesResult;
       
@@ -2043,7 +2035,7 @@ This strategy focuses on practical implementation based on real-world usage patt
 // Instance Slot Filling Strategy Prompt
 server.prompt(
   "swap_overrides_instances",
-  "Effectively swap overrides between instances",
+  "Guide to swap instance overrides between instances",
   (extra) => {
     return {
       messages: [
@@ -2051,7 +2043,7 @@ server.prompt(
           role: "assistant",
           content: {
             type: "text",
-            text: `# Component Instance Override Transfer Strategy
+            text: `# Swap Component Instance and Override Strategy
 
 ## Overview
 This strategy enables transferring content and property overrides from a source instance to one or more target instances in Figma, maintaining design consistency while reducing manual work.
@@ -2075,14 +2067,7 @@ This strategy enables transferring content and property overrides from a source 
 - Command syntax:
   \`\`\`
   set_instance_overrides({
-    overrideData: {
-      sourceInstanceId: "source-id", 
-      overrides: [
-        {id: "node-id-1", overriddenFields: ["characters"]},
-        {id: "node-id-2", overriddenFields: ["characters"]},
-        // More overrides as needed
-      ]
-    },
+    sourceInstanceId: "source-instance-id", 
     targetNodeIds: ["target-id-1", "target-id-2", ...]
   })
   \`\`\`
@@ -2214,9 +2199,10 @@ type CommandParams = {
   get_instance_overrides: {
     instanceNodeId: string | null;
   };
+  // Updated to match the plugin implementation
   set_instance_overrides: {
-    instanceNodes: Array<{ id: string }> | null;
-    savedData: ComponentOverrideData;
+    targetNodeIds: string[];
+    sourceInstanceId: string;
   };
   export_node_as_image: {
     nodeId: string;
