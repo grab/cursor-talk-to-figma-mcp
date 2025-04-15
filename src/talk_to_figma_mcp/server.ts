@@ -2448,7 +2448,6 @@ type CommandParams = {
   get_instance_overrides: {
     instanceNodeId: string | null;
   };
-  // Updated to match the plugin implementation
   set_instance_overrides: {
     targetNodeIds: string[];
     sourceInstanceId: string;
