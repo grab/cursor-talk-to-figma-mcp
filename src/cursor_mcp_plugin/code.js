@@ -210,8 +210,16 @@ async function handleCommand(command, params) {
           throw new Error("Missing sourceInstanceId parameter");
         }
       }
-
-
+    case "set_layout_mode":
+      return await setLayoutMode(params);
+    case "set_padding":
+      return await setPadding(params);
+    case "set_axis_align":
+      return await setAxisAlign(params);
+    case "set_layout_sizing":
+      return await setLayoutSizing(params);
+    case "set_item_spacing":
+      return await setItemSpacing(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -495,6 +503,17 @@ async function createFrame(params) {
     fillColor,
     strokeColor,
     strokeWeight,
+    layoutMode = "NONE",
+    layoutWrap = "NO_WRAP",
+    paddingTop = 10,
+    paddingRight = 10,
+    paddingBottom = 10,
+    paddingLeft = 10,
+    primaryAxisAlignItems = "MIN",
+    counterAxisAlignItems = "MIN",
+    layoutSizingHorizontal = "FIXED",
+    layoutSizingVertical = "FIXED",
+    itemSpacing = 0,
   } = params || {};
 
   const frame = figma.createFrame();
@@ -502,6 +521,29 @@ async function createFrame(params) {
   frame.y = y;
   frame.resize(width, height);
   frame.name = name;
+
+  // Set layout mode if provided
+  if (layoutMode !== "NONE") {
+    frame.layoutMode = layoutMode;
+    frame.layoutWrap = layoutWrap;
+
+    // Set padding values only when layoutMode is not NONE
+    frame.paddingTop = paddingTop;
+    frame.paddingRight = paddingRight;
+    frame.paddingBottom = paddingBottom;
+    frame.paddingLeft = paddingLeft;
+
+    // Set axis alignment only when layoutMode is not NONE
+    frame.primaryAxisAlignItems = primaryAxisAlignItems;
+    frame.counterAxisAlignItems = counterAxisAlignItems;
+
+    // Set layout sizing only when layoutMode is not NONE
+    frame.layoutSizingHorizontal = layoutSizingHorizontal;
+    frame.layoutSizingVertical = layoutSizingVertical;
+
+    // Set item spacing only when layoutMode is not NONE
+    frame.itemSpacing = itemSpacing;
+  }
 
   // Set fill color if provided
   if (fillColor) {
@@ -560,6 +602,8 @@ async function createFrame(params) {
     fills: frame.fills,
     strokes: frame.strokes,
     strokeWeight: frame.strokeWeight,
+    layoutMode: frame.layoutMode,
+    layoutWrap: frame.layoutWrap,
     parentId: frame.parent ? frame.parent.id : undefined,
   };
 }
@@ -572,7 +616,7 @@ async function createText(params) {
     fontSize = 14,
     fontWeight = 400,
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
-    name = "Text",
+    name = "",
     parentId,
   } = params || {};
 
@@ -605,7 +649,7 @@ async function createText(params) {
   const textNode = figma.createText();
   textNode.x = x;
   textNode.y = y;
-  textNode.name = name;
+  textNode.name = name || text;
   try {
     await figma.loadFontAsync({
       family: "Inter",
@@ -3008,4 +3052,488 @@ async function setInstanceOverrides(targetInstances, sourceResult) {
     figma.notify(message);
     return { success: false, message };
   }
+}
+
+/**
+ * Helper function to validate and get saved override data
+ * @param {string} sourceInstanceId - Source instance ID
+ * @returns {Promise<Object>} - Validation result with source instance data or error
+ */
+async function getSourceInstanceData(sourceInstanceId) {
+  if (!sourceInstanceId) {
+    return { success: false, message: "Missing source instance ID" };
+  }
+
+  // Get source instance by ID
+  const sourceInstance = await figma.getNodeByIdAsync(sourceInstanceId);
+  if (!sourceInstance) {
+    return {
+      success: false,
+      message: "Source instance not found. The original instance may have been deleted."
+    };
+  }
+
+  // Verify it's an instance
+  if (sourceInstance.type !== "INSTANCE") {
+    return {
+      success: false,
+      message: "Source node is not a component instance."
+    };
+  }
+
+  // Get main component
+  const mainComponent = await sourceInstance.getMainComponentAsync();
+  if (!mainComponent) {
+    return {
+      success: false,
+      message: "Failed to get main component from source instance."
+    };
+  }
+
+  return {
+    success: true,
+    sourceInstance,
+    mainComponent,
+    overrides: sourceInstance.overrides || []
+  };
+}
+
+/**
+ * Sets saved overrides to the selected component instance(s)
+ * @param {InstanceNode[] | null} targetInstances - Array of instance nodes to set overrides to
+ * @param {Object} sourceResult - Source instance data from getSourceInstanceData
+ * @returns {Promise<Object>} - Result of the set operation
+ */
+async function setInstanceOverrides(targetInstances, sourceResult) {
+  try {
+
+
+    const { sourceInstance, mainComponent, overrides } = sourceResult;
+
+    console.log(`Processing ${targetInstances.length} instances with ${overrides.length} overrides`);
+    console.log(`Source instance: ${sourceInstance.id}, Main component: ${mainComponent.id}`);
+    console.log(`Overrides:`, overrides);
+
+    // Process all instances
+    const results = [];
+    let totalAppliedCount = 0;
+
+    for (const targetInstance of targetInstances) {
+      try {
+        // // Skip if trying to apply to the source instance itself
+        // if (targetInstance.id === sourceInstance.id) {
+        //   console.log(`Skipping source instance itself: ${targetInstance.id}`);
+        //   results.push({
+        //     success: false,
+        //     instanceId: targetInstance.id,
+        //     instanceName: targetInstance.name,
+        //     message: "This is the source instance itself, skipping"
+        //   });
+        //   continue;
+        // }
+
+        // Swap component
+        try {
+          targetInstance.swapComponent(mainComponent);
+          console.log(`Swapped component for instance "${targetInstance.name}"`);
+        } catch (error) {
+          console.error(`Error swapping component for instance "${targetInstance.name}":`, error);
+          results.push({
+            success: false,
+            instanceId: targetInstance.id,
+            instanceName: targetInstance.name,
+            message: `Error: ${error.message}`
+          });
+        }
+
+        // Prepare overrides by replacing node IDs
+        let appliedCount = 0;
+
+        // Apply each override
+        for (const override of overrides) {
+          // Skip if no ID or overriddenFields
+          if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
+            continue;
+          }
+
+          // Replace source instance ID with target instance ID in the node path
+          const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
+          const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
+
+          if (!overrideNode) {
+            console.log(`Override node not found: ${overrideNodeId}`);
+            continue;
+          }
+
+          // Get source node to copy properties from
+          const sourceNode = await figma.getNodeByIdAsync(override.id);
+          if (!sourceNode) {
+            console.log(`Source node not found: ${override.id}`);
+            continue;
+          }
+
+          // Apply each overridden field
+          let fieldApplied = false;
+          for (const field of override.overriddenFields) {
+            try {
+              if (field === "componentProperties") {
+                // Apply component properties
+                if (sourceNode.componentProperties && overrideNode.componentProperties) {
+                  const properties = {};
+                  for (const key in sourceNode.componentProperties) {
+                    // if INSTANCE_SWAP use id, otherwise use value
+                    if (sourceNode.componentProperties[key].type === 'INSTANCE_SWAP') {
+                      properties[key] = sourceNode.componentProperties[key].value;
+                    
+                    } else {
+                      properties[key] = sourceNode.componentProperties[key].value;
+                    }
+                  }
+                  overrideNode.setProperties(properties);
+                  fieldApplied = true;
+                }
+              } else if (field === "characters" && overrideNode.type === "TEXT") {
+                // For text nodes, need to load fonts first
+                await figma.loadFontAsync(overrideNode.fontName);
+                overrideNode.characters = sourceNode.characters;
+                fieldApplied = true;
+              } else if (field in overrideNode) {
+                // Direct property assignment
+                overrideNode[field] = sourceNode[field];
+                fieldApplied = true;
+              }
+            } catch (fieldError) {
+              console.error(`Error applying field ${field}:`, fieldError);
+            }
+          }
+
+          if (fieldApplied) {
+            appliedCount++;
+          }
+        }
+
+        if (appliedCount > 0) {
+          totalAppliedCount += appliedCount;
+          results.push({
+            success: true,
+            instanceId: targetInstance.id,
+            instanceName: targetInstance.name,
+            appliedCount
+          });
+          console.log(`Applied ${appliedCount} overrides to "${targetInstance.name}"`);
+        } else {
+          results.push({
+            success: false,
+            instanceId: targetInstance.id,
+            instanceName: targetInstance.name,
+            message: "No overrides were applied"
+          });
+        }
+      } catch (instanceError) {
+        console.error(`Error processing instance "${targetInstance.name}":`, instanceError);
+        results.push({
+          success: false,
+          instanceId: targetInstance.id,
+          instanceName: targetInstance.name,
+          message: `Error: ${instanceError.message}`
+        });
+      }
+    }
+
+    // Return results
+    if (totalAppliedCount > 0) {
+      const instanceCount = results.filter(r => r.success).length;
+      const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
+      figma.notify(message);
+      return {
+        success: true,
+        message,
+        totalCount: totalAppliedCount,
+        results
+      };
+    } else {
+      const message = "No overrides applied to any instance";
+      figma.notify(message);
+      return { success: false, message, results };
+    }
+
+  } catch (error) {
+    console.error("Error in setInstanceOverrides:", error);
+    const message = `Error: ${error.message}`;
+    figma.notify(message);
+    return { success: false, message };
+  }
+}
+
+async function setLayoutMode(params) {
+  const { nodeId, layoutMode = "NONE", layoutWrap = "NO_WRAP" } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports layoutMode
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support layoutMode`);
+  }
+
+  // Set layout mode
+  node.layoutMode = layoutMode;
+
+  // Set layoutWrap if applicable
+  if (layoutMode !== "NONE") {
+    node.layoutWrap = layoutWrap;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    layoutMode: node.layoutMode,
+    layoutWrap: node.layoutWrap,
+  };
+}
+
+async function setPadding(params) {
+  const { nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft } =
+    params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports padding
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support padding`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error(
+      "Padding can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
+  }
+
+  // Set padding values if provided
+  if (paddingTop !== undefined) node.paddingTop = paddingTop;
+  if (paddingRight !== undefined) node.paddingRight = paddingRight;
+  if (paddingBottom !== undefined) node.paddingBottom = paddingBottom;
+  if (paddingLeft !== undefined) node.paddingLeft = paddingLeft;
+
+  return {
+    id: node.id,
+    name: node.name,
+    paddingTop: node.paddingTop,
+    paddingRight: node.paddingRight,
+    paddingBottom: node.paddingBottom,
+    paddingLeft: node.paddingLeft,
+  };
+}
+
+async function setAxisAlign(params) {
+  const { nodeId, primaryAxisAlignItems, counterAxisAlignItems } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports axis alignment
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support axis alignment`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error(
+      "Axis alignment can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
+  }
+
+  // Validate and set primaryAxisAlignItems if provided
+  if (primaryAxisAlignItems !== undefined) {
+    if (
+      !["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)
+    ) {
+      throw new Error(
+        "Invalid primaryAxisAlignItems value. Must be one of: MIN, MAX, CENTER, SPACE_BETWEEN"
+      );
+    }
+    node.primaryAxisAlignItems = primaryAxisAlignItems;
+  }
+
+  // Validate and set counterAxisAlignItems if provided
+  if (counterAxisAlignItems !== undefined) {
+    if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
+      throw new Error(
+        "Invalid counterAxisAlignItems value. Must be one of: MIN, MAX, CENTER, BASELINE"
+      );
+    }
+    // BASELINE is only valid for horizontal layout
+    if (
+      counterAxisAlignItems === "BASELINE" &&
+      node.layoutMode !== "HORIZONTAL"
+    ) {
+      throw new Error(
+        "BASELINE alignment is only valid for horizontal auto-layout frames"
+      );
+    }
+    node.counterAxisAlignItems = counterAxisAlignItems;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    primaryAxisAlignItems: node.primaryAxisAlignItems,
+    counterAxisAlignItems: node.counterAxisAlignItems,
+    layoutMode: node.layoutMode,
+  };
+}
+
+async function setLayoutSizing(params) {
+  const { nodeId, layoutSizingHorizontal, layoutSizingVertical } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports layout sizing
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support layout sizing`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error(
+      "Layout sizing can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
+  }
+
+  // Validate and set layoutSizingHorizontal if provided
+  if (layoutSizingHorizontal !== undefined) {
+    if (!["FIXED", "HUG", "FILL"].includes(layoutSizingHorizontal)) {
+      throw new Error(
+        "Invalid layoutSizingHorizontal value. Must be one of: FIXED, HUG, FILL"
+      );
+    }
+    // HUG is only valid on auto-layout frames and text nodes
+    if (
+      layoutSizingHorizontal === "HUG" &&
+      !["FRAME", "TEXT"].includes(node.type)
+    ) {
+      throw new Error(
+        "HUG sizing is only valid on auto-layout frames and text nodes"
+      );
+    }
+    // FILL is only valid on auto-layout children
+    if (
+      layoutSizingHorizontal === "FILL" &&
+      (!node.parent || node.parent.layoutMode === "NONE")
+    ) {
+      throw new Error("FILL sizing is only valid on auto-layout children");
+    }
+    node.layoutSizingHorizontal = layoutSizingHorizontal;
+  }
+
+  // Validate and set layoutSizingVertical if provided
+  if (layoutSizingVertical !== undefined) {
+    if (!["FIXED", "HUG", "FILL"].includes(layoutSizingVertical)) {
+      throw new Error(
+        "Invalid layoutSizingVertical value. Must be one of: FIXED, HUG, FILL"
+      );
+    }
+    // HUG is only valid on auto-layout frames and text nodes
+    if (
+      layoutSizingVertical === "HUG" &&
+      !["FRAME", "TEXT"].includes(node.type)
+    ) {
+      throw new Error(
+        "HUG sizing is only valid on auto-layout frames and text nodes"
+      );
+    }
+    // FILL is only valid on auto-layout children
+    if (
+      layoutSizingVertical === "FILL" &&
+      (!node.parent || node.parent.layoutMode === "NONE")
+    ) {
+      throw new Error("FILL sizing is only valid on auto-layout children");
+    }
+    node.layoutSizingVertical = layoutSizingVertical;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    layoutSizingHorizontal: node.layoutSizingHorizontal,
+    layoutSizingVertical: node.layoutSizingVertical,
+    layoutMode: node.layoutMode,
+  };
+}
+
+async function setItemSpacing(params) {
+  const { nodeId, itemSpacing } = params || {};
+
+  // Get the target node
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${nodeId} not found`);
+  }
+
+  // Check if node is a frame or component that supports item spacing
+  if (
+    node.type !== "FRAME" &&
+    node.type !== "COMPONENT" &&
+    node.type !== "COMPONENT_SET" &&
+    node.type !== "INSTANCE"
+  ) {
+    throw new Error(`Node type ${node.type} does not support item spacing`);
+  }
+
+  // Check if the node has auto-layout enabled
+  if (node.layoutMode === "NONE") {
+    throw new Error(
+      "Item spacing can only be set on auto-layout frames (layoutMode must not be NONE)"
+    );
+  }
+
+  // Set item spacing
+  if (itemSpacing !== undefined) {
+    if (typeof itemSpacing !== "number") {
+      throw new Error("Item spacing must be a number");
+    }
+    node.itemSpacing = itemSpacing;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    itemSpacing: node.itemSpacing,
+    layoutMode: node.layoutMode,
+  };
 }

@@ -158,13 +158,11 @@ The MCP server provides the following tools for interacting with Figma:
 
 - `get_styles` - Get information about local styles
 - `get_local_components` - Get information about local components
-- `get_team_components` - Get information about team components
 - `create_component_instance` - Create an instance of a component
 
 ### Export & Advanced
 
-- `export_node_as_image` - Export a node as an image (PNG, JPG, SVG, or PDF)
-- `execute_figma_code` - Execute arbitrary JavaScript code in Figma (use with caution)
+- `export_node_as_image` - Export a node as an image (PNG, JPG, SVG, or PDF) - limited support on image currently returning base64 as text
 
 ### Connection Management
 
