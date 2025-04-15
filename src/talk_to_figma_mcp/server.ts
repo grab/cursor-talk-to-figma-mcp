@@ -2042,8 +2042,8 @@ This strategy focuses on practical implementation based on real-world usage patt
 
 // Instance Slot Filling Strategy Prompt
 server.prompt(
-  "fill_instance_slots_strategy",
-  "Effectively fill target instance slots with source instance content",
+  "swap_overrides_instances",
+  "Effectively swap overrides between instances",
   (extra) => {
     return {
       messages: [
@@ -2051,69 +2051,57 @@ server.prompt(
           role: "assistant",
           content: {
             type: "text",
-            text: `# Component Instance Slot Filling Strategy
+            text: `# Component Instance Override Transfer Strategy
 
-## Step-by-Step Approach
+## Overview
+This strategy enables transferring content and property overrides from a source instance to one or more target instances in Figma, maintaining design consistency while reducing manual work.
 
-1. **Selection & Identification**
-   - Use \`get_selection()\` to identify both source and target instances
-   - Source instance: The instance with the content you want to copy
-   - Target instances: The empty slots you want to fill
-   - Confirm with user which is the source and which are targets if unclear
+## Step-by-Step Process
 
-2. **Get Instance Overrides**
-   - Extract overrides from source instance with \`get_instance_overrides()\`
-   - This captures all content customizations (text, styles, properties)
-   - Command syntax: \`get_instance_overrides({ nodeId: "source-instance-id" })\`
+### 1. Selection Analysis
+- Use \`get_selection()\` to identify the parent component or selected instances
+- For parent components, scan for instances with \`scan_nodes_by_types({ nodeId: "parent-id", types: ["INSTANCE"] })\`
+- Identify custom slots by name patterns (e.g. "Custom Slot*" or "Instance Slot") or by examining text content
+- Determine which is the source instance (with content to copy) and which are targets (where to apply content)
 
-3. **Apply Overrides to Target Instances**
-   - Apply captured overrides to target instances using \`set_instance_overrides()\`
-   - Command syntax: 
-     \`\`\`
-     set_instance_overrides({
-       overrideData: {sourceInstanceId: "source-id", overrides: [...overrides]},
-       targetNodeIds: ["target-id-1", "target-id-2", ...]
-     })
-     \`\`\`
+### 2. Extract Source Overrides
+- Use \`get_instance_overrides()\` to extract customizations from the source instance
+- This captures text content, property values, and style overrides
+- Command syntax: \`get_instance_overrides({ nodeId: "source-instance-id" })\`
+- Look for successful response like "Got component information from [instance name]"
 
-4. **Verify Results**
-   - Check the function response for success
-   - If needed, verify visually with \`read_my_design()\`
+### 3. Apply Overrides to Targets
+- Apply captured overrides using \`set_instance_overrides()\`
+- Command syntax:
+  \`\`\`
+  set_instance_overrides({
+    overrideData: {
+      sourceInstanceId: "source-id", 
+      overrides: [
+        {id: "node-id-1", overriddenFields: ["characters"]},
+        {id: "node-id-2", overriddenFields: ["characters"]},
+        // More overrides as needed
+      ]
+    },
+    targetNodeIds: ["target-id-1", "target-id-2", ...]
+  })
+  \`\`\`
 
-## When You Face Challenges
+### 4. Verification
+- Verify results with \`get_node_info()\` or \`read_my_design()\`
+- Confirm text content and style overrides have transferred successfully
 
-If \`set_instance_overrides()\` doesn't immediately work:
-
-1. **Verify Component Compatibility**
-   - Ensure source and target are instances of the same component
-   - Or verify they share a similar component structure
-
-2. **Text Content Approach**
-   - As a fallback, identify text nodes in source and target:
-     \`\`\`
-     scan_text_nodes({ nodeId: "source-instance-id" })
-     scan_text_nodes({ nodeId: "target-instance-id" })
-     \`\`\`
-   - Match corresponding text nodes based on names and positions
-   - Use \`set_multiple_text_contents()\` to update text
-
-3. **Consider Direct Cloning**
-   - If other methods fail, clone the source and position over target
-
-## Best Practices
-
-- Always prefer \`get_instance_overrides()\` and \`set_instance_overrides()\` first
-- Focus on native Figma component mechanisms rather than manual manipulation
-- Provide clear feedback about what was successfully copied and what wasn't`,
+## Key Tips
+- Always join the appropriate channel first with \`join_channel()\`
+- When working with multiple targets, check the full selection with \`get_selection()\`
+- Preserve component relationships by using instance overrides rather than direct text manipulation`,
           },
         },
       ],
-      description: "Strategy for filling target instance slots with content from a source instance",
+      description: "Strategy for transferring overrides between component instances in Figma",
     };
   }
 );
-
-
 
 // Define command types and parameters
 type FigmaCommand =
