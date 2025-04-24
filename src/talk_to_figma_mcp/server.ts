@@ -344,13 +344,15 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
+            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
       };
     }
   }
 );
+
 
 // Create Rectangle Tool
 server.tool(
@@ -2333,6 +2335,39 @@ server.tool(
   }
 );
 
+// A tool to get Figma Prototyping Reactions from multiple nodes
+server.tool(
+  "get_reactions",
+  "Get Figma Prototyping Reactions from multiple nodes",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
+  },
+  async ({ nodeIds }) => {
+    try {
+      const result = await sendCommandToFigma("get_reactions", { nodeIds });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting reactions: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -2369,7 +2404,10 @@ type FigmaCommand =
   | "set_padding"
   | "set_axis_align"
   | "set_layout_sizing"
-  | "set_item_spacing";
+  | "set_item_spacing"
+  | "get_reactions"
+  | "set_default_connector"
+  | "create_connections";
 
 
 type CommandParams = {
@@ -2377,6 +2415,7 @@ type CommandParams = {
   get_selection: Record<string, never>;
   get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };
+  get_reactions: { nodeIds: string[] };
   create_rectangle: {
     x: number;
     y: number;
@@ -2384,6 +2423,16 @@ type CommandParams = {
     height: number;
     name?: string;
     parentId?: string;
+  };
+  set_default_connector: {
+    connectorId: string;
+  };
+  create_connections: {
+    connections: Array<{
+      startNodeId: string;
+      endNodeId: string;
+      text?: string;
+    }>;
   };
   create_frame: {
     x: number;
@@ -2776,6 +2825,100 @@ server.tool(
               }`,
           },
         ],
+      };
+    }
+  }
+);
+
+// Create Connectors Tool
+server.tool(
+  "set_default_connector",
+  "Set a copied connector node as the default connector",
+  {
+    connectorId: z.string().describe("The ID of the connector node to set as default")
+  },
+  async ({ connectorId }) => {
+    try {
+      if (!connectorId) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No connector ID provided"
+            }
+          ]
+        };
+      }
+
+      const result = await sendCommandToFigma("set_default_connector", {
+        connectorId
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Default connector set: ${JSON.stringify(result)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting default connector: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Connect Nodes Tool
+server.tool(
+  "create_connections",
+  "Create connections between nodes using the default connector style",
+  {
+    connections: z.array(z.object({
+      startNodeId: z.string().describe("ID of the starting node"),
+      endNodeId: z.string().describe("ID of the ending node"),
+      text: z.string().optional().describe("Optional text to display on the connector")
+    })).describe("Array of node connections to create")
+  },
+  async ({ connections }) => {
+    try {
+      if (!connections || connections.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No connections provided"
+            }
+          ]
+        };
+      }
+
+      const result = await sendCommandToFigma("create_connections", {
+        connections
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created ${connections.length} connections: ${JSON.stringify(result)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating connections: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
       };
     }
   }

@@ -220,6 +220,15 @@ async function handleCommand(command, params) {
       return await setLayoutSizing(params);
     case "set_item_spacing":
       return await setItemSpacing(params);
+    case "get_reactions":
+      if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
+        throw new Error("Missing or invalid nodeIds parameter");
+      }
+      return await getReactions(params.nodeIds);  
+    case "set_default_connector":
+      return await setDefaultConnector(params);
+    case "create_connections":
+      return await createConnections(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -419,6 +428,179 @@ async function getNodesInfo(nodeIds) {
     return responses;
   } catch (error) {
     throw new Error(`Error getting nodes info: ${error.message}`);
+  }
+}
+
+async function getReactions(nodeIds) {
+  try {
+    const commandId = generateCommandId();
+    sendProgressUpdate(
+      commandId,
+      "get_reactions",
+      "started",
+      0,
+      nodeIds.length,
+      0,
+      `Starting deep search for reactions in ${nodeIds.length} nodes and their children`
+    );
+
+    // Function to find nodes with reactions from the node and all its children
+    async function findNodesWithReactions(node, processedNodes = new Set(), depth = 0, results = []) {
+      // Skip already processed nodes (prevent circular references)
+      if (processedNodes.has(node.id)) {
+        return results;
+      }
+      
+      processedNodes.add(node.id);
+      
+      // Check if the current node has reactions
+      const hasReactions = node.reactions && node.reactions.length > 0;
+      
+      // If the node has reactions, add it to results and apply highlight effect
+      if (hasReactions) {
+        results.push({
+          id: node.id,
+          name: node.name,
+          type: node.type,
+          depth: depth,
+          hasReactions: true,
+          reactions: node.reactions,
+          path: getNodePath(node)
+        });
+        
+        // Apply highlight effect (orange border)
+        await highlightNodeWithAnimation(node);
+      }
+      
+      // If node has children, recursively search them
+      if (node.children) {
+        for (const child of node.children) {
+          await findNodesWithReactions(child, processedNodes, depth + 1, results);
+        }
+      }
+      
+      return results;
+    }
+    
+    // Function to apply animated highlight effect to a node
+    async function highlightNodeWithAnimation(node) {
+      // Save original stroke properties
+      const originalStrokeWeight = node.strokeWeight;
+      const originalStrokes = node.strokes ? [...node.strokes] : [];
+      
+      try {
+        // Apply orange border stroke
+        node.strokeWeight = 4;
+        node.strokes = [{
+          type: 'SOLID',
+          color: { r: 1, g: 0.5, b: 0 }, // Orange color
+          opacity: 0.8
+        }];
+        
+        // Set timeout for animation effect (restore to original after 1.5 seconds)
+        setTimeout(() => {
+          try {
+            // Restore original stroke properties
+            node.strokeWeight = originalStrokeWeight;
+            node.strokes = originalStrokes;
+          } catch (restoreError) {
+            console.error(`Error restoring node stroke: ${restoreError.message}`);
+          }
+        }, 1500);
+      } catch (highlightError) {
+        console.error(`Error highlighting node: ${highlightError.message}`);
+        // Continue even if highlighting fails
+      }
+    }
+    
+    // Get node hierarchy path as a string
+    function getNodePath(node) {
+      const path = [];
+      let current = node;
+      
+      while (current && current.parent) {
+        path.unshift(current.name);
+        current = current.parent;
+      }
+      
+      return path.join(' > ');
+    }
+
+    // Array to store all results
+    let allResults = [];
+    let processedCount = 0;
+    const totalCount = nodeIds.length;
+    
+    // Iterate through each node and its children to search for reactions
+    for (let i = 0; i < nodeIds.length; i++) {
+      try {
+        const nodeId = nodeIds[i];
+        const node = await figma.getNodeByIdAsync(nodeId);
+        
+        if (!node) {
+          processedCount++;
+          sendProgressUpdate(
+            commandId,
+            "get_reactions",
+            "in_progress",
+            processedCount / totalCount,
+            totalCount,
+            processedCount,
+            `Node not found: ${nodeId}`
+          );
+          continue;
+        }
+        
+        // Search for reactions in the node and its children
+        const processedNodes = new Set();
+        const nodeResults = await findNodesWithReactions(node, processedNodes);
+        
+        // Add results
+        allResults = allResults.concat(nodeResults);
+        
+        // Update progress
+        processedCount++;
+        sendProgressUpdate(
+          commandId,
+          "get_reactions",
+          "in_progress",
+          processedCount / totalCount,
+          totalCount,
+          processedCount,
+          `Processed node ${processedCount}/${totalCount}, found ${nodeResults.length} nodes with reactions`
+        );
+      } catch (error) {
+        processedCount++;
+        sendProgressUpdate(
+          commandId,
+          "get_reactions",
+          "in_progress",
+          processedCount / totalCount,
+          totalCount,
+          processedCount,
+          `Error processing node: ${error.message}`
+        );
+      }
+    }
+
+    // Completion update
+    sendProgressUpdate(
+      commandId,
+      "get_reactions",
+      "completed",
+      1,
+      totalCount,
+      totalCount,
+      `Completed deep search: found ${allResults.length} nodes with reactions, visual highlights will disappear in 1.5 seconds`
+    );
+
+    return {
+      nodesCount: nodeIds.length,
+      nodesWithReactions: allResults.length,
+      nodes: allResults
+    };
+  } catch (error) {
+    throw new Error(`Failed to get reactions: ${error.message}`);
   }
 }
 
@@ -3324,5 +3506,214 @@ async function setItemSpacing(params) {
     name: node.name,
     itemSpacing: node.itemSpacing,
     layoutMode: node.layoutMode,
+  };
+}
+
+async function setDefaultConnector(params) {
+  if (!params || !params.connectorId) {
+    throw new Error('Missing required parameters: connectorId');
+  }
+  
+  const { connectorId } = params;
+  
+  // Check if the node exists
+  const node = await figma.getNodeByIdAsync(connectorId);
+  if (!node) {
+    throw new Error(`Connector node not found with ID: ${connectorId}`);
+  }
+  
+  // Check if the node is a CONNECTOR type
+  if (node.type !== 'CONNECTOR') {
+    throw new Error(`Node is not a connector: ${connectorId}`);
+  }
+  
+  // Save connector ID to client storage
+  await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
+  
+  return {
+    success: true,
+    message: `Default connector set to: ${connectorId}`,
+    connectorId: connectorId
+  };
+}
+
+async function createConnections(params) {
+  if (!params || !params.connections || !Array.isArray(params.connections)) {
+    throw new Error('Missing or invalid connections parameter');
+  }
+  
+  const { connections } = params;
+  
+  // Command ID for progress tracking
+  const commandId = generateCommandId();
+  sendProgressUpdate(
+    commandId,
+    "create_connections",
+    "started",
+    0,
+    connections.length,
+    0,
+    `Starting to create ${connections.length} connections`
+  );
+  
+  // Get default connector ID from client storage
+  const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
+  if (!defaultConnectorId) {
+    throw new Error('No default connector set. Please set a default connector first with set_default_connector');
+  }
+  
+  // Get the default connector
+  const defaultConnector = await figma.getNodeByIdAsync(defaultConnectorId);
+  if (!defaultConnector) {
+    throw new Error(`Default connector not found with ID: ${defaultConnectorId}`);
+  }
+  if (defaultConnector.type !== 'CONNECTOR') {
+    throw new Error(`Node is not a connector: ${defaultConnectorId}`);
+  }
+  
+  // Results array for connection creation
+  const results = [];
+  let processedCount = 0;
+  const totalCount = connections.length;
+  
+  // Preload fonts (used for text if provided)
+  let fontLoaded = false;
+  
+  for (let i = 0; i < connections.length; i++) {
+    try {
+      const { startNodeId, endNodeId, text } = connections[i];
+      
+      // Get start and end nodes
+      const startNode = await figma.getNodeByIdAsync(startNodeId);
+      const endNode = await figma.getNodeByIdAsync(endNodeId);
+      
+      if (!startNode) {
+        throw new Error(`Start node not found with ID: ${startNodeId}`);
+      }
+      
+      if (!endNode) {
+        throw new Error(`End node not found with ID: ${endNodeId}`);
+      }
+      
+      // Clone the default connector
+      const clonedConnector = defaultConnector.clone();
+      
+      // Add prefix to connector name (for easy finding later)
+      clonedConnector.name = `TTF_Connector/${startNode.name}/${endNode.name}`;
+      
+      // Set start and end points
+      clonedConnector.connectorStart = {
+        endpointNodeId: startNodeId,
+        magnet: 'AUTO' // Default or can be customized
+      };
+      
+      clonedConnector.connectorEnd = {
+        endpointNodeId: endNodeId,
+        magnet: 'AUTO' // Default or can be customized
+      };
+      
+      // Add text (if provided)
+      if (text) {
+        try {
+          // Try to load the necessary fonts
+          try {
+            // First check if default connector has font and use the same
+            if (defaultConnector.text && defaultConnector.text.fontName) {
+              const fontName = defaultConnector.text.fontName;
+              await figma.loadFontAsync(fontName);
+              clonedConnector.text.fontName = fontName;
+            } else {
+              // Try default Inter font
+              await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+            }
+          } catch (fontError) {
+            // If first font load fails, try another font style
+            try {
+              await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+            } catch (mediumFontError) {
+              // If second font fails, try system font
+              try {
+                await figma.loadFontAsync({ family: "System", style: "Regular" });
+              } catch (systemFontError) {
+                // If all font loading attempts fail, throw error
+                throw new Error(`Failed to load any font: ${fontError.message}`);
+              }
+            }
+          }
+          
+          // Set the text
+          clonedConnector.text.characters = text;
+        } catch (textError) {
+          console.error("Error setting text:", textError);
+          // Continue with connection even if text setting fails
+          results.push({
+            id: clonedConnector.id,
+            startNodeId: startNodeId,
+            endNodeId: endNodeId,
+            text: "",
+            textError: textError.message
+          });
+          
+          // Continue to next connection
+          continue;
+        }
+      }
+      
+      // Add to results
+      results.push({
+        id: clonedConnector.id,
+        startNodeId: startNodeId,
+        endNodeId: endNodeId,
+        text: text || ""
+      });
+      
+      // Update progress
+      processedCount++;
+      sendProgressUpdate(
+        commandId,
+        "create_connections",
+        "in_progress",
+        processedCount / totalCount,
+        totalCount,
+        processedCount,
+        `Created connection ${processedCount}/${totalCount}`
+      );
+      
+    } catch (error) {
+      console.error("Error creating connection", error);
+      // Continue processing remaining connections even if an error occurs
+      processedCount++;
+      sendProgressUpdate(
+        commandId,
+        "create_connections",
+        "in_progress",
+        processedCount / totalCount,
+        totalCount,
+        processedCount,
+        `Error creating connection: ${error.message}`
+      );
+      
+      results.push({
+        error: error.message,
+        connectionInfo: connections[i]
+      });
+    }
+  }
+  
+  // Completion update
+  sendProgressUpdate(
+    commandId,
+    "create_connections",
+    "completed",
+    1,
+    totalCount,
+    totalCount,
+    `Completed creating ${results.length} connections`
+  );
+  
+  return {
+    success: true,
+    count: results.length,
+    connections: results
   };
 }

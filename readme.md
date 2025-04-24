@@ -132,6 +132,12 @@ The MCP server provides the following tools for interacting with Figma:
 - `set_multiple_annotations` - Batch create/update multiple annotations efficiently
 - `scan_nodes_by_types` - Scan for nodes with specific types (useful for finding annotation targets)
 
+### Prototyping & Connections
+
+- `get_reactions` - Get all prototype reactions from nodes with visual highlight animation
+- `set_default_connector` - Set a copied connector as the default connector style for creating connections
+- `create_connections` - Create connections between nodes using the default connector style
+
 ### Creating Elements
 
 - `create_rectangle` - Create a new rectangle with position, size, and optional name
