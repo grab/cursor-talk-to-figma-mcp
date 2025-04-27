@@ -3524,7 +3524,7 @@ async function setItemSpacing(params) {
 async function setDefaultConnector(params) {
   const { connectorId } = params || {};
   
-  // connectorId가 제공된 경우 해당 ID로 검색
+  // connectorId가 제공된 경우 해당 ID로 검색하고 설정 (기존 저장소 확인 안 함)
   if (connectorId) {
     // 지정된 ID로 노드 가져오기
     const node = await figma.getNodeByIdAsync(connectorId);
@@ -3545,8 +3545,40 @@ async function setDefaultConnector(params) {
       message: `Default connector set to: ${connectorId}`,
       connectorId: connectorId
     };
-  } else {
-    // connectorId가 제공되지 않은 경우 현재 페이지에서만 CONNECTOR 검색
+  } 
+  // connectorId가 제공되지 않은 경우, 기존 저장소에서 확인
+  else {
+    // 클라이언트 저장소에서 기존 설정된 기본 커넥터가 있는지 확인
+    try {
+      const existingConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
+      
+      // 기존 커넥터 ID가 있는 경우, 해당 노드가 여전히 유효한지 확인
+      if (existingConnectorId) {
+        try {
+          const existingConnector = await figma.getNodeByIdAsync(existingConnectorId);
+          
+          // 저장된 커넥터가 여전히 존재하고 타입이 CONNECTOR인 경우
+          if (existingConnector && existingConnector.type === 'CONNECTOR') {
+            return {
+              success: true,
+              message: `Default connector is already set to: ${existingConnectorId}`,
+              connectorId: existingConnectorId,
+              exists: true
+            };
+          }
+          // 저장된 커넥터가 더 이상 유효하지 않음 - 새로운 커넥터 찾기
+          else {
+            console.log(`Stored connector ID ${existingConnectorId} is no longer valid, finding a new connector...`);
+          }
+        } catch (error) {
+          console.log(`Error finding stored connector: ${error.message}. Will try to set a new one.`);
+        }
+      }
+    } catch (error) {
+      console.log(`Error checking for existing connector: ${error.message}`);
+    }
+    
+    // 저장된 기본 커넥터가 없거나 유효하지 않은 경우, 현재 페이지에서 찾기
     try {
       // 현재 페이지에서 CONNECTOR 타입 노드 검색
       const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
@@ -3576,13 +3608,6 @@ async function setDefaultConnector(params) {
   }
 }
 
-/**
- * Creates a cursor-shaped frame that can be used as a proxy for connections
- * Useful for connecting nested nodes that have complex IDs with semicolons
- * @param {number} x - X position for the cursor node
- * @param {number} y - Y position for the cursor node
- * @returns {Promise<Object>} - The created cursor frame node
- */
 async function createCursorNode(targetNodeId) {
   // SVG string from cursor.svg
   const svgString = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">

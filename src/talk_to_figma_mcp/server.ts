@@ -2338,7 +2338,7 @@ server.tool(
 // A tool to get Figma Prototyping Reactions from multiple nodes
 server.tool(
   "get_reactions",
-  "Get Figma Prototyping Reactions from multiple nodes",
+  "Get Figma Prototyping Reactions from multiple nodes. MUST execute 'reaction_to_connector_strategy' prompt after this tool",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
   },
@@ -2350,8 +2350,17 @@ server.tool(
           {
             type: "text",
             text: JSON.stringify(result)
+          },
+          {
+            type: "text",
+            text: "IMPORTANT: Do the follow up action with \`reaction_to_connector_strategy\` strategy to process the reaction data and prepare the input for \`create_connections\`."
           }
-        ]
+        ],
+        followUp: {
+          type: "prompt",
+          prompt: "reaction_to_connector_strategy",
+          // description: "IMPORTANT: Use this strategy to process the reaction data from \'get_reactions\' and prepare the input for \'create_connections\'.",
+        },
       };
     } catch (error) {
       return {
@@ -2450,10 +2459,10 @@ server.tool(
   }
 );
 
-// Prototype Reactions to Connector Lines Strategy
+// Strategy for converting Figma prototype reactions to connector lines
 server.prompt(
-  "prototype_to_connector_strategy",
-  "IMPORTANT when the requests intends to convert Figma prototype reactions to connectors, PLEASE read this strategy first and follow it to complete the task",
+  "reaction_to_connector_strategy",
+  "Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions'",
   (extra) => {
     return {
       messages: [
@@ -2461,55 +2470,75 @@ server.prompt(
           role: "assistant",
           content: {
             type: "text",
-            text: `# Prototype Reactions to Connector Lines Strategy
+            text: `# Strategy: Convert Figma Prototype Reactions to Connector Lines
 
-## Overview
-This strategy describes how to systematically convert Figma prototype reactions (such as NAVIGATE, OPEN_OVERLAY, SWAP_OVERLAY) into visible connector lines between nodes, with meaningful labels, using the available MCP tools.
+## Goal
+Process the JSON output from the \`get_reactions\` tool to generate an array of connection objects suitable for the \`create_connections\` tool. This visually represents prototype flows as connector lines on the Figma canvas.
+
+## Input Data
+You will receive JSON data from the \`get_reactions\` tool. This data contains an array of nodes, each with potential reactions. A typical reaction object looks like this:
+\`\`\`json
+{
+  "trigger": { "type": "ON_CLICK" },
+  "action": {
+    "type": "NAVIGATE",
+    "destinationId": "destination-node-id",
+    "navigationTransition": { ... },
+    "preserveScrollPosition": false
+  }
+}
+\`\`\`
 
 ## Step-by-Step Process
 
-### 1. Understand the Design Context before running the strategy
-- Use \`read_my_design\` to get a detailed understanding of the selected node(s) and their structure.
-- Analyze the design to understand the context and relationships between elements.
+### 1. Preparation & Context Gathering
+   - **Action:** Call \`read_my_design\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
+   - **Action:** Call \`set_default_connector\` **without** the \`connectorId\` parameter.
+   - **Check Result:** Analyze the response from \`set_default_connector\`.
+     - If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
+     - If it indicates no default connector is set (e.g., "No default connector set..."), you **cannot** proceed with \`create_connections\` yet. Inform the user they need to manually copy a connector from FigJam, paste it onto the current page, select it, and then you can run \`set_default_connector({ connectorId: "SELECTED_NODE_ID" })\` before attempting \`create_connections\`. **Do not proceed to Step 2 until a default connector is confirmed.**
 
-### 2. Retrieve Prototype Reactions
-- Use \`get_reactions\` to fetch all prototype reactions for the target node(s).
-- The result will include all nodes with reactions and their details.
+### 2. Filter and Transform Reactions from \`get_reactions\` Output
+   - **Iterate:** Go through the JSON array provided by \`get_reactions\`. For each node in the array:
+     - Iterate through its \`reactions\` array.
+   - **Filter:** Keep only reactions where the \`action\` meets these criteria:
+     - Has a \`type\` that implies a connection (e.g., \`NAVIGATE\`, \`OPEN_OVERLAY\`, \`SWAP_OVERLAY\`). **Ignore** types like \`CHANGE_TO\`, \`CLOSE_OVERLAY\`, etc.
+     - Has a valid \`destinationId\` property.
+   - **Extract:** For each valid reaction, extract the following information:
+     - \`sourceNodeId\`: The ID of the node the reaction belongs to (from the outer loop).
+     - \`destinationNodeId\`: The value of \`action.destinationId\`.
+     - \`actionType\`: The value of \`action.type\`.
+     - \`triggerType\`: The value of \`trigger.type\`.
 
-### 3. Filter and Transform Reactions
-- Only consider reactions with actions that represent navigation or overlay transitions such as NAVIGATE, OPEN_OVERLAY, SWAP_OVERLAY, and so on.
-- Ignore reactions that do not connect to another node (e.g., CHANGE_TO, CLOSE_OVERLAY, or actions without a destination).
-- For each valid reaction, extract:
-  * The source node ID (where the reaction is defined)
-  * The destination node ID (where the reaction points)
-  * The action type (e.g., NAVIGATE, OPEN_OVERLAY)
-  * Any trigger information (e.g., ON_CLICK)
+### 3. Generate Connector Text Labels
+   - **For each extracted connection:** Create a concise, descriptive text label string.
+   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`read_my_design\` or by calling \`get_node_info\` if necessary) to generate the label.
+   - **Example Labels:**
+     - If \`triggerType\` is "ON\_CLICK" and \`actionType\` is "NAVIGATE": "On click, navigate to [Destination Node Name]"
+     - If \`triggerType\` is "ON\_DRAG" and \`actionType\` is "OPEN\_OVERLAY": "On drag, open [Destination Node Name] overlay"
+   - **Keep it brief and informative.** Let this generated string be \`generatedText\`.
 
-### 4. Generate Connector Descriptions
-- For each connection, generate a concise, human-readable label for the connector line.
-- The label should summarize the action and context, for example:
-  * "On click, navigate to the details page"
-  * "On click, open the modal"
-- Use the design context (from read_my_design) and reaction definition to make the label meaningful.
+### 4. Prepare the \`connections\` Array for \`create_connections\`
+   - **Structure:** Create a JSON array where each element is an object representing a connection.
+   - **Format:** Each object in the array must have the following structure:
+     \`\`\`json
+     {
+       "startNodeId": "sourceNodeId_from_step_2",
+       "endNodeId": "destinationNodeId_from_step_2",
+       "text": "generatedText_from_step_3"
+     }
+     \`\`\`
+   - **Result:** This final array is the value you will pass to the \`connections\` parameter when calling the \`create_connections\` tool.
 
-### 5. Create Connector Lines
-- Prepare an array of connection objects:
-  * Each object should have: { startNodeId, endNodeId, text }
-- Use \`create_connections\` to create connector lines between the nodes, with the generated labels.
+### 5. Execute Connection Creation
+   - **Action:** Call the \`create_connections\` tool, passing the array generated in Step 4 as the \`connections\` argument.
+   - **Verify:** Check the response from \`create_connections\` to confirm success or failure.
 
-### 6. Handle Missing Default Connector
-- If the connector creation fails due to a missing default connector, follow this recovery process:
-  1. Copy a connector from FigJam and paste it into the current Figma page.
-  2. Use \`set_default_connector\` to set the pasted connector as the default.
-  3. Retry \`create_connections\` with the same connection array.
-- This process is also described in the error message from \`create_connections\`.
-
-
-This strategy ensures that prototype logic is visually represented as connector lines, making flows and interactions explicit in the Figma canvas.`
+This detailed process ensures you correctly interpret the reaction data, prepare the necessary information, and use the appropriate tools to create the connector lines.`
           },
         },
       ],
-      description: "Strategy for converting Figma prototype reactions to connector lines",
+      description: "Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions'",
     };
   }
 );
@@ -2561,7 +2590,6 @@ type CommandParams = {
   get_selection: Record<string, never>;
   get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };
-  get_reactions: { nodeIds: string[] };
   create_rectangle: {
     x: number;
     y: number;
@@ -2687,6 +2715,7 @@ type CommandParams = {
     nodeId: string;
     types: Array<string>;
   };
+  get_reactions: { nodeIds: string[] };
   set_default_connector: {
     connectorId?: string;
   };
