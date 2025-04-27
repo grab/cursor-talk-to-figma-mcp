@@ -2367,6 +2367,153 @@ server.tool(
   }
 );
 
+// Create Connectors Tool
+server.tool(
+  "set_default_connector",
+  "Set a copied connector node as the default connector",
+  {
+    connectorId: z.string().optional().describe("The ID of the connector node to set as default")
+  },
+  async ({ connectorId }) => {
+    try {
+      const result = await sendCommandToFigma("set_default_connector", {
+        connectorId
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Default connector set: ${JSON.stringify(result)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting default connector: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Connect Nodes Tool
+server.tool(
+  "create_connections",
+  "Create connections between nodes using the default connector style",
+  {
+    connections: z.array(z.object({
+      startNodeId: z.string().describe("ID of the starting node"),
+      endNodeId: z.string().describe("ID of the ending node"),
+      text: z.string().optional().describe("Optional text to display on the connector")
+    })).describe("Array of node connections to create")
+  },
+  async ({ connections }) => {
+    try {
+      if (!connections || connections.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No connections provided"
+            }
+          ]
+        };
+      }
+
+      const result = await sendCommandToFigma("create_connections", {
+        connections
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created ${connections.length} connections: ${JSON.stringify(result)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating connections: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Prototype Reactions to Connector Lines Strategy
+server.prompt(
+  "prototype_to_connector_strategy",
+  "IMPORTANT when the requests intends to convert Figma prototype reactions to connectors, PLEASE read this strategy first and follow it to complete the task",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Prototype Reactions to Connector Lines Strategy
+
+## Overview
+This strategy describes how to systematically convert Figma prototype reactions (such as NAVIGATE, OPEN_OVERLAY, SWAP_OVERLAY) into visible connector lines between nodes, with meaningful labels, using the available MCP tools.
+
+## Step-by-Step Process
+
+### 1. Understand the Design Context before running the strategy
+- Use \`read_my_design\` to get a detailed understanding of the selected node(s) and their structure.
+- Analyze the design to understand the context and relationships between elements.
+
+### 2. Retrieve Prototype Reactions
+- Use \`get_reactions\` to fetch all prototype reactions for the target node(s).
+- The result will include all nodes with reactions and their details.
+
+### 3. Filter and Transform Reactions
+- Only consider reactions with actions that represent navigation or overlay transitions such as NAVIGATE, OPEN_OVERLAY, SWAP_OVERLAY, and so on.
+- Ignore reactions that do not connect to another node (e.g., CHANGE_TO, CLOSE_OVERLAY, or actions without a destination).
+- For each valid reaction, extract:
+  * The source node ID (where the reaction is defined)
+  * The destination node ID (where the reaction points)
+  * The action type (e.g., NAVIGATE, OPEN_OVERLAY)
+  * Any trigger information (e.g., ON_CLICK)
+
+### 4. Generate Connector Descriptions
+- For each connection, generate a concise, human-readable label for the connector line.
+- The label should summarize the action and context, for example:
+  * "On click, navigate to the details page"
+  * "On click, open the modal"
+- Use the design context (from read_my_design) and reaction definition to make the label meaningful.
+
+### 5. Create Connector Lines
+- Prepare an array of connection objects:
+  * Each object should have: { startNodeId, endNodeId, text }
+- Use \`create_connections\` to create connector lines between the nodes, with the generated labels.
+
+### 6. Handle Missing Default Connector
+- If the connector creation fails due to a missing default connector, follow this recovery process:
+  1. Copy a connector from FigJam and paste it into the current Figma page.
+  2. Use \`set_default_connector\` to set the pasted connector as the default.
+  3. Retry \`create_connections\` with the same connection array.
+- This process is also described in the error message from \`create_connections\`.
+
+
+This strategy ensures that prototype logic is visually represented as connector lines, making flows and interactions explicit in the Figma canvas.`
+          },
+        },
+      ],
+      description: "Strategy for converting Figma prototype reactions to connector lines",
+    };
+  }
+);
+
 
 // Define command types and parameters
 type FigmaCommand =
@@ -2409,7 +2556,6 @@ type FigmaCommand =
   | "set_default_connector"
   | "create_connections";
 
-
 type CommandParams = {
   get_document_info: Record<string, never>;
   get_selection: Record<string, never>;
@@ -2423,16 +2569,6 @@ type CommandParams = {
     height: number;
     name?: string;
     parentId?: string;
-  };
-  set_default_connector: {
-    connectorId: string;
-  };
-  create_connections: {
-    connections: Array<{
-      startNodeId: string;
-      endNodeId: string;
-      text?: string;
-    }>;
   };
   create_frame: {
     x: number;
@@ -2551,6 +2687,17 @@ type CommandParams = {
     nodeId: string;
     types: Array<string>;
   };
+  set_default_connector: {
+    connectorId?: string;
+  };
+  create_connections: {
+    connections: Array<{
+      startNodeId: string;
+      endNodeId: string;
+      text?: string;
+    }>;
+  };
+  
 };
 
 
@@ -2829,101 +2976,7 @@ server.tool(
     }
   }
 );
-
-// Create Connectors Tool
-server.tool(
-  "set_default_connector",
-  "Set a copied connector node as the default connector",
-  {
-    connectorId: z.string().describe("The ID of the connector node to set as default")
-  },
-  async ({ connectorId }) => {
-    try {
-      if (!connectorId) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "No connector ID provided"
-            }
-          ]
-        };
-      }
-
-      const result = await sendCommandToFigma("set_default_connector", {
-        connectorId
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Default connector set: ${JSON.stringify(result)}`
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting default connector: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
-// Connect Nodes Tool
-server.tool(
-  "create_connections",
-  "Create connections between nodes using the default connector style",
-  {
-    connections: z.array(z.object({
-      startNodeId: z.string().describe("ID of the starting node"),
-      endNodeId: z.string().describe("ID of the ending node"),
-      text: z.string().optional().describe("Optional text to display on the connector")
-    })).describe("Array of node connections to create")
-  },
-  async ({ connections }) => {
-    try {
-      if (!connections || connections.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "No connections provided"
-            }
-          ]
-        };
-      }
-
-      const result = await sendCommandToFigma("create_connections", {
-        connections
-      });
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Created ${connections.length} connections: ${JSON.stringify(result)}`
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error creating connections: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
+       
 // Start the server
 async function main() {
   try {

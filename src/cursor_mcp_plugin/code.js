@@ -454,20 +454,32 @@ async function getReactions(nodeIds) {
       processedNodes.add(node.id);
       
       // Check if the current node has reactions
-      const hasReactions = node.reactions && node.reactions.length > 0;
+      let filteredReactions = [];
+      if (node.reactions && node.reactions.length > 0) {
+        // Filter out reactions with navigation === 'CHANGE_TO'
+        filteredReactions = node.reactions.filter(r => {
+          // Some reactions may have action or actions array
+          if (r.action && r.action.navigation === 'CHANGE_TO') return false;
+          if (Array.isArray(r.actions)) {
+            // If any action in actions array is CHANGE_TO, exclude
+            return !r.actions.some(a => a.navigation === 'CHANGE_TO');
+          }
+          return true;
+        });
+      }
+      const hasFilteredReactions = filteredReactions.length > 0;
       
-      // If the node has reactions, add it to results and apply highlight effect
-      if (hasReactions) {
+      // If the node has filtered reactions, add it to results and apply highlight effect
+      if (hasFilteredReactions) {
         results.push({
           id: node.id,
           name: node.name,
           type: node.type,
           depth: depth,
           hasReactions: true,
-          reactions: node.reactions,
+          reactions: filteredReactions,
           path: getNodePath(node)
         });
-        
         // Apply highlight effect (orange border)
         await highlightNodeWithAnimation(node);
       }
@@ -3510,31 +3522,163 @@ async function setItemSpacing(params) {
 }
 
 async function setDefaultConnector(params) {
-  if (!params || !params.connectorId) {
-    throw new Error('Missing required parameters: connectorId');
+  const { connectorId } = params || {};
+  
+  // connectorId가 제공된 경우 해당 ID로 검색
+  if (connectorId) {
+    // 지정된 ID로 노드 가져오기
+    const node = await figma.getNodeByIdAsync(connectorId);
+    if (!node) {
+      throw new Error(`Connector node not found with ID: ${connectorId}`);
+    }
+    
+    // 노드 타입 확인
+    if (node.type !== 'CONNECTOR') {
+      throw new Error(`Node is not a connector: ${connectorId}`);
+    }
+    
+    // 찾은 커넥터를 기본 커넥터로 설정
+    await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
+    
+    return {
+      success: true,
+      message: `Default connector set to: ${connectorId}`,
+      connectorId: connectorId
+    };
+  } else {
+    // connectorId가 제공되지 않은 경우 현재 페이지에서만 CONNECTOR 검색
+    try {
+      // 현재 페이지에서 CONNECTOR 타입 노드 검색
+      const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
+      
+      if (currentPageConnectors && currentPageConnectors.length > 0) {
+        // 첫 번째 커넥터 사용
+        const foundConnector = currentPageConnectors[0];
+        const autoFoundId = foundConnector.id;
+        
+        // 찾은 커넥터를 기본 커넥터로 설정
+        await figma.clientStorage.setAsync('defaultConnectorId', autoFoundId);
+        
+        return {
+          success: true,
+          message: `Automatically found and set default connector to: ${autoFoundId}`,
+          connectorId: autoFoundId,
+          autoSelected: true
+        };
+      } else {
+        // 현재 페이지에서 커넥터를 찾지 못한 경우 안내 메시지
+        throw new Error('No connector found in the current page. Please create a connector in Figma first or specify a connector ID.');
+      }
+    } catch (error) {
+      // findAllWithCriteria 실행 중 발생한 에러
+      throw new Error(`Failed to find a connector: ${error.message}`);
+    }
   }
+}
+
+/**
+ * Creates a cursor-shaped frame that can be used as a proxy for connections
+ * Useful for connecting nested nodes that have complex IDs with semicolons
+ * @param {number} x - X position for the cursor node
+ * @param {number} y - Y position for the cursor node
+ * @returns {Promise<Object>} - The created cursor frame node
+ */
+async function createCursorNode(targetNodeId) {
+  // SVG string from cursor.svg
+  const svgString = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16 8V35.2419L22 28.4315L27 39.7823C27 39.7823 28.3526 40.2722 29 39.7823C29.6474 39.2924 30.2913 38.3057 30 37.5121C28.6247 33.7654 25 26.1613 25 26.1613H32L16 8Z" fill="#202125" />
+  </svg>`;
   
-  const { connectorId } = params;
-  
-  // Check if the node exists
-  const node = await figma.getNodeByIdAsync(connectorId);
-  if (!node) {
-    throw new Error(`Connector node not found with ID: ${connectorId}`);
+  try {
+    // Get the target node
+    const targetNode = await figma.getNodeByIdAsync(targetNodeId);
+    if (!targetNode) {
+      throw new Error("Target node not found");
+    }
+    
+    // Parse the parent node ID from the target node ID
+    // If targetNodeId contains a semicolon, get the part before it
+    const parentNodeId = targetNodeId.includes(';') 
+      ? targetNodeId.split(';')[0] 
+      : (targetNode.parent ? targetNode.parent.id : null);
+    
+    if (!parentNodeId) {
+      throw new Error("Could not determine parent node ID");
+    }
+    
+    // Get the top-level parent node
+    const parentNode = await figma.getNodeByIdAsync(parentNodeId);
+    if (!parentNode) {
+      throw new Error("Parent node not found");
+    }
+    
+    // Create a node from the SVG string
+    const importedNode = await figma.createNodeFromSvg(svgString);
+    importedNode.name = "Mouse Cursor";
+    importedNode.resize(48, 48);
+    
+    // Add shadow effect to the SVG
+    const cursorNode = importedNode.findOne(node => node.type === 'VECTOR');
+    if (cursorNode) {
+      // Set fill color to black
+      cursorNode.fills = [{
+        type: 'SOLID',
+        color: { r: 0, g: 0, b: 0 },
+        opacity: 1
+      }];
+      
+      // Add white stroke
+      cursorNode.strokes = [{
+        type: 'SOLID',
+        color: { r: 1, g: 1, b: 1 },
+        opacity: 1
+      }];
+      cursorNode.strokeWeight = 2;
+      cursorNode.strokeAlign = 'OUTSIDE';
+      
+      // Add shadow effect
+      cursorNode.effects = [{
+        type: "DROP_SHADOW",
+        color: { r: 0, g: 0, b: 0, a: 0.3 },
+        offset: { x: 1, y: 1 },
+        radius: 2,
+        spread: 0,
+        visible: true,
+        blendMode: "NORMAL"
+      }];
+    }
+    
+    // Append to the top-level parent
+    parentNode.parent.appendChild(importedNode);
+
+    // Set absolute positioning
+    if ('layoutPositioning' in importedNode) {
+      importedNode.layoutPositioning = 'ABSOLUTE';
+    }
+    
+    if (targetNode.absoluteBoundingBox && parentNode.parent.absoluteBoundingBox) {
+      console.log("targetNode.absoluteBoundingBox", targetNode.absoluteBoundingBox);
+      console.log("parentNode.parent.absoluteBoundingBox", parentNode.parent.absoluteBoundingBox);
+      importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.parent.absoluteBoundingBox.x;
+      importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.parent.absoluteBoundingBox.y;
+    } else {
+      
+      importedNode.x = targetNode.x;
+      importedNode.y = targetNode.y;
+    }
+
+    
+    return {
+      id: importedNode.id,
+      node: importedNode
+    };
+  } catch (error) {
+    console.error("Error creating cursor from SVG:", error);
+    return {
+      id: null,
+      node: null
+    };
   }
-  
-  // Check if the node is a CONNECTOR type
-  if (node.type !== 'CONNECTOR') {
-    throw new Error(`Node is not a connector: ${connectorId}`);
-  }
-  
-  // Save connector ID to client storage
-  await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
-  
-  return {
-    success: true,
-    message: `Default connector set to: ${connectorId}`,
-    connectorId: connectorId
-  };
 }
 
 async function createConnections(params) {
@@ -3559,7 +3703,7 @@ async function createConnections(params) {
   // Get default connector ID from client storage
   const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
   if (!defaultConnectorId) {
-    throw new Error('No default connector set. Please set a default connector first with set_default_connector');
+    throw new Error('No default connector set. Please try one of the following options to create connections:\n1. Create a connector in FigJam and copy/paste it to your current page, then run the "set_default_connector" command.\n2. Select an existing connector on the current page, then run the "set_default_connector" command.');
   }
   
   // Get the default connector
@@ -3581,35 +3725,51 @@ async function createConnections(params) {
   
   for (let i = 0; i < connections.length; i++) {
     try {
-      const { startNodeId, endNodeId, text } = connections[i];
+      const { startNodeId: originalStartId, endNodeId: originalEndId, text } = connections[i];
+      let startId = originalStartId;
+      let endId = originalEndId;
+
+      // Check and potentially replace start node ID
+      if (startId.includes(';')) {
+        console.log(`Nested start node detected: ${startId}. Creating cursor node.`);
+        const cursorResult = await createCursorNode(startId);
+        if (!cursorResult || !cursorResult.id) {
+          throw new Error(`Failed to create cursor node for nested start node: ${startId}`);
+        }
+        startId = cursorResult.id; 
+      }  
       
-      // Get start and end nodes
-      const startNode = await figma.getNodeByIdAsync(startNodeId);
-      const endNode = await figma.getNodeByIdAsync(endNodeId);
-      
-      if (!startNode) {
-        throw new Error(`Start node not found with ID: ${startNodeId}`);
+      const startNode = await figma.getNodeByIdAsync(startId);
+      if (!startNode) throw new Error(`Start node not found with ID: ${startId}`);
+
+      // Check and potentially replace end node ID
+      if (endId.includes(';')) {
+        console.log(`Nested end node detected: ${endId}. Creating cursor node.`);
+        const cursorResult = await createCursorNode(endId);
+        if (!cursorResult || !cursorResult.id) {
+          throw new Error(`Failed to create cursor node for nested end node: ${endId}`);
+        }
+        endId = cursorResult.id;
       }
-      
-      if (!endNode) {
-        throw new Error(`End node not found with ID: ${endNodeId}`);
-      }
+      const endNode = await figma.getNodeByIdAsync(endId);
+      if (!endNode) throw new Error(`End node not found with ID: ${endId}`);
+
       
       // Clone the default connector
       const clonedConnector = defaultConnector.clone();
       
-      // Add prefix to connector name (for easy finding later)
-      clonedConnector.name = `TTF_Connector/${startNode.name}/${endNode.name}`;
+      // Update connector name using potentially replaced node names
+      clonedConnector.name = `TTF_Connector/${startNode.id}/${endNode.id}`;
       
-      // Set start and end points
+      // Set start and end points using potentially replaced IDs
       clonedConnector.connectorStart = {
-        endpointNodeId: startNodeId,
-        magnet: 'AUTO' // Default or can be customized
+        endpointNodeId: startId,
+        magnet: 'AUTO'
       };
       
       clonedConnector.connectorEnd = {
-        endpointNodeId: endNodeId,
-        magnet: 'AUTO' // Default or can be customized
+        endpointNodeId: endId,
+        magnet: 'AUTO'
       };
       
       // Add text (if provided)
@@ -3659,11 +3819,13 @@ async function createConnections(params) {
         }
       }
       
-      // Add to results
+      // Add to results (using the *original* IDs for reference if needed)
       results.push({
         id: clonedConnector.id,
-        startNodeId: startNodeId,
-        endNodeId: endNodeId,
+        originalStartNodeId: originalStartId,
+        originalEndNodeId: originalEndId,
+        usedStartNodeId: startId, // ID actually used for connection
+        usedEndNodeId: endId,     // ID actually used for connection
         text: text || ""
       });
       
