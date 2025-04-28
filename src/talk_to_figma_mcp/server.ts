@@ -2338,7 +2338,7 @@ server.tool(
 // A tool to get Figma Prototyping Reactions from multiple nodes
 server.tool(
   "get_reactions",
-  "Get Figma Prototyping Reactions from multiple nodes. MUST execute 'reaction_to_connector_strategy' prompt after this tool",
+  "Get Figma Prototyping Reactions from multiple nodes. CRITICAL: The output MUST be processed using the 'reaction_to_connector_strategy' prompt IMMEDIATELY to generate parameters for connector lines via the 'create_connections' tool.",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
   },
@@ -2353,7 +2353,7 @@ server.tool(
           },
           {
             type: "text",
-            text: "IMPORTANT: Use the reaction data shown above and follow the `reaction_to_connector_strategy` strategy IMMEDIATELY."
+            text: "IMPORTANT: You MUST now use the reaction data above and follow the `reaction_to_connector_strategy` prompt to prepare the parameters for the `create_connections` tool call. This is a required next step."
           }
         ],
         followUp: {

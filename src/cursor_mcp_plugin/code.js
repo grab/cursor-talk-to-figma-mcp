@@ -3623,20 +3623,17 @@ async function createCursorNode(targetNodeId) {
       : targetNodeId;
     if (!parentNodeId) throw new Error("Could not determine parent node ID");
 
+    // Find the parent node to append cursor node as child
     let parentNode = await figma.getNodeByIdAsync(parentNodeId);
     if (!parentNode) throw new Error("Parent node not found");
 
-    if (
-      ['INSTANCE', 'COMPONENT', 'COMPONENT_SET'].includes(parentNode.type) &&
-      parentNode.parent
-    ) {
+    // If the parent node is not eligible to appendChild, set the parentNode to the parent of the parentNode
+    if (parentNode.type === 'INSTANCE' || parentNode.type === 'COMPONENT' || parentNode.type === 'COMPONENT_SET') {
       parentNode = parentNode.parent;
+      if (!parentNode) throw new Error("Parent node not found");
     }
 
-    if (typeof parentNode.appendChild !== "function") {
-      throw new Error("Parent node does not support appendChild");
-    }
-
+    // Create the cursor node
     const importedNode = await figma.createNodeFromSvg(svgString);
     if (!importedNode || !importedNode.id) {
       throw new Error("Failed to create imported cursor node");
@@ -3669,27 +3666,41 @@ async function createCursorNode(targetNodeId) {
       }];
     }
 
+    // Append the cursor node to the parent node
     parentNode.appendChild(importedNode);
 
-    // if the parentNode has layoutMode !== NONE, we need to set the layoutPositioning to ABSOLUTE
+    // if the parentNode has auto-layout enabled, set the layoutPositioning to ABSOLUTE
     if ('layoutMode' in parentNode && parentNode.layoutMode !== 'NONE') {
       importedNode.layoutPositioning = 'ABSOLUTE';
     }
 
-    // if the targetNode has absoluteBoundingBox, we need to set the importedNode's absoluteBoundingBox to the targetNode's absoluteBoundingBox
+    // Adjust the importedNode's position to the targetNode's position
     if (
       targetNode.absoluteBoundingBox &&
-      parentNode.parent &&
-      parentNode.parent.absoluteBoundingBox
+      parentNode.absoluteBoundingBox
     ) {
-      importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.parent.absoluteBoundingBox.x;
-      importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.parent.absoluteBoundingBox.y;
-    } else if ('x' in targetNode && 'y' in targetNode) {
-      importedNode.x = targetNode.x;
-      importedNode.y = targetNode.y;
+      // if the targetNode has absoluteBoundingBox, set the importedNode's absoluteBoundingBox to the targetNode's absoluteBoundingBox
+      console.log('targetNode.absoluteBoundingBox', targetNode.absoluteBoundingBox);
+      console.log('parentNode.absoluteBoundingBox', parentNode.absoluteBoundingBox);
+      importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.absoluteBoundingBox.x  + targetNode.absoluteBoundingBox.width / 2 - 48 / 2
+      importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.absoluteBoundingBox.y + targetNode.absoluteBoundingBox.height / 2 - 48 / 2;
+    } else if (
+      'x' in targetNode && 'y' in targetNode && 'width' in targetNode && 'height' in targetNode) {
+        // if the targetNode has x, y, width, height, calculate center based on relative position
+        console.log('targetNode.x/y/width/height', targetNode.x, targetNode.y, targetNode.width, targetNode.height);
+        importedNode.x = targetNode.x + targetNode.width / 2 - 48 / 2;
+        importedNode.y = targetNode.y + targetNode.height / 2 - 48 / 2;
     } else {
-      importedNode.x = 0;
-      importedNode.y = 0;
+      // Fallback: Place at top-left of target if possible, otherwise at (0,0) relative to parent
+      if ('x' in targetNode && 'y' in targetNode) {
+        console.log('Fallback to targetNode x/y');
+        importedNode.x = targetNode.x;
+        importedNode.y = targetNode.y;
+      } else {
+        console.log('Fallback to (0,0)');
+        importedNode.x = 0;
+        importedNode.y = 0;
+      }
     }
 
     // get the importedNode ID and the importedNode
