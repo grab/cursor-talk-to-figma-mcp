@@ -3641,7 +3641,7 @@ async function createCursorNode(targetNodeId) {
     if (!importedNode || !importedNode.id) {
       throw new Error("Failed to create imported cursor node");
     }
-    importedNode.name = "Mouse Cursor";
+    importedNode.name = "TTF_Connector / Mouse Cursor";
     importedNode.resize(48, 48);
 
     const cursorNode = importedNode.findOne(node => node.type === 'VECTOR');
