@@ -3524,20 +3524,20 @@ async function setItemSpacing(params) {
 async function setDefaultConnector(params) {
   const { connectorId } = params || {};
   
-  // connectorId가 제공된 경우 해당 ID로 검색하고 설정 (기존 저장소 확인 안 함)
+  // If connectorId is provided, search and set by that ID (do not check existing storage)
   if (connectorId) {
-    // 지정된 ID로 노드 가져오기
+    // Get node by specified ID
     const node = await figma.getNodeByIdAsync(connectorId);
     if (!node) {
       throw new Error(`Connector node not found with ID: ${connectorId}`);
     }
     
-    // 노드 타입 확인
+    // Check node type
     if (node.type !== 'CONNECTOR') {
       throw new Error(`Node is not a connector: ${connectorId}`);
     }
     
-    // 찾은 커넥터를 기본 커넥터로 설정
+    // Set the found connector as the default connector
     await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
     
     return {
@@ -3546,18 +3546,18 @@ async function setDefaultConnector(params) {
       connectorId: connectorId
     };
   } 
-  // connectorId가 제공되지 않은 경우, 기존 저장소에서 확인
+  // If connectorId is not provided, check existing storage
   else {
-    // 클라이언트 저장소에서 기존 설정된 기본 커넥터가 있는지 확인
+    // Check if there is an existing default connector in client storage
     try {
       const existingConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
       
-      // 기존 커넥터 ID가 있는 경우, 해당 노드가 여전히 유효한지 확인
+      // If there is an existing connector ID, check if the node is still valid
       if (existingConnectorId) {
         try {
           const existingConnector = await figma.getNodeByIdAsync(existingConnectorId);
           
-          // 저장된 커넥터가 여전히 존재하고 타입이 CONNECTOR인 경우
+          // If the stored connector still exists and is of type CONNECTOR
           if (existingConnector && existingConnector.type === 'CONNECTOR') {
             return {
               success: true,
@@ -3566,7 +3566,7 @@ async function setDefaultConnector(params) {
               exists: true
             };
           }
-          // 저장된 커넥터가 더 이상 유효하지 않음 - 새로운 커넥터 찾기
+          // The stored connector is no longer valid - find a new connector
           else {
             console.log(`Stored connector ID ${existingConnectorId} is no longer valid, finding a new connector...`);
           }
@@ -3578,17 +3578,17 @@ async function setDefaultConnector(params) {
       console.log(`Error checking for existing connector: ${error.message}`);
     }
     
-    // 저장된 기본 커넥터가 없거나 유효하지 않은 경우, 현재 페이지에서 찾기
+    // If there is no stored default connector or it is invalid, find one in the current page
     try {
-      // 현재 페이지에서 CONNECTOR 타입 노드 검색
+      // Find CONNECTOR type nodes in the current page
       const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
       
       if (currentPageConnectors && currentPageConnectors.length > 0) {
-        // 첫 번째 커넥터 사용
+        // Use the first connector found
         const foundConnector = currentPageConnectors[0];
         const autoFoundId = foundConnector.id;
         
-        // 찾은 커넥터를 기본 커넥터로 설정
+        // Set the found connector as the default connector
         await figma.clientStorage.setAsync('defaultConnectorId', autoFoundId);
         
         return {
@@ -3598,11 +3598,11 @@ async function setDefaultConnector(params) {
           autoSelected: true
         };
       } else {
-        // 현재 페이지에서 커넥터를 찾지 못한 경우 안내 메시지
+        // If no connector is found in the current page, show a guide message
         throw new Error('No connector found in the current page. Please create a connector in Figma first or specify a connector ID.');
       }
     } catch (error) {
-      // findAllWithCriteria 실행 중 발생한 에러
+      // Error occurred while running findAllWithCriteria
       throw new Error(`Failed to find a connector: ${error.message}`);
     }
   }
