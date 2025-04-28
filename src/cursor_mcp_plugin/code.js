@@ -603,7 +603,7 @@ async function getReactions(nodeIds) {
       1,
       totalCount,
       totalCount,
-      `Completed deep search: found ${allResults.length} nodes with reactions, visual highlights will disappear in 1.5 seconds`
+      `Completed deep search: found ${allResults.length} nodes with reactions.`
     );
 
     return {
@@ -3609,50 +3609,48 @@ async function setDefaultConnector(params) {
 }
 
 async function createCursorNode(targetNodeId) {
-  // SVG string from cursor.svg
   const svgString = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M16 8V35.2419L22 28.4315L27 39.7823C27 39.7823 28.3526 40.2722 29 39.7823C29.6474 39.2924 30.2913 38.3057 30 37.5121C28.6247 33.7654 25 26.1613 25 26.1613H32L16 8Z" fill="#202125" />
   </svg>`;
-  
   try {
-    // Get the target node
     const targetNode = await figma.getNodeByIdAsync(targetNodeId);
-    if (!targetNode) {
-      throw new Error("Target node not found");
-    }
-    
-    // Parse the parent node ID from the target node ID
-    // If targetNodeId contains a semicolon, get the part before it
-    const parentNodeId = targetNodeId.includes(';') 
+    if (!targetNode) throw new Error("Target node not found");
+
+    // The targetNodeId has semicolons since it is a nested node.
+    // So we need to get the parent node ID from the target node ID and check if we can appendChild to it or not.
+    let parentNodeId = targetNodeId.includes(';') 
       ? targetNodeId.split(';')[0] 
-      : (targetNode.parent ? targetNode.parent.id : null);
-    
-    if (!parentNodeId) {
-      throw new Error("Could not determine parent node ID");
+      : targetNodeId;
+    if (!parentNodeId) throw new Error("Could not determine parent node ID");
+
+    let parentNode = await figma.getNodeByIdAsync(parentNodeId);
+    if (!parentNode) throw new Error("Parent node not found");
+
+    if (
+      ['INSTANCE', 'COMPONENT', 'COMPONENT_SET'].includes(parentNode.type) &&
+      parentNode.parent
+    ) {
+      parentNode = parentNode.parent;
     }
-    
-    // Get the top-level parent node
-    const parentNode = await figma.getNodeByIdAsync(parentNodeId);
-    if (!parentNode) {
-      throw new Error("Parent node not found");
+
+    if (typeof parentNode.appendChild !== "function") {
+      throw new Error("Parent node does not support appendChild");
     }
-    
-    // Create a node from the SVG string
+
     const importedNode = await figma.createNodeFromSvg(svgString);
+    if (!importedNode || !importedNode.id) {
+      throw new Error("Failed to create imported cursor node");
+    }
     importedNode.name = "Mouse Cursor";
     importedNode.resize(48, 48);
-    
-    // Add shadow effect to the SVG
+
     const cursorNode = importedNode.findOne(node => node.type === 'VECTOR');
     if (cursorNode) {
-      // Set fill color to black
       cursorNode.fills = [{
         type: 'SOLID',
         color: { r: 0, g: 0, b: 0 },
         opacity: 1
       }];
-      
-      // Add white stroke
       cursorNode.strokes = [{
         type: 'SOLID',
         color: { r: 1, g: 1, b: 1 },
@@ -3660,8 +3658,6 @@ async function createCursorNode(targetNodeId) {
       }];
       cursorNode.strokeWeight = 2;
       cursorNode.strokeAlign = 'OUTSIDE';
-      
-      // Add shadow effect
       cursorNode.effects = [{
         type: "DROP_SHADOW",
         color: { r: 0, g: 0, b: 0, a: 0.3 },
@@ -3672,37 +3668,39 @@ async function createCursorNode(targetNodeId) {
         blendMode: "NORMAL"
       }];
     }
-    
-    // Append to the top-level parent
-    parentNode.parent.appendChild(importedNode);
 
-    // Set absolute positioning
-    if ('layoutPositioning' in importedNode) {
+    parentNode.appendChild(importedNode);
+
+    // if the parentNode has layoutMode !== NONE, we need to set the layoutPositioning to ABSOLUTE
+    if ('layoutMode' in parentNode && parentNode.layoutMode !== 'NONE') {
       importedNode.layoutPositioning = 'ABSOLUTE';
     }
-    
-    if (targetNode.absoluteBoundingBox && parentNode.parent.absoluteBoundingBox) {
-      console.log("targetNode.absoluteBoundingBox", targetNode.absoluteBoundingBox);
-      console.log("parentNode.parent.absoluteBoundingBox", parentNode.parent.absoluteBoundingBox);
+
+    // if the targetNode has absoluteBoundingBox, we need to set the importedNode's absoluteBoundingBox to the targetNode's absoluteBoundingBox
+    if (
+      targetNode.absoluteBoundingBox &&
+      parentNode.parent &&
+      parentNode.parent.absoluteBoundingBox
+    ) {
       importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.parent.absoluteBoundingBox.x;
       importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.parent.absoluteBoundingBox.y;
-    } else {
-      
+    } else if ('x' in targetNode && 'y' in targetNode) {
       importedNode.x = targetNode.x;
       importedNode.y = targetNode.y;
+    } else {
+      importedNode.x = 0;
+      importedNode.y = 0;
     }
 
+    // get the importedNode ID and the importedNode
+    console.log('importedNode', importedNode);
+
+
+    return { id: importedNode.id, node: importedNode };
     
-    return {
-      id: importedNode.id,
-      node: importedNode
-    };
   } catch (error) {
     console.error("Error creating cursor from SVG:", error);
-    return {
-      id: null,
-      node: null
-    };
+    return { id: null, node: null, error: error.message };
   }
 }
 

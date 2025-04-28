@@ -2353,13 +2353,12 @@ server.tool(
           },
           {
             type: "text",
-            text: "IMPORTANT: Do the follow up action with \`reaction_to_connector_strategy\` strategy to process the reaction data and prepare the input for \`create_connections\`."
+            text: "IMPORTANT: Use the reaction data shown above and follow the `reaction_to_connector_strategy` strategy IMMEDIATELY."
           }
         ],
         followUp: {
           type: "prompt",
           prompt: "reaction_to_connector_strategy",
-          // description: "IMPORTANT: Use this strategy to process the reaction data from \'get_reactions\' and prepare the input for \'create_connections\'.",
         },
       };
     } catch (error) {
@@ -2717,7 +2716,7 @@ type CommandParams = {
   };
   get_reactions: { nodeIds: string[] };
   set_default_connector: {
-    connectorId?: string;
+    connectorId?: string | undefined;
   };
   create_connections: {
     connections: Array<{
