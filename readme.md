@@ -135,8 +135,8 @@ The MCP server provides the following tools for interacting with Figma:
 ### Prototyping & Connections
 
 - `get_reactions` - Get all prototype reactions from nodes with visual highlight animation
-- `set_default_connector` - Set a copied connector as the default connector style for creating connections
-- `create_connections` - Create connections between nodes using the default connector style
+- `set_default_connector` - Set a copied FigJam connector as the default connector style for creating connections (must be set before creating connections)
+- `create_connections` - Create FigJam connector lines between nodes, based on prototype flows or custom mapping
 
 ### Creating Elements
 
@@ -189,6 +189,7 @@ The MCP server includes several helper prompts to guide you through complex desi
 - `text_replacement_strategy` - Systematic approach for replacing text in Figma designs
 - `annotation_conversion_strategy` - Strategy for converting manual annotations to Figma's native annotations
 - `swap_overrides_instances` - Strategy for transferring overrides between component instances in Figma
+- `reaction_to_connector_strategy` - Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions', and guiding the use 'create_connections' in sequence
 
 ## Development
 
@@ -232,6 +233,10 @@ When working with the Figma MCP:
     - Create native annotations with `set_multiple_annotations` in batches
     - Verify all annotations are properly linked to their targets
     - Delete legacy annotation nodes after successful conversion
+11. Visualize prototype noodles as FigJam connectors: 
+  - Use `get_reactions` to extract prototype flows, 
+  - set a default connector with `set_default_connector`, 
+  - and generate connector lines with `create_connections` for clear visual flow mapping.
 
 ## License
 
