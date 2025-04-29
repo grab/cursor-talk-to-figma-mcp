@@ -30,6 +30,34 @@ interface CommandProgressUpdate {
   timestamp: number;
 }
 
+// Add TypeScript interfaces for component overrides after line 21
+interface ComponentOverride {
+  id: string;
+  overriddenFields: string[];
+}
+
+// Update the getInstanceOverridesResult interface to match the plugin implementation
+interface getInstanceOverridesResult {
+  success: boolean;
+  message: string;
+  sourceInstanceId: string;
+  mainComponentId: string;
+  overridesCount: number;
+}
+
+interface setInstanceOverridesResult {
+  success: boolean;
+  message: string;
+  totalCount?: number;
+  results?: Array<{
+    success: boolean;
+    instanceId: string;
+    instanceName: string;
+    appliedCount?: number;
+    message?: string;
+  }>;
+}
+
 // Custom logging functions that write to stderr instead of stdout to avoid being captured
 const logger = {
   info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
@@ -316,13 +344,15 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
+            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
       };
     }
   }
 );
+
 
 // Create Rectangle Tool
 server.tool(
@@ -1209,6 +1239,93 @@ server.tool(
   }
 );
 
+// Copy Instance Overrides Tool
+server.tool(
+  "get_instance_overrides",
+  "Get all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
+  {
+    nodeId: z.string().optional().describe("Optional ID of the component instance to get overrides from. If not provided, currently selected instance will be used."),
+  },
+  async ({ nodeId }) => {
+    try {
+      const result = await sendCommandToFigma("get_instance_overrides", { 
+        instanceNodeId: nodeId || null 
+      });
+      const typedResult = result as getInstanceOverridesResult;
+      
+      return {
+        content: [
+          {
+            type: "text",
+            text: typedResult.success 
+              ? `Successfully got instance overrides: ${typedResult.message}`
+              : `Failed to get instance overrides: ${typedResult.message}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error copying instance overrides: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Set Instance Overrides Tool
+server.tool(
+  "set_instance_overrides",
+  "Apply previously copied overrides to selected component instances. Target instances will be swapped to the source component and all copied override properties will be applied.",
+  {
+    sourceInstanceId: z.string().describe("ID of the source component instance"),
+    targetNodeIds: z.array(z.string()).describe("Array of target instance IDs. Currently selected instances will be used.")
+  },
+  async ({ sourceInstanceId, targetNodeIds }) => {
+    try {
+      const result = await sendCommandToFigma("set_instance_overrides", {
+        sourceInstanceId: sourceInstanceId,
+        targetNodeIds: targetNodeIds || []
+      });
+      const typedResult = result as setInstanceOverridesResult;
+      
+      if (typedResult.success) {
+        const successCount = typedResult.results?.filter(r => r.success).length || 0;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Successfully applied ${typedResult.totalCount || 0} overrides to ${successCount} instances.`
+            }
+          ]
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Failed to set instance overrides: ${typedResult.message}`
+            }
+          ]
+        };
+      }
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting instance overrides: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
@@ -1446,10 +1563,10 @@ server.tool(
 // Node Type Scanning Tool
 server.tool(
   "scan_nodes_by_types",
-  "Scan for nodes with specific types in the selected Figma node",
+  "Scan for child nodes with specific types in the selected Figma node",
   {
     nodeId: z.string().describe("ID of the node to scan"),
-    types: z.array(z.string()).describe("Array of node types to find (e.g. ['COMPONENT', 'FRAME'])")
+    types: z.array(z.string()).describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])")
   },
   async ({ nodeId, types }) => {
     try {
@@ -1925,6 +2042,62 @@ This strategy focuses on practical implementation based on real-world usage patt
   }
 );
 
+// Instance Slot Filling Strategy Prompt
+server.prompt(
+  "swap_overrides_instances",
+  "Guide to swap instance overrides between instances",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Swap Component Instance and Override Strategy
+
+## Overview
+This strategy enables transferring content and property overrides from a source instance to one or more target instances in Figma, maintaining design consistency while reducing manual work.
+
+## Step-by-Step Process
+
+### 1. Selection Analysis
+- Use \`get_selection()\` to identify the parent component or selected instances
+- For parent components, scan for instances with \`scan_nodes_by_types({ nodeId: "parent-id", types: ["INSTANCE"] })\`
+- Identify custom slots by name patterns (e.g. "Custom Slot*" or "Instance Slot") or by examining text content
+- Determine which is the source instance (with content to copy) and which are targets (where to apply content)
+
+### 2. Extract Source Overrides
+- Use \`get_instance_overrides()\` to extract customizations from the source instance
+- This captures text content, property values, and style overrides
+- Command syntax: \`get_instance_overrides({ nodeId: "source-instance-id" })\`
+- Look for successful response like "Got component information from [instance name]"
+
+### 3. Apply Overrides to Targets
+- Apply captured overrides using \`set_instance_overrides()\`
+- Command syntax:
+  \`\`\`
+  set_instance_overrides({
+    sourceInstanceId: "source-instance-id", 
+    targetNodeIds: ["target-id-1", "target-id-2", ...]
+  })
+  \`\`\`
+
+### 4. Verification
+- Verify results with \`get_node_info()\` or \`read_my_design()\`
+- Confirm text content and style overrides have transferred successfully
+
+## Key Tips
+- Always join the appropriate channel first with \`join_channel()\`
+- When working with multiple targets, check the full selection with \`get_selection()\`
+- Preserve component relationships by using instance overrides rather than direct text manipulation`,
+          },
+        },
+      ],
+      description: "Strategy for transferring overrides between component instances in Figma",
+    };
+  }
+);
+
 // Set Layout Mode Tool
 server.tool(
   "set_layout_mode",
@@ -2162,6 +2335,214 @@ server.tool(
   }
 );
 
+// A tool to get Figma Prototyping Reactions from multiple nodes
+server.tool(
+  "get_reactions",
+  "Get Figma Prototyping Reactions from multiple nodes. CRITICAL: The output MUST be processed using the 'reaction_to_connector_strategy' prompt IMMEDIATELY to generate parameters for connector lines via the 'create_connections' tool.",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
+  },
+  async ({ nodeIds }) => {
+    try {
+      const result = await sendCommandToFigma("get_reactions", { nodeIds });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          },
+          {
+            type: "text",
+            text: "IMPORTANT: You MUST now use the reaction data above and follow the `reaction_to_connector_strategy` prompt to prepare the parameters for the `create_connections` tool call. This is a required next step."
+          }
+        ],
+        followUp: {
+          type: "prompt",
+          prompt: "reaction_to_connector_strategy",
+        },
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting reactions: ${error instanceof Error ? error.message : String(error)
+              }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Create Connectors Tool
+server.tool(
+  "set_default_connector",
+  "Set a copied connector node as the default connector",
+  {
+    connectorId: z.string().optional().describe("The ID of the connector node to set as default")
+  },
+  async ({ connectorId }) => {
+    try {
+      const result = await sendCommandToFigma("set_default_connector", {
+        connectorId
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Default connector set: ${JSON.stringify(result)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting default connector: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Connect Nodes Tool
+server.tool(
+  "create_connections",
+  "Create connections between nodes using the default connector style",
+  {
+    connections: z.array(z.object({
+      startNodeId: z.string().describe("ID of the starting node"),
+      endNodeId: z.string().describe("ID of the ending node"),
+      text: z.string().optional().describe("Optional text to display on the connector")
+    })).describe("Array of node connections to create")
+  },
+  async ({ connections }) => {
+    try {
+      if (!connections || connections.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No connections provided"
+            }
+          ]
+        };
+      }
+
+      const result = await sendCommandToFigma("create_connections", {
+        connections
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created ${connections.length} connections: ${JSON.stringify(result)}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating connections: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+
+// Strategy for converting Figma prototype reactions to connector lines
+server.prompt(
+  "reaction_to_connector_strategy",
+  "Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions'",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `# Strategy: Convert Figma Prototype Reactions to Connector Lines
+
+## Goal
+Process the JSON output from the \`get_reactions\` tool to generate an array of connection objects suitable for the \`create_connections\` tool. This visually represents prototype flows as connector lines on the Figma canvas.
+
+## Input Data
+You will receive JSON data from the \`get_reactions\` tool. This data contains an array of nodes, each with potential reactions. A typical reaction object looks like this:
+\`\`\`json
+{
+  "trigger": { "type": "ON_CLICK" },
+  "action": {
+    "type": "NAVIGATE",
+    "destinationId": "destination-node-id",
+    "navigationTransition": { ... },
+    "preserveScrollPosition": false
+  }
+}
+\`\`\`
+
+## Step-by-Step Process
+
+### 1. Preparation & Context Gathering
+   - **Action:** Call \`read_my_design\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
+   - **Action:** Call \`set_default_connector\` **without** the \`connectorId\` parameter.
+   - **Check Result:** Analyze the response from \`set_default_connector\`.
+     - If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
+     - If it indicates no default connector is set (e.g., "No default connector set..."), you **cannot** proceed with \`create_connections\` yet. Inform the user they need to manually copy a connector from FigJam, paste it onto the current page, select it, and then you can run \`set_default_connector({ connectorId: "SELECTED_NODE_ID" })\` before attempting \`create_connections\`. **Do not proceed to Step 2 until a default connector is confirmed.**
+
+### 2. Filter and Transform Reactions from \`get_reactions\` Output
+   - **Iterate:** Go through the JSON array provided by \`get_reactions\`. For each node in the array:
+     - Iterate through its \`reactions\` array.
+   - **Filter:** Keep only reactions where the \`action\` meets these criteria:
+     - Has a \`type\` that implies a connection (e.g., \`NAVIGATE\`, \`OPEN_OVERLAY\`, \`SWAP_OVERLAY\`). **Ignore** types like \`CHANGE_TO\`, \`CLOSE_OVERLAY\`, etc.
+     - Has a valid \`destinationId\` property.
+   - **Extract:** For each valid reaction, extract the following information:
+     - \`sourceNodeId\`: The ID of the node the reaction belongs to (from the outer loop).
+     - \`destinationNodeId\`: The value of \`action.destinationId\`.
+     - \`actionType\`: The value of \`action.type\`.
+     - \`triggerType\`: The value of \`trigger.type\`.
+
+### 3. Generate Connector Text Labels
+   - **For each extracted connection:** Create a concise, descriptive text label string.
+   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`read_my_design\` or by calling \`get_node_info\` if necessary) to generate the label.
+   - **Example Labels:**
+     - If \`triggerType\` is "ON\_CLICK" and \`actionType\` is "NAVIGATE": "On click, navigate to [Destination Node Name]"
+     - If \`triggerType\` is "ON\_DRAG" and \`actionType\` is "OPEN\_OVERLAY": "On drag, open [Destination Node Name] overlay"
+   - **Keep it brief and informative.** Let this generated string be \`generatedText\`.
+
+### 4. Prepare the \`connections\` Array for \`create_connections\`
+   - **Structure:** Create a JSON array where each element is an object representing a connection.
+   - **Format:** Each object in the array must have the following structure:
+     \`\`\`json
+     {
+       "startNodeId": "sourceNodeId_from_step_2",
+       "endNodeId": "destinationNodeId_from_step_2",
+       "text": "generatedText_from_step_3"
+     }
+     \`\`\`
+   - **Result:** This final array is the value you will pass to the \`connections\` parameter when calling the \`create_connections\` tool.
+
+### 5. Execute Connection Creation
+   - **Action:** Call the \`create_connections\` tool, passing the array generated in Step 4 as the \`connections\` argument.
+   - **Verify:** Check the response from \`create_connections\` to confirm success or failure.
+
+This detailed process ensures you correctly interpret the reaction data, prepare the necessary information, and use the appropriate tools to create the connector lines.`
+          },
+        },
+      ],
+      description: "Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions'",
+    };
+  }
+);
+
+
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
@@ -2181,6 +2562,8 @@ type FigmaCommand =
   | "get_styles"
   | "get_local_components"
   | "create_component_instance"
+  | "get_instance_overrides"
+  | "set_instance_overrides"
   | "export_node_as_image"
   | "join"
   | "set_corner_radius"
@@ -2196,7 +2579,182 @@ type FigmaCommand =
   | "set_padding"
   | "set_axis_align"
   | "set_layout_sizing"
-  | "set_item_spacing";
+  | "set_item_spacing"
+  | "get_reactions"
+  | "set_default_connector"
+  | "create_connections";
+
+type CommandParams = {
+  get_document_info: Record<string, never>;
+  get_selection: Record<string, never>;
+  get_node_info: { nodeId: string };
+  get_nodes_info: { nodeIds: string[] };
+  create_rectangle: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    name?: string;
+    parentId?: string;
+  };
+  create_frame: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    name?: string;
+    parentId?: string;
+    fillColor?: { r: number; g: number; b: number; a?: number };
+    strokeColor?: { r: number; g: number; b: number; a?: number };
+    strokeWeight?: number;
+  };
+  create_text: {
+    x: number;
+    y: number;
+    text: string;
+    fontSize?: number;
+    fontWeight?: number;
+    fontColor?: { r: number; g: number; b: number; a?: number };
+    name?: string;
+    parentId?: string;
+  };
+  set_fill_color: {
+    nodeId: string;
+    r: number;
+    g: number;
+    b: number;
+    a?: number;
+  };
+  set_stroke_color: {
+    nodeId: string;
+    r: number;
+    g: number;
+    b: number;
+    a?: number;
+    weight?: number;
+  };
+  move_node: {
+    nodeId: string;
+    x: number;
+    y: number;
+  };
+  resize_node: {
+    nodeId: string;
+    width: number;
+    height: number;
+  };
+  delete_node: {
+    nodeId: string;
+  };
+  delete_multiple_nodes: {
+    nodeIds: string[];
+  };
+  get_styles: Record<string, never>;
+  get_local_components: Record<string, never>;
+  get_team_components: Record<string, never>;
+  create_component_instance: {
+    componentKey: string;
+    x: number;
+    y: number;
+  };
+  get_instance_overrides: {
+    instanceNodeId: string | null;
+  };
+  set_instance_overrides: {
+    targetNodeIds: string[];
+    sourceInstanceId: string;
+  };
+  export_node_as_image: {
+    nodeId: string;
+    format?: "PNG" | "JPG" | "SVG" | "PDF";
+    scale?: number;
+  };
+  execute_code: {
+    code: string;
+  };
+  join: {
+    channel: string;
+  };
+  set_corner_radius: {
+    nodeId: string;
+    radius: number;
+    corners?: boolean[];
+  };
+  clone_node: {
+    nodeId: string;
+    x?: number;
+    y?: number;
+  };
+  set_text_content: {
+    nodeId: string;
+    text: string;
+  };
+  scan_text_nodes: {
+    nodeId: string;
+    useChunking: boolean;
+    chunkSize: number;
+  };
+  set_multiple_text_contents: {
+    nodeId: string;
+    text: Array<{ nodeId: string; text: string }>;
+  };
+  get_annotations: {
+    nodeId?: string;
+    includeCategories?: boolean;
+  };
+  set_annotation: {
+    nodeId: string;
+    annotationId?: string;
+    labelMarkdown: string;
+    categoryId?: string;
+    properties?: Array<{ type: string }>;
+  };
+  set_multiple_annotations: SetMultipleAnnotationsParams;
+  scan_nodes_by_types: {
+    nodeId: string;
+    types: Array<string>;
+  };
+  get_reactions: { nodeIds: string[] };
+  set_default_connector: {
+    connectorId?: string | undefined;
+  };
+  create_connections: {
+    connections: Array<{
+      startNodeId: string;
+      endNodeId: string;
+      text?: string;
+    }>;
+  };
+  
+};
+
+
+  // Helper function to process Figma node responses
+function processFigmaNodeResponse(result: unknown): any {
+  if (!result || typeof result !== "object") {
+    return result;
+  }
+
+  // Check if this looks like a node response
+  const resultObj = result as Record<string, unknown>;
+  if ("id" in resultObj && typeof resultObj.id === "string") {
+    // It appears to be a node response, log the details
+    console.info(
+      `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${resultObj.id
+      })`
+    );
+
+    if ("x" in resultObj && "y" in resultObj) {
+      console.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
+    }
+
+    if ("width" in resultObj && "height" in resultObj) {
+      console.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
+    }
+  }
+
+  return result;
+}
 
 // Update the connectToFigma function
 function connectToFigma(port: number = 3055) {
@@ -2446,7 +3004,7 @@ server.tool(
     }
   }
 );
-
+       
 // Start the server
 async function main() {
   try {
@@ -2468,4 +3026,6 @@ main().catch(error => {
   logger.error(`Error starting FigmaMCP server: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });
+
+
 
