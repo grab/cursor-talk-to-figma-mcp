@@ -150,6 +150,14 @@ The MCP server provides the following tools for interacting with Figma:
 - `set_text_content` - Set the text content of a single text node
 - `set_multiple_text_contents` - Batch update multiple text nodes efficiently
 
+### Auto Layout & Spacing
+
+- `set_layout_mode` - Set the layout mode and wrap behavior of a frame (NONE, HORIZONTAL, VERTICAL)
+- `set_padding` - Set padding values for an auto-layout frame (top, right, bottom, left)
+- `set_axis_align` - Set primary and counter axis alignment for auto-layout frames
+- `set_layout_sizing` - Set horizontal and vertical sizing modes for auto-layout frames (FIXED, HUG, FILL)
+- `set_item_spacing` - Set distance between children in an auto-layout frame
+
 ### Styling
 
 - `set_fill_color` - Set the fill color of a node (RGBA)
@@ -233,10 +241,11 @@ When working with the Figma MCP:
     - Create native annotations with `set_multiple_annotations` in batches
     - Verify all annotations are properly linked to their targets
     - Delete legacy annotation nodes after successful conversion
-11. Visualize prototype noodles as FigJam connectors: 
-  - Use `get_reactions` to extract prototype flows, 
-  - set a default connector with `set_default_connector`, 
-  - and generate connector lines with `create_connections` for clear visual flow mapping.
+11. Visualize prototype noodles as FigJam connectors:
+
+- Use `get_reactions` to extract prototype flows,
+- set a default connector with `set_default_connector`,
+- and generate connector lines with `create_connections` for clear visual flow mapping.
 
 ## License
 
