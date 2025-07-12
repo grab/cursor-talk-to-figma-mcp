@@ -1,7 +1,7 @@
 {
   "name": "cursor-talk-to-figma-mcp",
   "description": "Cursor Talk to Figma MCP",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {
@@ -28,9 +28,9 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@modelcontextprotocol/sdk": "1.13.1",
     "uuid": "latest",
     "ws": "latest",
-    "zod": "^3.24.2"
+    "zod": "3.22.4"
   }
 }
