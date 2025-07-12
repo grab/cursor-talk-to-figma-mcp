@@ -187,8 +187,8 @@ server.tool(
   "Get detailed information about a specific node in Figma",
   {
     nodeId: z.string().describe("The ID of the node to get information about"),
-  },
-  async ({ nodeId }) => {
+  } as any,
+  (async ({ nodeId }: any) => {
     try {
       const result = await sendCommandToFigma("get_node_info", { nodeId });
       return {
@@ -210,7 +210,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 function rgbaToHex(color: any): string {
@@ -322,11 +322,11 @@ server.tool(
   "Get detailed information about multiple nodes in Figma",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
-  },
-  async ({ nodeIds }) => {
+  } as any,
+  (async ({ nodeIds }: any) => {
     try {
       const results = await Promise.all(
-        nodeIds.map(async (nodeId) => {
+        nodeIds.map(async (nodeId: any) => {
           const result = await sendCommandToFigma('get_node_info', { nodeId });
           return { nodeId, info: result };
         })
@@ -350,7 +350,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 
@@ -368,8 +368,8 @@ server.tool(
       .string()
       .optional()
       .describe("Optional parent node ID to append the rectangle to"),
-  },
-  async ({ x, y, width, height, name, parentId }) => {
+  } as any,
+  (async ({ x, y, width, height, name, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_rectangle", {
         x,
@@ -398,7 +398,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Create Frame Tool
@@ -461,8 +461,8 @@ server.tool(
       .number()
       .optional()
       .describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
-  },
-  async ({
+  } as any,
+  (async ({
     x,
     y,
     width,
@@ -483,7 +483,7 @@ server.tool(
     layoutSizingHorizontal,
     layoutSizingVertical,
     itemSpacing
-  }) => {
+  }: any) => {
     try {
       const result = await sendCommandToFigma("create_frame", {
         x,
@@ -527,7 +527,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Create Text Tool
@@ -565,8 +565,8 @@ server.tool(
       .string()
       .optional()
       .describe("Optional parent node ID to append the text to"),
-  },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }) => {
+  } as any,
+  (async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -598,7 +598,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Fill Color Tool
@@ -611,8 +611,8 @@ server.tool(
     g: z.number().min(0).max(1).describe("Green component (0-1)"),
     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
-  },
-  async ({ nodeId, r, g, b, a }) => {
+  } as any,
+  (async ({ nodeId, r, g, b, a }: any) => {
     try {
       const result = await sendCommandToFigma("set_fill_color", {
         nodeId,
@@ -639,7 +639,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Stroke Color Tool
@@ -653,8 +653,8 @@ server.tool(
     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
     weight: z.number().positive().optional().describe("Stroke weight"),
-  },
-  async ({ nodeId, r, g, b, a, weight }) => {
+  } as any,
+  (async ({ nodeId, r, g, b, a, weight }: any) => {
     try {
       const result = await sendCommandToFigma("set_stroke_color", {
         nodeId,
@@ -682,7 +682,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Move Node Tool
@@ -693,8 +693,8 @@ server.tool(
     nodeId: z.string().describe("The ID of the node to move"),
     x: z.number().describe("New X position"),
     y: z.number().describe("New Y position"),
-  },
-  async ({ nodeId, x, y }) => {
+  } as any,
+  (async ({ nodeId, x, y }: any) => {
     try {
       const result = await sendCommandToFigma("move_node", { nodeId, x, y });
       const typedResult = result as { name: string };
@@ -717,7 +717,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Clone Node Tool
@@ -728,8 +728,8 @@ server.tool(
     nodeId: z.string().describe("The ID of the node to clone"),
     x: z.number().optional().describe("New X position for the clone"),
     y: z.number().optional().describe("New Y position for the clone")
-  },
-  async ({ nodeId, x, y }) => {
+  } as any,
+  (async ({ nodeId, x, y }: any) => {
     try {
       const result = await sendCommandToFigma('clone_node', { nodeId, x, y });
       const typedResult = result as { name: string, id: string };
@@ -751,7 +751,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 // Resize Node Tool
@@ -762,8 +762,8 @@ server.tool(
     nodeId: z.string().describe("The ID of the node to resize"),
     width: z.number().positive().describe("New width"),
     height: z.number().positive().describe("New height"),
-  },
-  async ({ nodeId, width, height }) => {
+  } as any,
+  (async ({ nodeId, width, height }: any) => {
     try {
       const result = await sendCommandToFigma("resize_node", {
         nodeId,
@@ -790,7 +790,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Delete Node Tool
@@ -799,8 +799,8 @@ server.tool(
   "Delete a node from Figma",
   {
     nodeId: z.string().describe("The ID of the node to delete"),
-  },
-  async ({ nodeId }) => {
+  } as any,
+  (async ({ nodeId }: any) => {
     try {
       await sendCommandToFigma("delete_node", { nodeId });
       return {
@@ -822,7 +822,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Delete Multiple Nodes Tool
@@ -831,8 +831,8 @@ server.tool(
   "Delete multiple nodes from Figma at once",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
-  },
-  async ({ nodeIds }) => {
+  } as any,
+  (async ({ nodeIds }: any) => {
     try {
       const result = await sendCommandToFigma("delete_multiple_nodes", { nodeIds });
       return {
@@ -854,7 +854,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Export Node as Image Tool
@@ -868,8 +868,8 @@ server.tool(
       .optional()
       .describe("Export format"),
     scale: z.number().positive().optional().describe("Export scale"),
-  },
-  async ({ nodeId, format, scale }) => {
+  } as any,
+  (async ({ nodeId, format, scale }: any) => {
     try {
       const result = await sendCommandToFigma("export_node_as_image", {
         nodeId,
@@ -898,7 +898,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Text Content Tool
@@ -908,8 +908,8 @@ server.tool(
   {
     nodeId: z.string().describe("The ID of the text node to modify"),
     text: z.string().describe("New text content"),
-  },
-  async ({ nodeId, text }) => {
+  } as any,
+  (async ({ nodeId, text }: any) => {
     try {
       const result = await sendCommandToFigma("set_text_content", {
         nodeId,
@@ -935,7 +935,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Get Styles Tool
@@ -1005,8 +1005,8 @@ server.tool(
   {
     nodeId: z.string().optional().describe("Optional node ID to get annotations for specific node"),
     includeCategories: z.boolean().optional().default(true).describe("Whether to include category information")
-  },
-  async ({ nodeId, includeCategories }) => {
+  } as any,
+  (async ({ nodeId, includeCategories }: any) => {
     try {
       const result = await sendCommandToFigma("get_annotations", {
         nodeId,
@@ -1030,7 +1030,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 // Set Annotation Tool
@@ -1045,8 +1045,8 @@ server.tool(
     properties: z.array(z.object({
       type: z.string()
     })).optional().describe("Additional properties for the annotation")
-  },
-  async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }) => {
+  } as any,
+  (async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }: any) => {
     try {
       const result = await sendCommandToFigma("set_annotation", {
         nodeId,
@@ -1073,7 +1073,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 interface SetMultipleAnnotationsParams {
@@ -1108,8 +1108,8 @@ server.tool(
         })
       )
       .describe("Array of annotations to apply"),
-  },
-  async ({ nodeId, annotations }, extra) => {
+  } as any,
+  (async ({ nodeId, annotations }: any) => {
     try {
       if (!annotations || annotations.length === 0) {
         return {
@@ -1197,7 +1197,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Create Component Instance Tool
@@ -1208,8 +1208,8 @@ server.tool(
     componentKey: z.string().describe("Key of the component to instantiate"),
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
-  },
-  async ({ componentKey, x, y }) => {
+  } as any,
+  (async ({ componentKey, x, y }: any) => {
     try {
       const result = await sendCommandToFigma("create_component_instance", {
         componentKey,
@@ -1236,7 +1236,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Copy Instance Overrides Tool
@@ -1245,19 +1245,19 @@ server.tool(
   "Get all override properties from a selected component instance. These overrides can be applied to other instances, which will swap them to match the source component.",
   {
     nodeId: z.string().optional().describe("Optional ID of the component instance to get overrides from. If not provided, currently selected instance will be used."),
-  },
-  async ({ nodeId }) => {
+  } as any,
+  (async ({ nodeId }: any) => {
     try {
-      const result = await sendCommandToFigma("get_instance_overrides", { 
-        instanceNodeId: nodeId || null 
+      const result = await sendCommandToFigma("get_instance_overrides", {
+        instanceNodeId: nodeId || null
       });
       const typedResult = result as getInstanceOverridesResult;
-      
+
       return {
         content: [
           {
             type: "text",
-            text: typedResult.success 
+            text: typedResult.success
               ? `Successfully got instance overrides: ${typedResult.message}`
               : `Failed to get instance overrides: ${typedResult.message}`
           }
@@ -1273,7 +1273,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 // Set Instance Overrides Tool
@@ -1283,15 +1283,15 @@ server.tool(
   {
     sourceInstanceId: z.string().describe("ID of the source component instance"),
     targetNodeIds: z.array(z.string()).describe("Array of target instance IDs. Currently selected instances will be used.")
-  },
-  async ({ sourceInstanceId, targetNodeIds }) => {
+  } as any,
+  (async ({ sourceInstanceId, targetNodeIds }: any) => {
     try {
       const result = await sendCommandToFigma("set_instance_overrides", {
         sourceInstanceId: sourceInstanceId,
         targetNodeIds: targetNodeIds || []
       });
       const typedResult = result as setInstanceOverridesResult;
-      
+
       if (typedResult.success) {
         const successCount = typedResult.results?.filter(r => r.success).length || 0;
         return {
@@ -1322,7 +1322,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 
@@ -1340,8 +1340,8 @@ server.tool(
       .describe(
         "Optional array of 4 booleans to specify which corners to round [topLeft, topRight, bottomRight, bottomLeft]"
       ),
-  },
-  async ({ nodeId, radius, corners }) => {
+  } as any,
+  (async ({ nodeId, radius, corners }: any) => {
     try {
       const result = await sendCommandToFigma("set_corner_radius", {
         nodeId,
@@ -1368,7 +1368,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Define design strategy prompt
@@ -1489,8 +1489,8 @@ server.tool(
   "Scan all text nodes in the selected Figma node",
   {
     nodeId: z.string().describe("ID of the node to scan"),
-  },
-  async ({ nodeId }) => {
+  } as any,
+  (async ({ nodeId }: any) => {
     try {
       // Initial response to indicate we're starting the process
       const initialStatus = {
@@ -1557,7 +1557,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Node Type Scanning Tool
@@ -1567,8 +1567,8 @@ server.tool(
   {
     nodeId: z.string().describe("ID of the node to scan"),
     types: z.array(z.string()).describe("Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])")
-  },
-  async ({ nodeId, types }) => {
+  } as any,
+  (async ({ nodeId, types }: any) => {
     try {
       // Initial response to indicate we're starting the process
       const initialStatus = {
@@ -1639,7 +1639,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Text Replacement Strategy Prompt
@@ -1792,8 +1792,8 @@ server.tool(
         })
       )
       .describe("Array of text node IDs and their replacement texts"),
-  },
-  async ({ nodeId, text }, extra) => {
+  } as any,
+  (async ({ nodeId, text }: any) => {
     try {
       if (!text || text.length === 0) {
         return {
@@ -1882,7 +1882,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Annotation Conversion Strategy Prompt
@@ -2106,8 +2106,8 @@ server.tool(
     nodeId: z.string().describe("The ID of the frame to modify"),
     layoutMode: z.enum(["NONE", "HORIZONTAL", "VERTICAL"]).describe("Layout mode for the frame"),
     layoutWrap: z.enum(["NO_WRAP", "WRAP"]).optional().describe("Whether the auto-layout frame wraps its children")
-  },
-  async ({ nodeId, layoutMode, layoutWrap }) => {
+  } as any,
+  (async ({ nodeId, layoutMode, layoutWrap }: any) => {
     try {
       const result = await sendCommandToFigma("set_layout_mode", {
         nodeId,
@@ -2133,7 +2133,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Padding Tool
@@ -2146,8 +2146,8 @@ server.tool(
     paddingRight: z.number().optional().describe("Right padding value"),
     paddingBottom: z.number().optional().describe("Bottom padding value"),
     paddingLeft: z.number().optional().describe("Left padding value"),
-  },
-  async ({ nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft }) => {
+  } as any,
+  (async ({ nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft }: any) => {
     try {
       const result = await sendCommandToFigma("set_padding", {
         nodeId,
@@ -2187,7 +2187,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Axis Align Tool
@@ -2204,8 +2204,8 @@ server.tool(
       .enum(["MIN", "MAX", "CENTER", "BASELINE"])
       .optional()
       .describe("Counter axis alignment (MIN/MAX = top/bottom in horizontal, left/right in vertical)")
-  },
-  async ({ nodeId, primaryAxisAlignItems, counterAxisAlignItems }) => {
+  } as any,
+  (async ({ nodeId, primaryAxisAlignItems, counterAxisAlignItems }: any) => {
     try {
       const result = await sendCommandToFigma("set_axis_align", {
         nodeId,
@@ -2241,7 +2241,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Layout Sizing Tool
@@ -2258,8 +2258,8 @@ server.tool(
       .enum(["FIXED", "HUG", "FILL"])
       .optional()
       .describe("Vertical sizing mode (HUG for frames/text only, FILL for auto-layout children only)")
-  },
-  async ({ nodeId, layoutSizingHorizontal, layoutSizingVertical }) => {
+  } as any,
+  (async ({ nodeId, layoutSizingHorizontal, layoutSizingVertical }: any) => {
     try {
       const result = await sendCommandToFigma("set_layout_sizing", {
         nodeId,
@@ -2295,7 +2295,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Set Item Spacing Tool
@@ -2305,8 +2305,8 @@ server.tool(
   {
     nodeId: z.string().describe("The ID of the frame to modify"),
     itemSpacing: z.number().describe("Distance between children. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
-  },
-  async ({ nodeId, itemSpacing }) => {
+  } as any,
+  (async ({ nodeId, itemSpacing }: any) => {
     try {
       const result = await sendCommandToFigma("set_item_spacing", {
         nodeId,
@@ -2332,7 +2332,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // A tool to get Figma Prototyping Reactions from multiple nodes
@@ -2341,8 +2341,8 @@ server.tool(
   "Get Figma Prototyping Reactions from multiple nodes. CRITICAL: The output MUST be processed using the 'reaction_to_connector_strategy' prompt IMMEDIATELY to generate parameters for connector lines via the 'create_connections' tool.",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
-  },
-  async ({ nodeIds }) => {
+  } as any,
+  (async ({ nodeIds }: any) => {
     try {
       const result = await sendCommandToFigma("get_reactions", { nodeIds });
       return {
@@ -2372,7 +2372,7 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
 
 // Create Connectors Tool
@@ -2381,8 +2381,8 @@ server.tool(
   "Set a copied connector node as the default connector",
   {
     connectorId: z.string().optional().describe("The ID of the connector node to set as default")
-  },
-  async ({ connectorId }) => {
+  } as any,
+  (async ({ connectorId }: any) => {
     try {
       const result = await sendCommandToFigma("set_default_connector", {
         connectorId
@@ -2406,7 +2406,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 // Connect Nodes Tool
@@ -2419,8 +2419,8 @@ server.tool(
       endNodeId: z.string().describe("ID of the ending node"),
       text: z.string().optional().describe("Optional text to display on the connector")
     })).describe("Array of node connections to create")
-  },
-  async ({ connections }) => {
+  } as any,
+  (async ({ connections }: any) => {
     try {
       if (!connections || connections.length === 0) {
         return {
@@ -2455,7 +2455,7 @@ server.tool(
         ]
       };
     }
-  }
+  }) as any
 );
 
 // Strategy for converting Figma prototype reactions to connector lines
@@ -2725,11 +2725,11 @@ type CommandParams = {
       text?: string;
     }>;
   };
-  
+
 };
 
 
-  // Helper function to process Figma node responses
+// Helper function to process Figma node responses
 function processFigmaNodeResponse(result: unknown): any {
   if (!result || typeof result !== "object") {
     return result;
@@ -2963,8 +2963,8 @@ server.tool(
   "Join a specific channel to communicate with Figma",
   {
     channel: z.string().describe("The name of the channel to join").default(""),
-  },
-  async ({ channel }) => {
+  } as any,
+  (async ({ channel }: any) => {
     try {
       if (!channel) {
         // If no channel provided, ask the user for input
@@ -3002,9 +3002,9 @@ server.tool(
         ],
       };
     }
-  }
+  }) as any
 );
-       
+
 // Start the server
 async function main() {
   try {

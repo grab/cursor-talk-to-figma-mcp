@@ -16,10 +16,10 @@
     "ai"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.4.0",
+    "@modelcontextprotocol/sdk": "1.4.0",
     "uuid": "^9.0.1",
     "ws": "^8.16.0",
-    "zod": "^3.22.4"
+    "zod": "3.22.4"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",
