@@ -1,6 +1,6 @@
-# Cursor Talk to Figma MCP
+# Talk to Figma MCP
 
-This project implements a Model Context Protocol (MCP) integration between Cursor AI and Figma, allowing Cursor to communicate with Figma for reading designs and modifying them programmatically.
+This project implements a Model Context Protocol (MCP) integration between AI IDEs (Cursor AI, Trae AI) and Figma, allowing AI assistants to communicate with Figma for reading designs and modifying them programmatically.
 
 https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 
@@ -12,16 +12,29 @@ https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 
 ## Get Started
 
+### Prerequisites
+- [Bun](https://bun.sh/) runtime
+- AI IDE: [Cursor AI](https://cursor.sh/) or [Trae AI](https://trae.ai/)
+- [Figma](https://figma.com/) account
+
+### Quick Start
+
 1. Install Bun if you haven't already:
 
 ```bash
 curl -fsSL https://bun.sh/install | bash
 ```
 
-2. Run setup, this will also install MCP in your Cursor's active project
+2. **For Cursor AI** - Run setup, this will also install MCP in your Cursor's active project:
 
 ```bash
 bun setup
+```
+
+**For Trae AI** - Run Trae-specific setup:
+ 
+```bash
+bun run setup-trae
 ```
 
 3. Start the Websocket server
@@ -31,6 +44,11 @@ bun socket
 ```
 
 4. **NEW** Install Figma plugin from [Figma community page](https://www.figma.com/community/plugin/1485687494525374295/cursor-talk-to-figma-mcp-plugin) or [install locally](#figma-plugin)
+
+5. **Connect in your AI IDE**:
+   - Restart your IDE to load the MCP configuration
+   - Use the `join_channel` tool to connect to your Figma channel
+   - Start designing with AI assistance!
 
 ## Quick Video Tutorial
 
@@ -48,9 +66,22 @@ Propagate component instance overrides from a source instance to multiple target
 
 ## Manual Setup and Installation
 
-### MCP Server: Integration with Cursor
+### MCP Server: Integration with AI IDEs
 
-Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
+**For Cursor AI** - Add the server to your Cursor MCP configuration in `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "TalkToFigma": {
+      "command": "bunx",
+      "args": ["cursor-talk-to-figma-mcp@latest"]
+    }
+  }
+}
+```
+
+**For Trae AI** - Use the provided configuration:
 
 ```json
 {
@@ -102,10 +133,10 @@ bun socket
 ## Usage
 
 1. Start the WebSocket server
-2. Install the MCP server in Cursor
-3. Open Figma and run the Cursor MCP Plugin
+2. Install the MCP server in your AI IDE (Cursor AI or Trae AI)
+3. Open Figma and run the MCP Plugin
 4. Connect the plugin to the WebSocket server by joining a channel using `join_channel`
-5. Use Cursor to communicate with Figma using the MCP tools
+5. Use your AI IDE to communicate with Figma using the MCP tools
 
 ## MCP Tools
 
