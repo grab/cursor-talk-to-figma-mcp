@@ -275,17 +275,8 @@
 
       <div id="content-connection" class="tab-content active">
         <div class="section">
-          <div class="toggle-container" style="margin-bottom: 16px">
-            <label class="toggle-switch">
-              <input type="checkbox" id="use-localhost" />
-              <span class="toggle-slider"></span>
-            </label>
-            <span>Use localhost</span>
-            <button
-              id="btn-connect"
-              class="primary"
-              style="margin-left: auto; margin-top: 0"
-            >
+          <div style="margin-bottom: 16px">
+            <button id="btn-connect" class="primary" style="width: 100%">
               Connect
             </button>
           </div>
@@ -330,15 +321,38 @@
           ></textarea>
           <button id="btn-copy" class="secondary">Copy to Clipboard</button>
         </div>
-        
+
         <!-- Add Progress Bar Section -->
         <div id="progress-container" class="section hidden">
           <h2>Operation Progress</h2>
           <div id="progress-message">No operation in progress</div>
-          <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
-            <div id="progress-bar" style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;"></div>
+          <div
+            style="
+              width: 100%;
+              background-color: #444;
+              border-radius: 4px;
+              margin-top: 8px;
+            "
+          >
+            <div
+              id="progress-bar"
+              style="
+                width: 0%;
+                height: 8px;
+                background-color: #18a0fb;
+                border-radius: 4px;
+                transition: width 0.3s;
+              "
+            ></div>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              margin-top: 4px;
+              font-size: 12px;
+            "
+          >
             <div id="progress-status">Not started</div>
             <div id="progress-percentage">0%</div>
           </div>
@@ -357,7 +371,7 @@
               >Sonny</a
             >
           </p>
-          <p>Version: 1.0.0</p>
+          <p>Version: 1.1.0</p>
 
           <h2>How to Use</h2>
           <ol>
@@ -398,7 +412,6 @@
       // Initialize UI
       function updateConnectionStatus(isConnected, message) {
         state.connected = isConnected;
-        const useLocalhost = document.getElementById("use-localhost").checked;
 
         let statusMessage =
           message ||
@@ -407,7 +420,7 @@
             : "Not connected to Cursor MCP server");
 
         // Add instructions for localhost when disconnected
-        if (!isConnected && useLocalhost) {
+        if (!isConnected) {
           statusMessage += `<br><br>Run this in your terminal, then connect<br><code>bunx cursor-talk-to-figma-socket</code>`;
         }
 
@@ -440,10 +453,7 @@
           }
 
           state.serverPort = port;
-          const useLocalhost = document.getElementById("use-localhost").checked;
-          const wsUrl = useLocalhost
-            ? `ws://localhost:${port}`
-            : `wss://vps.sonnylab.com`;
+          const wsUrl = `ws://localhost:${port}`;
 
           state.socket = new WebSocket(wsUrl);
 
@@ -643,7 +653,7 @@
             message: {
               id,
               error: errorMessage,
-              result: {}
+              result: {},
             },
           })
         );
@@ -698,31 +708,32 @@
       function updateProgressUI(progressData) {
         // Show progress container if hidden
         progressContainer.classList.remove("hidden");
-        
+
         // Update progress bar
         const progress = progressData.progress || 0;
         progressBar.style.width = `${progress}%`;
         progressPercentage.textContent = `${progress}%`;
-        
+
         // Update message
-        progressMessage.textContent = progressData.message || "Operation in progress";
-        
+        progressMessage.textContent =
+          progressData.message || "Operation in progress";
+
         // Update status text based on operation state
-        if (progressData.status === 'started') {
+        if (progressData.status === "started") {
           progressStatus.textContent = "Started";
           progressStatus.className = "";
-        } else if (progressData.status === 'in_progress') {
+        } else if (progressData.status === "in_progress") {
           progressStatus.textContent = "In Progress";
           progressStatus.className = "";
-        } else if (progressData.status === 'completed') {
+        } else if (progressData.status === "completed") {
           progressStatus.textContent = "Completed";
           progressStatus.className = "operation-complete";
-          
+
           // Hide progress container after 5 seconds
           setTimeout(() => {
             progressContainer.classList.add("hidden");
           }, 5000);
-        } else if (progressData.status === 'error') {
+        } else if (progressData.status === "error") {
           progressStatus.textContent = "Error";
           progressStatus.className = "operation-error";
         }
@@ -734,9 +745,9 @@
           console.error("Cannot send progress update: socket not connected");
           return;
         }
-        
+
         console.log("Sending progress update to server:", progressData);
-        
+
         state.socket.send(
           JSON.stringify({
             id: progressData.commandId,
@@ -745,12 +756,12 @@
             message: {
               id: progressData.commandId,
               type: "progress_update",
-              data: progressData
-            }
+              data: progressData,
+            },
           })
         );
       }
-      
+
       // Reset progress UI
       function resetProgressUI() {
         progressContainer.classList.add("hidden");
@@ -809,17 +820,11 @@
 
       // Add this function to the script section
       function updateMcpConfig() {
-        const useLocalhost = document.getElementById("use-localhost").checked;
         const mcpConfig = {
           mcpServers: {
             TalkToFigma: {
               command: "bunx",
-              args: useLocalhost
-                ? ["cursor-talk-to-figma-mcp@latest"]
-                : [
-                    "cursor-talk-to-figma-mcp@latest",
-                    "--server=vps.sonnylab.com",
-                  ],
+              args: ["cursor-talk-to-figma-mcp@latest"],
             },
           },
         };
@@ -830,30 +835,6 @@
           2
         );
       }
-
-      // Add this function to the script section, after updateConnectionStatus function
-      function updatePortVisibility() {
-        const useLocalhost = document.getElementById("use-localhost").checked;
-        const portContainer = document.getElementById("port-container");
-        portContainer.style.display = useLocalhost ? "block" : "none";
-      }
-
-      // Update the localhost toggle event listener
-      document
-        .getElementById("use-localhost")
-        .addEventListener("change", () => {
-          // If connected, disconnect first
-          if (state.connected) {
-            disconnectFromServer();
-          }
-          updatePortVisibility();
-          if (state.connected) {
-            updateMcpConfig();
-          }
-        });
-
-      // Call this on initial load
-      updatePortVisibility();
     </script>
   </body>
 </html>
