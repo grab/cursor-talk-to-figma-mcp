@@ -2386,10 +2386,26 @@ async function getAnnotations(params) {
         throw new Error(`Node type ${node.type} does not support annotations`);
       }
 
+      // Collect annotations from this node and all its descendants
+      const mergedAnnotations = [];
+      const collect = async (n) => {
+        if ("annotations" in n && n.annotations && n.annotations.length > 0) {
+          for (const a of n.annotations) {
+            mergedAnnotations.push({ nodeId: n.id, annotation: a });
+          }
+        }
+        if ("children" in n) {
+          for (const child of n.children) {
+            await collect(child);
+          }
+        }
+      };
+      await collect(node);
+
       const result = {
         nodeId: node.id,
         name: node.name,
-        annotations: node.annotations || [],
+        annotations: mergedAnnotations,
       };
 
       if (includeCategories) {
