@@ -1,3 +1,4 @@
+[![smithery badge](https://smithery.ai/badge/@sonnylazuardi/cursor-talk-to-figma-mcp)](https://smithery.ai/server/@sonnylazuardi/cursor-talk-to-figma-mcp)
 # Cursor Talk to Figma MCP
 
 This project implements a Model Context Protocol (MCP) integration between Cursor AI and Figma, allowing Cursor to communicate with Figma for reading designs and modifying them programmatically.
