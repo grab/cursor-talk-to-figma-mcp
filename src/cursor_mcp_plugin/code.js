@@ -656,8 +656,6 @@ async function createRectangle(params) {
   } = params || {};
 
   const rect = figma.createRectangle();
-  rect.x = x;
-  rect.y = y;
   rect.resize(width, height);
   rect.name = name;
 
@@ -671,7 +669,13 @@ async function createRectangle(params) {
       throw new Error(`Parent node does not support children: ${parentId}`);
     }
     parentNode.appendChild(rect);
+    // When appending to a parent, x/y are relative to the parent
+    rect.x = x;
+    rect.y = y;
   } else {
+    // When appending to the page, x/y are absolute coordinates
+    rect.x = x;
+    rect.y = y;
     figma.currentPage.appendChild(rect);
   }
 
@@ -711,8 +715,6 @@ async function createFrame(params) {
   } = params || {};
 
   const frame = figma.createFrame();
-  frame.x = x;
-  frame.y = y;
   frame.resize(width, height);
   frame.name = name;
 
@@ -782,7 +784,13 @@ async function createFrame(params) {
       throw new Error(`Parent node does not support children: ${parentId}`);
     }
     parentNode.appendChild(frame);
+    // When appending to a parent, x/y are relative to the parent
+    frame.x = x;
+    frame.y = y;
   } else {
+    // When appending to the page, x/y are absolute coordinates
+    frame.x = x;
+    frame.y = y;
     figma.currentPage.appendChild(frame);
   }
 
@@ -841,8 +849,6 @@ async function createText(params) {
   };
 
   const textNode = figma.createText();
-  textNode.x = x;
-  textNode.y = y;
   textNode.name = name || text;
   try {
     await figma.loadFontAsync({
@@ -878,7 +884,13 @@ async function createText(params) {
       throw new Error(`Parent node does not support children: ${parentId}`);
     }
     parentNode.appendChild(textNode);
+    // When appending to a parent, x/y are relative to the parent
+    textNode.x = x;
+    textNode.y = y;
   } else {
+    // When appending to the page, x/y are absolute coordinates
+    textNode.x = x;
+    textNode.y = y;
     figma.currentPage.appendChild(textNode);
   }
 

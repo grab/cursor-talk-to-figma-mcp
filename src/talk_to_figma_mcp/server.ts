@@ -353,8 +353,8 @@ server.tool(
   "create_rectangle",
   "Create a new rectangle in Figma",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    x: z.number().describe("X position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
+    y: z.number().describe("Y position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
     width: z.number().describe("Width of the rectangle"),
     height: z.number().describe("Height of the rectangle"),
     name: z.string().optional().describe("Optional name for the rectangle"),
@@ -400,8 +400,8 @@ server.tool(
   "create_frame",
   "Create a new frame in Figma",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    x: z.number().describe("X position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
+    y: z.number().describe("Y position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
     width: z.number().describe("Width of the frame"),
     height: z.number().describe("Height of the frame"),
     name: z.string().optional().describe("Optional name for the frame"),
@@ -529,8 +529,8 @@ server.tool(
   "create_text",
   "Create a new text element in Figma",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    x: z.number().describe("X position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
+    y: z.number().describe("Y position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
     text: z.string().describe("Text content"),
     fontSize: z.number().optional().describe("Font size (default: 14)"),
     fontWeight: z
@@ -685,8 +685,8 @@ server.tool(
   "Move a node to a new position in Figma",
   {
     nodeId: z.string().describe("The ID of the node to move"),
-    x: z.number().describe("New X position"),
-    y: z.number().describe("New Y position"),
+    x: z.number().describe("New X position (relative to the node's parent)"),
+    y: z.number().describe("New Y position (relative to the node's parent)"),
   },
   async ({ nodeId, x, y }: any) => {
     try {
