@@ -39,7 +39,7 @@ function handleConnection(ws: ServerWebSocket<any>) {
 const server = Bun.serve({
   port: 3055,
   // uncomment this to allow connections in windows wsl
-  // hostname: "0.0.0.0",
+  hostname: "0.0.0.0",
   fetch(req: Request, server: Server) {
     // Handle CORS preflight
     if (req.method === "OPTIONS") {

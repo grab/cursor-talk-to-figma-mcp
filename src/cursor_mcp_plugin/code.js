@@ -129,12 +129,20 @@ async function handleCommand(command, params) {
       return await createText(params);
     case "set_fill_color":
       return await setFillColor(params);
+    case "set_multiple_fill_colors":
+      return await setMultipleFillColors(params);
     case "set_stroke_color":
       return await setStrokeColor(params);
+    case "set_multiple_stroke_colors":
+      return await setMultipleStrokeColors(params);
     case "move_node":
       return await moveNode(params);
+    case "move_multiple_nodes":
+      return await moveMultipleNodes(params);
     case "resize_node":
       return await resizeNode(params);
+    case "resize_multiple_nodes":
+      return await resizeMultipleNodes(params);
     case "delete_node":
       return await deleteNode(params);
     case "delete_multiple_nodes":
@@ -151,8 +159,12 @@ async function handleCommand(command, params) {
       return await exportNodeAsImage(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
+    case "set_multiple_corner_radii":
+      return await setMultipleCornerRadii(params);
     case "set_text_content":
       return await setTextContent(params);
+    case "set_multiple_text_contents_simple":
+      return await setMultipleTextContentsSimple(params);
     case "clone_node":
       return await cloneNode(params);
     case "scan_text_nodes":
@@ -961,6 +973,238 @@ async function setFillColor(params) {
   };
 }
 
+async function setMultipleFillColors(params) {
+  const { nodeIds, color } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_fill_colors",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (!color) {
+    const errorMsg = "Missing color parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_fill_colors",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting fill color change for ${nodeIds.length} nodes`);
+
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_fill_colors",
+    "started",
+    0,
+    nodeIds.length,
+    0,
+    `Starting fill color change for ${nodeIds.length} nodes`,
+    { totalNodes: nodeIds.length }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  console.log(`Split ${nodeIds.length} fill operations into ${chunks.length} chunks`);
+
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_fill_colors",
+    "in_progress",
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to change fill color for ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE,
+    }
+  );
+
+  // Parse color once
+  const rgbColor = {
+    r: parseFloat(color.r) || 0,
+    g: parseFloat(color.g) || 0,
+    b: parseFloat(color.b) || 0,
+    a: parseFloat(color.a) || 1,
+  };
+
+  const paintStyle = {
+    type: "SOLID",
+    color: {
+      r: rgbColor.r,
+      g: rgbColor.g,
+      b: rgbColor.b,
+    },
+    opacity: rgbColor.a,
+  };
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`
+    );
+
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_fill_colors",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing fill color chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+      }
+    );
+
+    // Process fill changes within a chunk in parallel
+    const chunkPromises = chunk.map(async (nodeId) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+
+        if (!node) {
+          console.error(`Node not found: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node not found: ${nodeId}`,
+          };
+        }
+
+        if (!("fills" in node)) {
+          console.error(`Node does not support fills: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node does not support fills: ${nodeId}`,
+          };
+        }
+
+        // Set the fill
+        node.fills = [paintStyle];
+
+        console.log(`Successfully set fill color for node: ${nodeId}`);
+        return {
+          success: true,
+          nodeId: nodeId,
+          nodeName: node.name,
+        };
+      } catch (error) {
+        console.error(`Error setting fill color for node ${nodeId}: ${error.message}`);
+        return {
+          success: false,
+          nodeId: nodeId,
+          error: error.message,
+        };
+      }
+    });
+
+    // Wait for all fill changes in this chunk to complete
+    const chunkResults = await Promise.all(chunkPromises);
+
+    // Process results for this chunk
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_fill_colors",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        chunkResults: chunkResults,
+      }
+    );
+
+    // Add a small delay between chunks
+    if (chunkIndex < chunks.length - 1) {
+      console.log("Pausing between chunks...");
+      await delay(1000);
+    }
+  }
+
+  console.log(
+    `Fill color change complete: ${successCount} successful, ${failureCount} failed`
+  );
+
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_fill_colors",
+    "completed",
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Fill color change complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      totalNodes: nodeIds.length,
+      successCount: successCount,
+      failureCount: failureCount,
+      completedInChunks: chunks.length,
+      results: results,
+    }
+  );
+
+  return {
+    success: successCount > 0,
+    successCount: successCount,
+    failureCount: failureCount,
+    totalNodes: nodeIds.length,
+    results: results,
+    completedInChunks: chunks.length,
+  };
+}
+
 async function setStrokeColor(params) {
   const {
     nodeId,
@@ -1015,6 +1259,243 @@ async function setStrokeColor(params) {
   };
 }
 
+async function setMultipleStrokeColors(params) {
+  const { nodeIds, color, weight = 1 } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_stroke_colors",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (!color) {
+    const errorMsg = "Missing color parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_stroke_colors",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting stroke color change for ${nodeIds.length} nodes`);
+
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_stroke_colors",
+    "started",
+    0,
+    nodeIds.length,
+    0,
+    `Starting stroke color change for ${nodeIds.length} nodes`,
+    { totalNodes: nodeIds.length }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  console.log(`Split ${nodeIds.length} stroke operations into ${chunks.length} chunks`);
+
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_stroke_colors",
+    "in_progress",
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to change stroke color for ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE,
+    }
+  );
+
+  // Parse color once
+  const rgbColor = {
+    r: color.r !== undefined ? color.r : 0,
+    g: color.g !== undefined ? color.g : 0,
+    b: color.b !== undefined ? color.b : 0,
+    a: color.a !== undefined ? color.a : 1,
+  };
+
+  const paintStyle = {
+    type: "SOLID",
+    color: {
+      r: rgbColor.r,
+      g: rgbColor.g,
+      b: rgbColor.b,
+    },
+    opacity: rgbColor.a,
+  };
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`
+    );
+
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_stroke_colors",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing stroke color chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+      }
+    );
+
+    // Process stroke changes within a chunk in parallel
+    const chunkPromises = chunk.map(async (nodeId) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+
+        if (!node) {
+          console.error(`Node not found: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node not found: ${nodeId}`,
+          };
+        }
+
+        if (!("strokes" in node)) {
+          console.error(`Node does not support strokes: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node does not support strokes: ${nodeId}`,
+          };
+        }
+
+        // Set the stroke
+        node.strokes = [paintStyle];
+        
+        // Set stroke weight if available
+        if ("strokeWeight" in node) {
+          node.strokeWeight = weight;
+        }
+
+        console.log(`Successfully set stroke color for node: ${nodeId}`);
+        return {
+          success: true,
+          nodeId: nodeId,
+          nodeName: node.name,
+        };
+      } catch (error) {
+        console.error(`Error setting stroke color for node ${nodeId}: ${error.message}`);
+        return {
+          success: false,
+          nodeId: nodeId,
+          error: error.message,
+        };
+      }
+    });
+
+    // Wait for all stroke changes in this chunk to complete
+    const chunkResults = await Promise.all(chunkPromises);
+
+    // Process results for this chunk
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_stroke_colors",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        chunkResults: chunkResults,
+      }
+    );
+
+    // Add a small delay between chunks
+    if (chunkIndex < chunks.length - 1) {
+      console.log("Pausing between chunks...");
+      await delay(1000);
+    }
+  }
+
+  console.log(
+    `Stroke color change complete: ${successCount} successful, ${failureCount} failed`
+  );
+
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_stroke_colors",
+    "completed",
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Stroke color change complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      totalNodes: nodeIds.length,
+      successCount: successCount,
+      failureCount: failureCount,
+      completedInChunks: chunks.length,
+      results: results,
+    }
+  );
+
+  return {
+    success: successCount > 0,
+    successCount: successCount,
+    failureCount: failureCount,
+    totalNodes: nodeIds.length,
+    results: results,
+    completedInChunks: chunks.length,
+  };
+}
+
 async function moveNode(params) {
   const { nodeId, x, y } = params || {};
 
@@ -1046,6 +1527,245 @@ async function moveNode(params) {
   };
 }
 
+async function moveMultipleNodes(params) {
+  const { nodeIds, x, y } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      "move_multiple_nodes",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (x === undefined || y === undefined) {
+    const errorMsg = "Missing x or y parameters";
+    sendProgressUpdate(
+      commandId,
+      "move_multiple_nodes",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting movement of ${nodeIds.length} nodes to position (${x}, ${y})`);
+
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    "move_multiple_nodes",
+    "started",
+    0,
+    nodeIds.length,
+    0,
+    `Starting movement of ${nodeIds.length} nodes to position (${x}, ${y})`,
+    { totalNodes: nodeIds.length, targetX: x, targetY: y }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  console.log(`Split ${nodeIds.length} movements into ${chunks.length} chunks`);
+
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    "move_multiple_nodes",
+    "in_progress",
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to move ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE,
+      targetX: x,
+      targetY: y,
+    }
+  );
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`
+    );
+
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      "move_multiple_nodes",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing movement chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        targetX: x,
+        targetY: y,
+      }
+    );
+
+    // Process movements within a chunk in parallel
+    const chunkPromises = chunk.map(async (nodeId) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+
+        if (!node) {
+          console.error(`Node not found: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node not found: ${nodeId}`,
+          };
+        }
+
+        // Check if node supports position
+        if (!("x" in node) || !("y" in node)) {
+          console.error(`Node does not support position: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node does not support position: ${nodeId}`,
+          };
+        }
+
+        // Save node info before moving
+        const nodeInfo = {
+          id: node.id,
+          name: node.name,
+          type: node.type,
+          oldX: node.x,
+          oldY: node.y,
+        };
+
+        // Move the node
+        node.x = x;
+        node.y = y;
+
+        console.log(`Successfully moved node: ${nodeId} to (${x}, ${y})`);
+        return {
+          success: true,
+          nodeId: nodeId,
+          nodeInfo: {
+            ...nodeInfo,
+            newX: node.x,
+            newY: node.y,
+          },
+        };
+      } catch (error) {
+        console.error(`Error moving node ${nodeId}: ${error.message}`);
+        return {
+          success: false,
+          nodeId: nodeId,
+          error: error.message,
+        };
+      }
+    });
+
+    // Wait for all movements in this chunk to complete
+    const chunkResults = await Promise.all(chunkPromises);
+
+    // Process results for this chunk
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      "move_multiple_nodes",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        chunkResults: chunkResults,
+        targetX: x,
+        targetY: y,
+      }
+    );
+
+    // Add a small delay between chunks
+    if (chunkIndex < chunks.length - 1) {
+      console.log("Pausing between chunks...");
+      await delay(1000);
+    }
+  }
+
+  console.log(
+    `Movement complete: ${successCount} successful, ${failureCount} failed`
+  );
+
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    "move_multiple_nodes",
+    "completed",
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Node movement complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      totalNodes: nodeIds.length,
+      nodesMoved: successCount,
+      nodesFailed: failureCount,
+      completedInChunks: chunks.length,
+      results: results,
+      targetX: x,
+      targetY: y,
+    }
+  );
+
+  return {
+    success: successCount > 0,
+    nodesMoved: successCount,
+    nodesFailed: failureCount,
+    totalNodes: nodeIds.length,
+    results: results,
+    completedInChunks: chunks.length,
+    commandId,
+    targetPosition: { x, y },
+  };
+}
+
 async function resizeNode(params) {
   const { nodeId, width, height } = params || {};
 
@@ -1073,6 +1793,235 @@ async function resizeNode(params) {
     name: node.name,
     width: node.width,
     height: node.height,
+  };
+}
+
+async function resizeMultipleNodes(params) {
+  const { nodeIds, width, height } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      "resize_multiple_nodes",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (width === undefined || height === undefined) {
+    const errorMsg = "Missing width or height parameters";
+    sendProgressUpdate(
+      commandId,
+      "resize_multiple_nodes",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting resize for ${nodeIds.length} nodes to ${width}x${height}`);
+
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    "resize_multiple_nodes",
+    "started",
+    0,
+    nodeIds.length,
+    0,
+    `Starting resize for ${nodeIds.length} nodes`,
+    { totalNodes: nodeIds.length, width, height }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  console.log(`Split ${nodeIds.length} resize operations into ${chunks.length} chunks`);
+
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    "resize_multiple_nodes",
+    "in_progress",
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to resize ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE,
+      width,
+      height,
+    }
+  );
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(
+      `Processing resize chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`
+    );
+
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      "resize_multiple_nodes",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing resize chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        width,
+        height,
+      }
+    );
+
+    // Process resizes within a chunk in parallel
+    const chunkPromises = chunk.map(async (nodeId) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) {
+          return {
+            nodeId,
+            success: false,
+            error: `Node not found with ID: ${nodeId}`,
+          };
+        }
+
+        if (!("resize" in node)) {
+          return {
+            nodeId,
+            success: false,
+            error: `Node does not support resizing: ${nodeId}`,
+          };
+        }
+
+        // Verify node supports width/height properties
+        if (!("width" in node) || !("height" in node)) {
+          return {
+            nodeId,
+            success: false,
+            error: `Node does not support width/height properties: ${nodeId}`,
+          };
+        }
+
+        node.resize(width, height);
+
+        return {
+          nodeId,
+          success: true,
+          name: node.name,
+          width: node.width,
+          height: node.height,
+        };
+      } catch (error) {
+        console.error(`Error resizing node ${nodeId}:`, error);
+        return {
+          nodeId,
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+
+    const chunkResults = await Promise.all(chunkPromises);
+    results.push(...chunkResults);
+
+    // Update counts
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+    });
+
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      "resize_multiple_nodes",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        width,
+        height,
+      }
+    );
+
+    console.log(
+      `Chunk ${chunkIndex + 1} complete. Success: ${successCount}, Failure: ${failureCount}`
+    );
+
+    // Small delay between chunks to avoid overwhelming Figma
+    if (chunkIndex < chunks.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    "resize_multiple_nodes",
+    "completed",
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Resize complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      successCount,
+      failureCount,
+      totalNodes: nodeIds.length,
+      width,
+      height,
+      results: results.map((r) => ({
+        nodeId: r.nodeId,
+        success: r.success,
+        name: r.success ? r.name : undefined,
+        error: !r.success ? r.error : undefined,
+      })),
+    }
+  );
+
+  console.log(`Resize operation complete. ${successCount} successful, ${failureCount} failed`);
+
+  return {
+    successCount,
+    failureCount,
+    totalNodes: nodeIds.length,
+    results,
   };
 }
 
@@ -1363,6 +2312,239 @@ async function setCornerRadius(params) {
   };
 }
 
+async function setMultipleCornerRadii(params) {
+  const { nodeIds, radius, corners } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_corner_radii",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (radius === undefined) {
+    const errorMsg = "Missing radius parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_corner_radii",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting corner radius change for ${nodeIds.length} nodes`);
+
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_corner_radii",
+    "started",
+    0,
+    nodeIds.length,
+    0,
+    `Starting corner radius change for ${nodeIds.length} nodes`,
+    { totalNodes: nodeIds.length }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
+  }
+
+  console.log(`Split ${nodeIds.length} corner radius operations into ${chunks.length} chunks`);
+
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_corner_radii",
+    "in_progress",
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to change corner radius for ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE,
+    }
+  );
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} nodes`
+    );
+
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_corner_radii",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing corner radius chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+      }
+    );
+
+    // Process corner radius changes within a chunk in parallel
+    const chunkPromises = chunk.map(async (nodeId) => {
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+
+        if (!node) {
+          console.error(`Node not found: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node not found: ${nodeId}`,
+          };
+        }
+
+        if (!("cornerRadius" in node)) {
+          console.error(`Node does not support corner radius: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: `Node does not support corner radius: ${nodeId}`,
+          };
+        }
+
+        // Set corner radius following same logic as single function
+        if (corners && Array.isArray(corners) && corners.length === 4) {
+          if ("topLeftRadius" in node) {
+            // Node supports individual corner radii
+            if (corners[0]) node.topLeftRadius = radius;
+            if (corners[1]) node.topRightRadius = radius;
+            if (corners[2]) node.bottomRightRadius = radius;
+            if (corners[3]) node.bottomLeftRadius = radius;
+          } else {
+            // Node only supports uniform corner radius
+            node.cornerRadius = radius;
+          }
+        } else {
+          // Set uniform corner radius
+          node.cornerRadius = radius;
+        }
+
+        console.log(`Successfully set corner radius for node: ${nodeId}`);
+        return {
+          success: true,
+          nodeId: nodeId,
+          nodeName: node.name,
+          cornerRadius: "cornerRadius" in node ? node.cornerRadius : undefined,
+          topLeftRadius: "topLeftRadius" in node ? node.topLeftRadius : undefined,
+          topRightRadius: "topRightRadius" in node ? node.topRightRadius : undefined,
+          bottomRightRadius: "bottomRightRadius" in node ? node.bottomRightRadius : undefined,
+          bottomLeftRadius: "bottomLeftRadius" in node ? node.bottomLeftRadius : undefined,
+        };
+      } catch (error) {
+        console.error(`Error setting corner radius for node ${nodeId}: ${error.message}`);
+        return {
+          success: false,
+          nodeId: nodeId,
+          error: error.message,
+        };
+      }
+    });
+
+    // Wait for all corner radius changes in this chunk to complete
+    const chunkResults = await Promise.all(chunkPromises);
+
+    // Process results for this chunk
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_corner_radii",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        chunkResults: chunkResults,
+      }
+    );
+
+    // Add a small delay between chunks
+    if (chunkIndex < chunks.length - 1) {
+      console.log("Pausing between chunks...");
+      await delay(1000);
+    }
+  }
+
+  console.log(
+    `Corner radius change complete: ${successCount} successful, ${failureCount} failed`
+  );
+
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_corner_radii",
+    "completed",
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Corner radius change complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      totalNodes: nodeIds.length,
+      successCount: successCount,
+      failureCount: failureCount,
+      completedInChunks: chunks.length,
+      results: results,
+    }
+  );
+
+  return {
+    success: successCount > 0,
+    successCount: successCount,
+    failureCount: failureCount,
+    totalNodes: nodeIds.length,
+    results: results,
+    completedInChunks: chunks.length,
+  };
+}
+
 async function setTextContent(params) {
   const { nodeId, text } = params || {};
 
@@ -1397,6 +2579,240 @@ async function setTextContent(params) {
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
   }
+}
+
+async function setMultipleTextContentsSimple(params) {
+  const { nodeIds, texts } = params || {};
+  const commandId = generateCommandId();
+
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    const errorMsg = "Missing or invalid nodeIds parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_text_contents_simple",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (!texts || !Array.isArray(texts) || texts.length === 0) {
+    const errorMsg = "Missing or invalid texts parameter";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_text_contents_simple",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  if (nodeIds.length !== texts.length) {
+    const errorMsg = "nodeIds and texts arrays must have the same length";
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_text_contents_simple",
+      "error",
+      0,
+      0,
+      0,
+      errorMsg,
+      { error: errorMsg }
+    );
+    throw new Error(errorMsg);
+  }
+
+  console.log(`Starting text content change for ${nodeIds.length} nodes`);
+
+  // Send started progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_text_contents_simple",
+    "started",
+    0,
+    nodeIds.length,
+    0,
+    `Starting text content change for ${nodeIds.length} nodes`,
+    { totalNodes: nodeIds.length }
+  );
+
+  const results = [];
+  let successCount = 0;
+  let failureCount = 0;
+
+  // Process nodes in chunks of 5 to avoid overwhelming Figma
+  const CHUNK_SIZE = 5;
+  const chunks = [];
+
+  for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
+    chunks.push({
+      nodeIds: nodeIds.slice(i, i + CHUNK_SIZE),
+      texts: texts.slice(i, i + CHUNK_SIZE)
+    });
+  }
+
+  console.log(`Split ${nodeIds.length} text operations into ${chunks.length} chunks`);
+
+  // Send chunking info update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_text_contents_simple",
+    "in_progress",
+    5,
+    nodeIds.length,
+    0,
+    `Preparing to change text content for ${nodeIds.length} nodes using ${chunks.length} chunks`,
+    {
+      totalNodes: nodeIds.length,
+      chunks: chunks.length,
+      chunkSize: CHUNK_SIZE,
+    }
+  );
+
+  // Process each chunk sequentially
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+    const chunk = chunks[chunkIndex];
+    console.log(
+      `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.nodeIds.length} nodes`
+    );
+
+    // Send chunk processing start update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_text_contents_simple",
+      "in_progress",
+      Math.round(5 + (chunkIndex / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Processing text content chunk ${chunkIndex + 1}/${chunks.length}`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+      }
+    );
+
+    // Process text changes within a chunk in parallel
+    const chunkPromises = chunk.nodeIds.map(async (nodeId, index) => {
+      const text = chunk.texts[index];
+      try {
+        const node = await figma.getNodeByIdAsync(nodeId);
+
+        if (!node) {
+          console.error(`Node not found: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: "Node not found",
+          };
+        }
+
+        if (node.type !== "TEXT") {
+          console.error(`Node is not a text node: ${nodeId}`);
+          return {
+            success: false,
+            nodeId: nodeId,
+            error: "Node is not a text node",
+          };
+        }
+
+        // Load font and set text
+        await figma.loadFontAsync(node.fontName);
+        await setCharacters(node, text);
+
+        return {
+          success: true,
+          nodeId: nodeId,
+          name: node.name,
+          text: text,
+        };
+      } catch (error) {
+        console.error(`Error setting text for node ${nodeId}:`, error);
+        return {
+          success: false,
+          nodeId: nodeId,
+          error: error.message,
+        };
+      }
+    });
+
+    // Wait for all text changes in this chunk to complete
+    const chunkResults = await Promise.all(chunkPromises);
+
+    // Process results for this chunk
+    chunkResults.forEach((result) => {
+      if (result.success) {
+        successCount++;
+      } else {
+        failureCount++;
+      }
+      results.push(result);
+    });
+
+    // Send chunk processing complete update
+    sendProgressUpdate(
+      commandId,
+      "set_multiple_text_contents_simple",
+      "in_progress",
+      Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
+      nodeIds.length,
+      successCount + failureCount,
+      `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
+      {
+        currentChunk: chunkIndex + 1,
+        totalChunks: chunks.length,
+        successCount,
+        failureCount,
+        chunkResults: chunkResults,
+      }
+    );
+
+    // Add a small delay between chunks
+    if (chunkIndex < chunks.length - 1) {
+      console.log("Pausing between chunks...");
+      await delay(1000);
+    }
+  }
+
+  console.log(
+    `Text content change complete: ${successCount} successful, ${failureCount} failed`
+  );
+
+  // Send completed progress update
+  sendProgressUpdate(
+    commandId,
+    "set_multiple_text_contents_simple",
+    "completed",
+    100,
+    nodeIds.length,
+    successCount + failureCount,
+    `Text content change complete: ${successCount} successful, ${failureCount} failed`,
+    {
+      totalNodes: nodeIds.length,
+      successCount: successCount,
+      failureCount: failureCount,
+      completedInChunks: chunks.length,
+      results: results,
+    }
+  );
+
+  return {
+    success: successCount > 0,
+    successCount: successCount,
+    failureCount: failureCount,
+    totalNodes: nodeIds.length,
+    results: results,
+    completedInChunks: chunks.length,
+  };
 }
 
 // Initialize settings on load

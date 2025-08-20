@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebSearch"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
