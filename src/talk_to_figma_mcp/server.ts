@@ -598,12 +598,12 @@ server.tool(
 // Set Fill Color Tool
 server.tool(
   "set_fill_color",
-  "Set the fill color of one or more nodes in Figma (TextNode or FrameNode)",
+  "Set the fill color of one or more nodes in Figma (TextNode or FrameNode). BULK OPERATIONS: Pass an array of nodeIds to update multiple nodes at once for better performance.",
   {
     nodeId: z.union([
       z.string().describe("Single node ID"),
-      z.array(z.string()).describe("Array of node IDs")
-    ]).describe("The ID(s) of the node(s) to modify"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     r: z.number().min(0).max(1).describe("Red component (0-1)"),
     g: z.number().min(0).max(1).describe("Green component (0-1)"),
     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
@@ -668,12 +668,12 @@ server.tool(
 // Set Stroke Color Tool
 server.tool(
   "set_stroke_color",
-  "Set the stroke color of one or more nodes in Figma",
+  "Set the stroke color of one or more nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to update multiple nodes at once for better performance.",
   {
     nodeId: z.union([
       z.string().describe("Single node ID"),
-      z.array(z.string()).describe("Array of node IDs")
-    ]).describe("The ID(s) of the node(s) to modify"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     r: z.number().min(0).max(1).describe("Red component (0-1)"),
     g: z.number().min(0).max(1).describe("Green component (0-1)"),
     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
@@ -742,12 +742,12 @@ server.tool(
 // Move Node Tool
 server.tool(
   "move_node",
-  "Move one or more nodes to a new position in Figma",
+  "Move one or more nodes to a new position in Figma. BULK OPERATIONS: Pass an array of nodeIds to move multiple nodes at once for better performance.",
   {
     nodeId: z.union([
       z.string().describe("Single node ID"),
-      z.array(z.string()).describe("Array of node IDs")
-    ]).describe("The ID(s) of the node(s) to move"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     x: z.number().describe("New X position (relative to the node's parent)"),
     y: z.number().describe("New Y position (relative to the node's parent)"),
   },
@@ -841,12 +841,12 @@ server.tool(
 // Resize Node Tool
 server.tool(
   "resize_node",
-  "Resize one or more nodes in Figma",
+  "Resize one or more nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to resize multiple nodes at once for better performance.",
   {
     nodeId: z.union([
       z.string().describe("Single node ID"),
-      z.array(z.string()).describe("Array of node IDs")
-    ]).describe("The ID(s) of the node(s) to resize"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     width: z.number().positive().describe("New width"),
     height: z.number().positive().describe("New height"),
   },
@@ -911,12 +911,12 @@ server.tool(
 // Delete Node Tool
 server.tool(
   "delete_node",
-  "Delete one or more nodes from Figma",
+  "Delete one or more nodes from Figma. BULK OPERATIONS: Pass an array of nodeIds to delete multiple nodes at once for better performance.",
   {
     nodeId: z.union([
       z.string().describe("Single node ID"),
-      z.array(z.string()).describe("Array of node IDs")
-    ]).describe("The ID(s) of the node(s) to delete"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
   },
   async ({ nodeId }: any) => {
     try {
@@ -1044,9 +1044,9 @@ server.tool(
 // Set Text Content Tool
 server.tool(
   "set_text_content",
-  "Set the text content of one or more existing text nodes in Figma",
+  "Set the text content of one or more existing text nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to update multiple text nodes at once for better performance.",
   {
-    nodeId: z.union([z.string(), z.array(z.string())]).describe("The ID of the text node to modify, or an array of node IDs for multiple nodes"),
+    nodeId: z.union([z.string(), z.array(z.string())]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     text: z.union([z.string(), z.array(z.string())]).describe("New text content. For multiple nodes: single string applies to all, or array of strings matched by index"),
   },
   async ({ nodeId, text }: any) => {
@@ -1499,12 +1499,12 @@ server.tool(
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
-  "Set the corner radius of one or more nodes in Figma",
+  "Set the corner radius of one or more nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to update multiple nodes at once for better performance.",
   {
     nodeId: z.union([
       z.string().describe("Single node ID"),
-      z.array(z.string()).describe("Array of node IDs")
-    ]).describe("The ID(s) of the node(s) to modify"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     radius: z.number().min(0).describe("Corner radius value"),
     corners: z
       .array(z.boolean())
@@ -1680,6 +1680,56 @@ server.prompt(
         },
       ],
       description: "Best practices for reading Figma designs",
+    };
+  }
+);
+
+server.prompt(
+  "bulk_operations_strategy",
+  "Best practices for bulk operations in Figma",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `CRITICAL: When working with multiple nodes in Figma, ALWAYS use bulk operations for better performance.
+
+## Bulk Operations Best Practices:
+
+1. **ALWAYS use arrays for multiple nodes:**
+   - ❌ BAD: Calling move_node 10 times with individual IDs
+   - ✅ GOOD: Calling move_node once with an array of 10 IDs
+   
+2. **Tools that support bulk operations (PREFER ARRAYS):**
+   - move_node: Pass ['id1', 'id2', 'id3'] to move multiple nodes at once
+   - set_fill_color: Pass ['id1', 'id2', 'id3'] to set colors in bulk
+   - set_stroke_color: Pass ['id1', 'id2', 'id3'] for bulk stroke updates
+   - resize_node: Pass ['id1', 'id2', 'id3'] to resize multiple nodes
+   - delete_node: Pass ['id1', 'id2', 'id3'] to delete in bulk
+   - set_text_content: Pass ['id1', 'id2', 'id3'] for bulk text updates
+   - set_corner_radius: Pass ['id1', 'id2', 'id3'] for bulk radius updates
+
+3. **Performance benefits:**
+   - Bulk operations are 10-100x faster than individual operations
+   - Reduces network overhead and Figma API calls
+   - Prevents UI freezing and improves user experience
+   
+4. **Example workflow:**
+   - First: Use scan_text_nodes or scan_nodes_by_types to get node IDs
+   - Then: Group the IDs by operation type
+   - Finally: Execute bulk operations with arrays
+
+5. **Text content updates:**
+   - For same text on all nodes: set_text_content(['id1', 'id2'], 'New Text')
+   - For different text per node: set_text_content(['id1', 'id2'], ['Text1', 'Text2'])
+
+REMEMBER: Always check if a tool accepts arrays and USE ARRAYS for better performance!`,
+          },
+        },
+      ],
+      description: "Best practices for bulk operations in Figma - CRITICAL for performance",
     };
   }
 );

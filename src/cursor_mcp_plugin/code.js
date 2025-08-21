@@ -510,7 +510,7 @@ async function getReactions(nodeIds) {
     async function highlightNodeWithAnimation(node) {
       // Save original stroke properties
       const originalStrokeWeight = node.strokeWeight;
-      const originalStrokes = node.strokes ? [...node.strokes] : [];
+      const originalStrokes = node.strokes ? node.strokes.slice() : [];
       
       try {
         // Apply orange border stroke
@@ -1674,11 +1674,10 @@ async function moveMultipleNodes(params) {
         return {
           success: true,
           nodeId: nodeId,
-          nodeInfo: {
-            ...nodeInfo,
+          nodeInfo: Object.assign({}, nodeInfo, {
             newX: node.x,
             newY: node.y,
-          },
+          }),
         };
       } catch (error) {
         console.error(`Error moving node ${nodeId}: ${error.message}`);
@@ -1951,7 +1950,7 @@ async function resizeMultipleNodes(params) {
     });
 
     const chunkResults = await Promise.all(chunkPromises);
-    results.push(...chunkResults);
+    Array.prototype.push.apply(results, chunkResults);
 
     // Update counts
     chunkResults.forEach((result) => {
@@ -2839,8 +2838,8 @@ async function setMultipleTextContentsSimple(params) {
 
 function uniqBy(arr, predicate) {
   const cb = typeof predicate === "function" ? predicate : (o) => o[predicate];
-  return [
-    ...arr
+  return Array.from(
+    arr
       .reduce((map, item) => {
         const key = item === null || item === undefined ? item : cb(item);
 
@@ -2848,8 +2847,8 @@ function uniqBy(arr, predicate) {
 
         return map;
       }, new Map())
-      .values(),
-  ];
+      .values()
+  );
 }
 const setCharacters = async (node, characters, options) => {
   const fallbackFont = (options && options.fallbackFont) || {
@@ -3031,7 +3030,7 @@ const setCharactersWithSmartMatchFont = async (
     style,
   }));
 
-  await Promise.all([...fontsToLoad, fallbackFont].map(figma.loadFontAsync));
+  await Promise.all(fontsToLoad.concat([fallbackFont]).map(figma.loadFontAsync));
 
   node.fontName = fallbackFont;
   node.characters = characters;
@@ -3275,7 +3274,7 @@ async function scanTextNodes(params) {
     }
 
     // Add results from this chunk
-    allTextNodes.push(...chunkTextNodes);
+    Array.prototype.push.apply(allTextNodes, chunkTextNodes);
     processedNodes += chunkNodes.length;
     chunksProcessed++;
 
@@ -3341,7 +3340,7 @@ async function collectNodesToProcess(
   if (node.visible === false) return;
 
   // Get the path to this node
-  const nodePath = [...parentPath, node.name || `Unnamed ${node.type}`];
+  const nodePath = parentPath.concat([node.name || `Unnamed ${node.type}`]);
 
   // Add this node to the processing list
   nodesToProcess.push({
@@ -3433,7 +3432,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
   if (node.visible === false) return;
 
   // Get the path to this node including its name
-  const nodePath = [...parentPath, node.name || `Unnamed ${node.type}`];
+  const nodePath = parentPath.concat([node.name || `Unnamed ${node.type}`]);
 
   if (node.type === "TEXT") {
     try {
