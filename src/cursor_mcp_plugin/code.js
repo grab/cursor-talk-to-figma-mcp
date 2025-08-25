@@ -2565,7 +2565,10 @@ async function setTextContent(params) {
   }
 
   try {
-    await figma.loadFontAsync(node.fontName);
+    // Only preload if it's not a mixed font
+    if (node.fontName !== figma.mixed) {
+      await figma.loadFontAsync(node.fontName);
+    }
 
     await setCharacters(node, text);
 
