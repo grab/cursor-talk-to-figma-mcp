@@ -30,13 +30,7 @@ bun setup
 bun socket
 ```
 
-4. MCP server
-
-```bash
-bunx cursor-talk-to-figma-mcp
-```
-
-5. **NEW** Install Figma plugin from [Figma community page](https://www.figma.com/community/plugin/1485687494525374295/cursor-talk-to-figma-mcp-plugin) or [install locally](#figma-plugin)
+4. **NEW** Install Figma plugin from [Figma community page](https://www.figma.com/community/plugin/1485687494525374295/cursor-talk-to-figma-mcp-plugin) or [install locally](#figma-plugin)
 
 ## Quick Video Tutorial
 
@@ -51,6 +45,21 @@ Thanks to [@dusskapark](https://github.com/dusskapark) for contributing the bulk
 **Instance Override Propagation**
 Another contribution from [@dusskapark](https://github.com/dusskapark)
 Propagate component instance overrides from a source instance to multiple target instances with a single command. This feature dramatically reduces repetitive design work when working with component instances that need similar customizations. Check out our [demo video](https://youtu.be/uvuT8LByroI).
+
+## Development Setup
+
+To develop, update your mcp config to direct to your local directory.
+
+```json
+{
+  "mcpServers": {
+    "TalkToFigma": {
+      "command": "bun",
+      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
+    }
+  }
+}
+```
 
 ## Manual Setup and Installation
 
