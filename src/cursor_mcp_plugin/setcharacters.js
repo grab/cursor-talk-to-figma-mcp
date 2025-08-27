@@ -1,7 +1,7 @@
 function uniqBy(arr, predicate) {
   const cb = typeof predicate === "function" ? predicate : (o) => o[predicate];
-  return [
-    ...arr
+  return Array.from(
+    arr
       .reduce((map, item) => {
         const key = item === null || item === undefined ? item : cb(item);
 
@@ -9,8 +9,8 @@ function uniqBy(arr, predicate) {
 
         return map;
       }, new Map())
-      .values(),
-  ];
+      .values()
+  );
 }
 export const setCharacters = async (node, characters, options) => {
   const fallbackFont = options?.fallbackFont || {
@@ -192,7 +192,7 @@ const setCharactersWithSmartMatchFont = async (
     style,
   }));
 
-  await Promise.all([...fontsToLoad, fallbackFont].map(figma.loadFontAsync));
+  await Promise.all(fontsToLoad.concat([fallbackFont]).map(figma.loadFontAsync));
 
   node.fontName = fallbackFont;
   node.characters = characters;
