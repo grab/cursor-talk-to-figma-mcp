@@ -46,6 +46,21 @@ Thanks to [@dusskapark](https://github.com/dusskapark) for contributing the bulk
 Another contribution from [@dusskapark](https://github.com/dusskapark)
 Propagate component instance overrides from a source instance to multiple target instances with a single command. This feature dramatically reduces repetitive design work when working with component instances that need similar customizations. Check out our [demo video](https://youtu.be/uvuT8LByroI).
 
+## Development Setup
+
+To develop, update your mcp config to direct to your local directory.
+
+```json
+{
+  "mcpServers": {
+    "TalkToFigma": {
+      "command": "bun",
+      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
+    }
+  }
+}
+```
+
 ## Manual Setup and Installation
 
 ### MCP Server: Integration with Cursor
