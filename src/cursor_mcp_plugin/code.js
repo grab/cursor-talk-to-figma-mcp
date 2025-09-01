@@ -225,10 +225,11 @@ async function handleCommand(command, params) {
         throw new Error("Missing or invalid nodeIds parameter");
       }
       return await getReactions(params.nodeIds);  
-    case "set_default_connector":
-      return await setDefaultConnector(params);
-    case "create_connections":
-      return await createConnections(params);
+    // NOTE: Connector functionality disabled due to Figma API deprecation
+    // case "set_default_connector":
+    //   return await setDefaultConnector(params);
+    // case "create_connections":
+    //   return await createConnections(params);
     case "set_focus":
       return await setFocus(params);
     case "set_selections":
@@ -3562,92 +3563,96 @@ async function setItemSpacing(params) {
   };
 }
 
-async function setDefaultConnector(params) {
-  const { connectorId } = params || {};
-  
-  // If connectorId is provided, search and set by that ID (do not check existing storage)
-  if (connectorId) {
-    // Get node by specified ID
-    const node = await figma.getNodeByIdAsync(connectorId);
-    if (!node) {
-      throw new Error(`Connector node not found with ID: ${connectorId}`);
-    }
-    
-    // Check node type
-    if (node.type !== 'CONNECTOR') {
-      throw new Error(`Node is not a connector: ${connectorId}`);
-    }
-    
-    // Set the found connector as the default connector
-    await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
-    
-    return {
-      success: true,
-      message: `Default connector set to: ${connectorId}`,
-      connectorId: connectorId
-    };
-  } 
-  // If connectorId is not provided, check existing storage
-  else {
-    // Check if there is an existing default connector in client storage
-    try {
-      const existingConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
-      
-      // If there is an existing connector ID, check if the node is still valid
-      if (existingConnectorId) {
-        try {
-          const existingConnector = await figma.getNodeByIdAsync(existingConnectorId);
-          
-          // If the stored connector still exists and is of type CONNECTOR
-          if (existingConnector && existingConnector.type === 'CONNECTOR') {
-            return {
-              success: true,
-              message: `Default connector is already set to: ${existingConnectorId}`,
-              connectorId: existingConnectorId,
-              exists: true
-            };
-          }
-          // The stored connector is no longer valid - find a new connector
-          else {
-            console.log(`Stored connector ID ${existingConnectorId} is no longer valid, finding a new connector...`);
-          }
-        } catch (error) {
-          console.log(`Error finding stored connector: ${error.message}. Will try to set a new one.`);
-        }
-      }
-    } catch (error) {
-      console.log(`Error checking for existing connector: ${error.message}`);
-    }
-    
-    // If there is no stored default connector or it is invalid, find one in the current page
-    try {
-      // Find CONNECTOR type nodes in the current page
-      const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
-      
-      if (currentPageConnectors && currentPageConnectors.length > 0) {
-        // Use the first connector found
-        const foundConnector = currentPageConnectors[0];
-        const autoFoundId = foundConnector.id;
-        
-        // Set the found connector as the default connector
-        await figma.clientStorage.setAsync('defaultConnectorId', autoFoundId);
-        
-        return {
-          success: true,
-          message: `Automatically found and set default connector to: ${autoFoundId}`,
-          connectorId: autoFoundId,
-          autoSelected: true
-        };
-      } else {
-        // If no connector is found in the current page, show a guide message
-        throw new Error('No connector found in the current page. Please create a connector in Figma first or specify a connector ID.');
-      }
-    } catch (error) {
-      // Error occurred while running findAllWithCriteria
-      throw new Error(`Failed to find a connector: ${error.message}`);
-    }
-  }
-}
+// NOTE: Connector functionality has been disabled due to Figma API deprecation
+// Figma has officially blocked the FigJam Connector API
+// See: https://github.com/grab/cursor-talk-to-figma-mcp/issues/106
+
+// async function setDefaultConnector(params) {
+//   const { connectorId } = params || {};
+//   
+//   // If connectorId is provided, search and set by that ID (do not check existing storage)
+//   if (connectorId) {
+//     // Get node by specified ID
+//     const node = await figma.getNodeByIdAsync(connectorId);
+//     if (!node) {
+//       throw new Error(`Connector node not found with ID: ${connectorId}`);
+//     }
+//     
+//     // Check node type
+//     if (node.type !== 'CONNECTOR') {
+//       throw new Error(`Node is not a connector: ${connectorId}`);
+//     }
+//     
+//     // Set the found connector as the default connector
+//     await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
+//     
+//     return {
+//       success: true,
+//       message: `Default connector set to: ${connectorId}`,
+//       connectorId: connectorId
+//     };
+//   } 
+//   // If connectorId is not provided, check existing storage
+//   else {
+//     // Check if there is an existing default connector in client storage
+//     try {
+//       const existingConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
+//       
+//       // If there is an existing connector ID, check if the node is still valid
+//       if (existingConnectorId) {
+//         try {
+//           const existingConnector = await figma.getNodeByIdAsync(existingConnectorId);
+//           
+//           // If the stored connector still exists and is of type CONNECTOR
+//           if (existingConnector && existingConnector.type === 'CONNECTOR') {
+//             return {
+//               success: true,
+//               message: `Default connector is already set to: ${existingConnectorId}`,
+//               connectorId: existingConnectorId,
+//               exists: true
+//             };
+//           }
+//           // The stored connector is no longer valid - find a new connector
+//           else {
+//             console.log(`Stored connector ID ${existingConnectorId} is no longer valid, finding a new connector...`);
+//           }
+//         } catch (error) {
+//           console.log(`Error finding stored connector: ${error.message}. Will try to set a new one.`);
+//         }
+//       }
+//     } catch (error) {
+//       console.log(`Error checking for existing connector: ${error.message}`);
+//     }
+//     
+//     // If there is no stored default connector or it is invalid, find one in the current page
+//     try {
+//       // Find CONNECTOR type nodes in the current page
+//       const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
+//       
+//       if (currentPageConnectors && currentPageConnectors.length > 0) {
+//         // Use the first connector found
+//         const foundConnector = currentPageConnectors[0];
+//         const autoFoundId = foundConnector.id;
+//         
+//         // Set the found connector as the default connector
+//         await figma.clientStorage.setAsync('defaultConnectorId', autoFoundId);
+//         
+//         return {
+//           success: true,
+//           message: `Automatically found and set default connector to: ${autoFoundId}`,
+//           connectorId: autoFoundId,
+//           autoSelected: true
+//         };
+//       } else {
+//         // If no connector is found in the current page, show a guide message
+//         throw new Error('No connector found in the current page. Please create a connector in Figma first or specify a connector ID.');
+//       }
+//     } catch (error) {
+//       // Error occurred while running findAllWithCriteria
+//       throw new Error(`Failed to find a connector: ${error.message}`);
+//     }
+//   }
+// }
 
 async function createCursorNode(targetNodeId) {
   const svgString = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -3756,204 +3761,208 @@ async function createCursorNode(targetNodeId) {
   }
 }
 
-async function createConnections(params) {
-  if (!params || !params.connections || !Array.isArray(params.connections)) {
-    throw new Error('Missing or invalid connections parameter');
-  }
-  
-  const { connections } = params;
-  
-  // Command ID for progress tracking
-  const commandId = generateCommandId();
-  sendProgressUpdate(
-    commandId,
-    "create_connections",
-    "started",
-    0,
-    connections.length,
-    0,
-    `Starting to create ${connections.length} connections`
-  );
-  
-  // Get default connector ID from client storage
-  const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
-  if (!defaultConnectorId) {
-    throw new Error('No default connector set. Please try one of the following options to create connections:\n1. Create a connector in FigJam and copy/paste it to your current page, then run the "set_default_connector" command.\n2. Select an existing connector on the current page, then run the "set_default_connector" command.');
-  }
-  
-  // Get the default connector
-  const defaultConnector = await figma.getNodeByIdAsync(defaultConnectorId);
-  if (!defaultConnector) {
-    throw new Error(`Default connector not found with ID: ${defaultConnectorId}`);
-  }
-  if (defaultConnector.type !== 'CONNECTOR') {
-    throw new Error(`Node is not a connector: ${defaultConnectorId}`);
-  }
-  
-  // Results array for connection creation
-  const results = [];
-  let processedCount = 0;
-  const totalCount = connections.length;
-  
-  // Preload fonts (used for text if provided)
-  let fontLoaded = false;
-  
-  for (let i = 0; i < connections.length; i++) {
-    try {
-      const { startNodeId: originalStartId, endNodeId: originalEndId, text } = connections[i];
-      let startId = originalStartId;
-      let endId = originalEndId;
+// NOTE: Connector functionality has been disabled due to Figma API deprecation
+// Figma has officially blocked the FigJam Connector API
+// See: https://github.com/grab/cursor-talk-to-figma-mcp/issues/106
 
-      // Check and potentially replace start node ID
-      if (startId.includes(';')) {
-        console.log(`Nested start node detected: ${startId}. Creating cursor node.`);
-        const cursorResult = await createCursorNode(startId);
-        if (!cursorResult || !cursorResult.id) {
-          throw new Error(`Failed to create cursor node for nested start node: ${startId}`);
-        }
-        startId = cursorResult.id; 
-      }  
-      
-      const startNode = await figma.getNodeByIdAsync(startId);
-      if (!startNode) throw new Error(`Start node not found with ID: ${startId}`);
-
-      // Check and potentially replace end node ID
-      if (endId.includes(';')) {
-        console.log(`Nested end node detected: ${endId}. Creating cursor node.`);
-        const cursorResult = await createCursorNode(endId);
-        if (!cursorResult || !cursorResult.id) {
-          throw new Error(`Failed to create cursor node for nested end node: ${endId}`);
-        }
-        endId = cursorResult.id;
-      }
-      const endNode = await figma.getNodeByIdAsync(endId);
-      if (!endNode) throw new Error(`End node not found with ID: ${endId}`);
-
-      
-      // Clone the default connector
-      const clonedConnector = defaultConnector.clone();
-      
-      // Update connector name using potentially replaced node names
-      clonedConnector.name = `TTF_Connector/${startNode.id}/${endNode.id}`;
-      
-      // Set start and end points using potentially replaced IDs
-      clonedConnector.connectorStart = {
-        endpointNodeId: startId,
-        magnet: 'AUTO'
-      };
-      
-      clonedConnector.connectorEnd = {
-        endpointNodeId: endId,
-        magnet: 'AUTO'
-      };
-      
-      // Add text (if provided)
-      if (text) {
-        try {
-          // Try to load the necessary fonts
-          try {
-            // First check if default connector has font and use the same
-            if (defaultConnector.text && defaultConnector.text.fontName) {
-              const fontName = defaultConnector.text.fontName;
-              await figma.loadFontAsync(fontName);
-              clonedConnector.text.fontName = fontName;
-            } else {
-              // Try default Inter font
-              await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-            }
-          } catch (fontError) {
-            // If first font load fails, try another font style
-            try {
-              await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-            } catch (mediumFontError) {
-              // If second font fails, try system font
-              try {
-                await figma.loadFontAsync({ family: "System", style: "Regular" });
-              } catch (systemFontError) {
-                // If all font loading attempts fail, throw error
-                throw new Error(`Failed to load any font: ${fontError.message}`);
-              }
-            }
-          }
-          
-          // Set the text
-          clonedConnector.text.characters = text;
-        } catch (textError) {
-          console.error("Error setting text:", textError);
-          // Continue with connection even if text setting fails
-          results.push({
-            id: clonedConnector.id,
-            startNodeId: startNodeId,
-            endNodeId: endNodeId,
-            text: "",
-            textError: textError.message
-          });
-          
-          // Continue to next connection
-          continue;
-        }
-      }
-      
-      // Add to results (using the *original* IDs for reference if needed)
-      results.push({
-        id: clonedConnector.id,
-        originalStartNodeId: originalStartId,
-        originalEndNodeId: originalEndId,
-        usedStartNodeId: startId, // ID actually used for connection
-        usedEndNodeId: endId,     // ID actually used for connection
-        text: text || ""
-      });
-      
-      // Update progress
-      processedCount++;
-      sendProgressUpdate(
-        commandId,
-        "create_connections",
-        "in_progress",
-        processedCount / totalCount,
-        totalCount,
-        processedCount,
-        `Created connection ${processedCount}/${totalCount}`
-      );
-      
-    } catch (error) {
-      console.error("Error creating connection", error);
-      // Continue processing remaining connections even if an error occurs
-      processedCount++;
-      sendProgressUpdate(
-        commandId,
-        "create_connections",
-        "in_progress",
-        processedCount / totalCount,
-        totalCount,
-        processedCount,
-        `Error creating connection: ${error.message}`
-      );
-      
-      results.push({
-        error: error.message,
-        connectionInfo: connections[i]
-      });
-    }
-  }
-  
-  // Completion update
-  sendProgressUpdate(
-    commandId,
-    "create_connections",
-    "completed",
-    1,
-    totalCount,
-    totalCount,
-    `Completed creating ${results.length} connections`
-  );
-  
-  return {
-    success: true,
-    count: results.length,
-    connections: results
-  };
-}
+// async function createConnections(params) {
+//   if (!params || !params.connections || !Array.isArray(params.connections)) {
+//     throw new Error('Missing or invalid connections parameter');
+//   }
+//   
+//   const { connections } = params;
+//   
+//   // Command ID for progress tracking
+//   const commandId = generateCommandId();
+//   sendProgressUpdate(
+//     commandId,
+//     "create_connections",
+//     "started",
+//     0,
+//     connections.length,
+//     0,
+//     `Starting to create ${connections.length} connections`
+//   );
+//   
+//   // Get default connector ID from client storage
+//   const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
+//   if (!defaultConnectorId) {
+//     throw new Error('No default connector set. Please try one of the following options to create connections:\n1. Create a connector in FigJam and copy/paste it to your current page, then run the "set_default_connector" command.\n2. Select an existing connector on the current page, then run the "set_default_connector" command.');
+//   }
+//   
+//   // Get the default connector
+//   const defaultConnector = await figma.getNodeByIdAsync(defaultConnectorId);
+//   if (!defaultConnector) {
+//     throw new Error(`Default connector not found with ID: ${defaultConnectorId}`);
+//   }
+//   if (defaultConnector.type !== 'CONNECTOR') {
+//     throw new Error(`Node is not a connector: ${defaultConnectorId}`);
+//   }
+//   
+//   // Results array for connection creation
+//   const results = [];
+//   let processedCount = 0;
+//   const totalCount = connections.length;
+//   
+//   // Preload fonts (used for text if provided)
+//   let fontLoaded = false;
+//   
+//   for (let i = 0; i < connections.length; i++) {
+//     try {
+//       const { startNodeId: originalStartId, endNodeId: originalEndId, text } = connections[i];
+//       let startId = originalStartId;
+//       let endId = originalEndId;
+//
+//       // Check and potentially replace start node ID
+//       if (startId.includes(';')) {
+//         console.log(`Nested start node detected: ${startId}. Creating cursor node.`);
+//         const cursorResult = await createCursorNode(startId);
+//         if (!cursorResult || !cursorResult.id) {
+//           throw new Error(`Failed to create cursor node for nested start node: ${startId}`);
+//         }
+//         startId = cursorResult.id; 
+//       }  
+//       
+//       const startNode = await figma.getNodeByIdAsync(startId);
+//       if (!startNode) throw new Error(`Start node not found with ID: ${startId}`);
+//
+//       // Check and potentially replace end node ID
+//       if (endId.includes(';')) {
+//         console.log(`Nested end node detected: ${endId}. Creating cursor node.`);
+//         const cursorResult = await createCursorNode(endId);
+//         if (!cursorResult || !cursorResult.id) {
+//           throw new Error(`Failed to create cursor node for nested end node: ${endId}`);
+//         }
+//         endId = cursorResult.id;
+//       }
+//       const endNode = await figma.getNodeByIdAsync(endId);
+//       if (!endNode) throw new Error(`End node not found with ID: ${endId}`);
+//
+//       
+//       // Clone the default connector
+//       const clonedConnector = defaultConnector.clone();
+//       
+//       // Update connector name using potentially replaced node names
+//       clonedConnector.name = `TTF_Connector/${startNode.id}/${endNode.id}`;
+//       
+//       // Set start and end points using potentially replaced IDs
+//       clonedConnector.connectorStart = {
+//         endpointNodeId: startId,
+//         magnet: 'AUTO'
+//       };
+//       
+//       clonedConnector.connectorEnd = {
+//         endpointNodeId: endId,
+//         magnet: 'AUTO'
+//       };
+//       
+//       // Add text (if provided)
+//       if (text) {
+//         try {
+//           // Try to load the necessary fonts
+//           try {
+//             // First check if default connector has font and use the same
+//             if (defaultConnector.text && defaultConnector.text.fontName) {
+//               const fontName = defaultConnector.text.fontName;
+//               await figma.loadFontAsync(fontName);
+//               clonedConnector.text.fontName = fontName;
+//             } else {
+//               // Try default Inter font
+//               await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+//             }
+//           } catch (fontError) {
+//             // If first font load fails, try another font style
+//             try {
+//               await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+//             } catch (mediumFontError) {
+//               // If second font fails, try system font
+//               try {
+//                 await figma.loadFontAsync({ family: "System", style: "Regular" });
+//               } catch (systemFontError) {
+//                 // If all font loading attempts fail, throw error
+//                 throw new Error(`Failed to load any font: ${fontError.message}`);
+//               }
+//             }
+//           }
+//           
+//           // Set the text
+//           clonedConnector.text.characters = text;
+//         } catch (textError) {
+//           console.error("Error setting text:", textError);
+//           // Continue with connection even if text setting fails
+//           results.push({
+//             id: clonedConnector.id,
+//             startNodeId: startNodeId,
+//             endNodeId: endNodeId,
+//             text: "",
+//             textError: textError.message
+//           });
+//           
+//           // Continue to next connection
+//           continue;
+//         }
+//       }
+//       
+//       // Add to results (using the *original* IDs for reference if needed)
+//       results.push({
+//         id: clonedConnector.id,
+//         originalStartNodeId: originalStartId,
+//         originalEndNodeId: originalEndId,
+//         usedStartNodeId: startId, // ID actually used for connection
+//         usedEndNodeId: endId,     // ID actually used for connection
+//         text: text || ""
+//       });
+//       
+//       // Update progress
+//       processedCount++;
+//       sendProgressUpdate(
+//         commandId,
+//         "create_connections",
+//         "in_progress",
+//         processedCount / totalCount,
+//         totalCount,
+//         processedCount,
+//         `Created connection ${processedCount}/${totalCount}`
+//       );
+//       
+//     } catch (error) {
+//       console.error("Error creating connection", error);
+//       // Continue processing remaining connections even if an error occurs
+//       processedCount++;
+//       sendProgressUpdate(
+//         commandId,
+//         "create_connections",
+//         "in_progress",
+//         processedCount / totalCount,
+//         totalCount,
+//         processedCount,
+//         `Error creating connection: ${error.message}`
+//       );
+//       
+//       results.push({
+//         error: error.message,
+//         connectionInfo: connections[i]
+//       });
+//     }
+//   }
+//   
+//   // Completion update
+//   sendProgressUpdate(
+//     commandId,
+//     "create_connections",
+//     "completed",
+//     1,
+//     totalCount,
+//     totalCount,
+//     `Completed creating ${results.length} connections`
+//   );
+//   
+//   return {
+//     success: true,
+//     count: results.length,
+//     connections: results
+//   };
+// }
 
 // Set focus on a specific node
 async function setFocus(params) {
