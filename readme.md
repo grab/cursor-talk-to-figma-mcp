@@ -133,6 +133,8 @@ The MCP server provides the following tools for interacting with Figma:
 - `read_my_design` - Get detailed node information about the current selection without parameters
 - `get_node_info` - Get detailed information about a specific node
 - `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
+- `set_focus` - Set focus on a specific node by selecting it and scrolling viewport to it
+- `set_selections` - Set selection to multiple nodes and scroll viewport to show them
 
 ### Annotations
 
