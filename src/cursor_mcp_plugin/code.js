@@ -229,6 +229,10 @@ async function handleCommand(command, params) {
       return await setDefaultConnector(params);
     case "create_connections":
       return await createConnections(params);
+    case "set_focus":
+      return await setFocus(params);
+    case "set_selections":
+      return await setSelections(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3948,5 +3952,77 @@ async function createConnections(params) {
     success: true,
     count: results.length,
     connections: results
+  };
+}
+
+// Set focus on a specific node
+async function setFocus(params) {
+  if (!params || !params.nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(params.nodeId);
+  if (!node) {
+    throw new Error(`Node with ID ${params.nodeId} not found`);
+  }
+
+  // Set selection to the node
+  figma.currentPage.selection = [node];
+  
+  // Scroll and zoom to show the node in viewport
+  figma.viewport.scrollAndZoomIntoView([node]);
+
+  return {
+    success: true,
+    name: node.name,
+    id: node.id,
+    message: `Focused on node "${node.name}"`
+  };
+}
+
+// Set selection to multiple nodes
+async function setSelections(params) {
+  if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
+    throw new Error("Missing or invalid nodeIds parameter");
+  }
+
+  if (params.nodeIds.length === 0) {
+    throw new Error("nodeIds array cannot be empty");
+  }
+
+  // Get all valid nodes
+  const nodes = [];
+  const notFoundIds = [];
+  
+  for (const nodeId of params.nodeIds) {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (node) {
+      nodes.push(node);
+    } else {
+      notFoundIds.push(nodeId);
+    }
+  }
+
+  if (nodes.length === 0) {
+    throw new Error(`No valid nodes found for the provided IDs: ${params.nodeIds.join(', ')}`);
+  }
+
+  // Set selection to the nodes
+  figma.currentPage.selection = nodes;
+  
+  // Scroll and zoom to show all nodes in viewport
+  figma.viewport.scrollAndZoomIntoView(nodes);
+
+  const selectedNodes = nodes.map(node => ({
+    name: node.name,
+    id: node.id
+  }));
+
+  return {
+    success: true,
+    count: nodes.length,
+    selectedNodes: selectedNodes,
+    notFoundIds: notFoundIds,
+    message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
   };
 }
