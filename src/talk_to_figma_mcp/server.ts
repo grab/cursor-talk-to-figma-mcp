@@ -2368,6 +2368,7 @@ server.tool(
 );
 
 
+
 // Set Focus Tool
 server.tool(
   "set_focus",
@@ -2399,6 +2400,39 @@ server.tool(
     }
   }
 );
+
+// Set Selections Tool
+server.tool(
+  "set_selections",
+  "Set selection to multiple nodes in Figma and scroll viewport to show them",
+  {
+    nodeIds: z.array(z.string()).describe("Array of node IDs to select"),
+  },
+  async ({ nodeIds }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_selections", { nodeIds });
+      const typedResult = result as { selectedNodes: Array<{ name: string; id: string }>; count: number };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Selected ${typedResult.count} nodes: ${typedResult.selectedNodes.map(node => `"${node.name}" (${node.id})`).join(', ')}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting selections: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 
 // Set Selections Tool
 server.tool(
@@ -2606,6 +2640,12 @@ type CommandParams = {
     types: Array<string>;
   };
   get_reactions: { nodeIds: string[] };
+  set_focus: {
+    nodeId: string;
+  };
+  set_selections: {
+    nodeIds: string[];
+  };
   set_focus: {
     nodeId: string;
   };
