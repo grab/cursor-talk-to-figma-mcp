@@ -1,7 +1,7 @@
 {
   "name": "cursor-talk-to-figma-socket",
   "description": "Cursor Talk to Figma Socket",
-  "version": "0.0.4",
+  "version": "0.3.4",
   "module": "dist/socket.js",
   "main": "dist/socket.js",
   "bin": {
@@ -28,9 +28,9 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "latest",
+    "@modelcontextprotocol/sdk": "1.13.1",
     "uuid": "latest",
     "ws": "latest",
-    "zod": "latest"
+    "zod": "3.22.4"
   }
 }
