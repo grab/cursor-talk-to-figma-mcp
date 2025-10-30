@@ -16,6 +16,7 @@
     "start": "bun run dist/server.js",
     "socket": "bun run src/socket.ts",
     "setup": "./scripts/setup.sh",
+    "setup-trae": "chmod +x scripts/setup-trae.sh && ./scripts/setup-trae.sh",
     "build": "tsup",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
