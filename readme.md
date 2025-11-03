@@ -18,9 +18,11 @@ https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 curl -fsSL https://bun.sh/install | bash
 ```
 
-2. Run setup, this will also install MCP in your Cursor's active project
+2. Clone this repository and run the setup command to install MCP into your project.
 
 ```bash
+# assuming you've already cloned the repository
+cd cursor-talk-to-figma-mcp
 bun setup
 ```
 
