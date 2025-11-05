@@ -5,6 +5,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
+import * as fs from "fs/promises";
+import * as path from "path";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -888,6 +890,84 @@ server.tool(
             type: "text",
             text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Save Node as Image Tool
+server.tool(
+  "save_node_as_image",
+  "Export a node as an image from Figma and save it to a file",
+  {
+    nodeId: z.string().describe("The ID of the node to export"),
+    path: z.string().describe("Path where to save the image - can be a directory or full file path"),
+    format: z
+      .enum(["PNG", "JPG", "SVG", "PDF"])
+      .optional()
+      .describe("Export format"),
+    scale: z.number().positive().optional().describe("Export scale"),
+  },
+  async ({ nodeId, path: savePath, format, scale }) => {
+    try {
+      const result = await sendCommandToFigma("export_node_as_image", {
+        nodeId,
+        format: format || "PNG",
+        scale: scale || 1,
+      });
+      const typedResult = result as { imageData: string; mimeType: string };
+
+      // Determine the file path
+      let filePath: string;
+      const fileFormat = format || "PNG";
+      const extension = fileFormat.toLowerCase();
+      
+      // Check if savePath is a directory or file
+      try {
+        const stats = await fs.stat(savePath);
+        if (stats.isDirectory()) {
+          // It's a directory, compute filename
+          filePath = path.join(savePath, `${nodeId}.${extension}`);
+        } else {
+          // It's a file, use as is
+          filePath = savePath;
+        }
+      } catch (error) {
+        // Path doesn't exist, check if it has an extension
+        const parsedPath = path.parse(savePath);
+        if (parsedPath.ext) {
+          // Has extension, treat as file path
+          filePath = savePath;
+          // Ensure parent directory exists
+          const dir = path.dirname(filePath);
+          await fs.mkdir(dir, { recursive: true });
+        } else {
+          // No extension, treat as directory
+          await fs.mkdir(savePath, { recursive: true });
+          filePath = path.join(savePath, `${nodeId}.${extension}`);
+        }
+      }
+
+      // Decode base64 image data and save to file
+      const buffer = Buffer.from(typedResult.imageData, 'base64');
+      await fs.writeFile(filePath, buffer);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Image saved successfully to: ${filePath}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error saving node as image: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
