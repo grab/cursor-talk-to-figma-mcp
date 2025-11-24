@@ -353,8 +353,8 @@ server.tool(
   "create_rectangle",
   "Create a new rectangle in Figma",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    x: z.number().describe("X position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
+    y: z.number().describe("Y position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
     width: z.number().describe("Width of the rectangle"),
     height: z.number().describe("Height of the rectangle"),
     name: z.string().optional().describe("Optional name for the rectangle"),
@@ -400,8 +400,8 @@ server.tool(
   "create_frame",
   "Create a new frame in Figma",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    x: z.number().describe("X position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
+    y: z.number().describe("Y position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
     width: z.number().describe("Width of the frame"),
     height: z.number().describe("Height of the frame"),
     name: z.string().optional().describe("Optional name for the frame"),
@@ -529,8 +529,8 @@ server.tool(
   "create_text",
   "Create a new text element in Figma",
   {
-    x: z.number().describe("X position"),
-    y: z.number().describe("Y position"),
+    x: z.number().describe("X position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
+    y: z.number().describe("Y position (relative to parent if parentId provided, otherwise absolute page coordinates)"),
     text: z.string().describe("Text content"),
     fontSize: z.number().optional().describe("Font size (default: 14)"),
     fontWeight: z
@@ -598,9 +598,12 @@ server.tool(
 // Set Fill Color Tool
 server.tool(
   "set_fill_color",
-  "Set the fill color of a node in Figma can be TextNode or FrameNode",
+  "Set the fill color of one or more nodes in Figma (TextNode or FrameNode). BULK OPERATIONS: Pass an array of nodeIds to update multiple nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
+    nodeId: z.union([
+      z.string().describe("Single node ID"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     r: z.number().min(0).max(1).describe("Red component (0-1)"),
     g: z.number().min(0).max(1).describe("Green component (0-1)"),
     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
@@ -608,17 +611,44 @@ server.tool(
   },
   async ({ nodeId, r, g, b, a }: any) => {
     try {
-      const result = await sendCommandToFigma("set_fill_color", {
-        nodeId,
-        color: { r, g, b, a: a || 1 },
+      // Convert to array for unified handling
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+      const color = { r, g, b, a: a || 1 };
+      
+      // For single node, use existing simple logic
+      if (nodeIds.length === 1) {
+        const result = await sendCommandToFigma("set_fill_color", {
+          nodeId: nodeIds[0],
+          color,
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+            },
+          ],
+        };
+      }
+      
+      // For multiple nodes, use bulk processing
+      const result = await sendCommandToFigma("set_multiple_fill_colors", {
+        nodeIds,
+        color,
       });
-      const typedResult = result as { name: string };
+      
+      const typedResult = result as { 
+        successCount?: number; 
+        failureCount?: number; 
+        totalNodes?: number;
+      };
+      
       return {
         content: [
           {
             type: "text",
-            text: `Set fill color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+            text: `Set fill color for ${typedResult.successCount || 0} of ${typedResult.totalNodes || nodeIds.length} nodes to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
           },
         ],
       };
@@ -627,8 +657,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting fill color: ${error instanceof Error ? error.message : String(error)
-              }`,
+            text: `Error setting fill color: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -639,9 +668,12 @@ server.tool(
 // Set Stroke Color Tool
 server.tool(
   "set_stroke_color",
-  "Set the stroke color of a node in Figma",
+  "Set the stroke color of one or more nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to update multiple nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
+    nodeId: z.union([
+      z.string().describe("Single node ID"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     r: z.number().min(0).max(1).describe("Red component (0-1)"),
     g: z.number().min(0).max(1).describe("Green component (0-1)"),
     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
@@ -650,18 +682,47 @@ server.tool(
   },
   async ({ nodeId, r, g, b, a, weight }: any) => {
     try {
-      const result = await sendCommandToFigma("set_stroke_color", {
-        nodeId,
-        color: { r, g, b, a: a || 1 },
-        weight: weight || 1,
+      // Convert to array for unified handling
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+      const color = { r, g, b, a: a || 1 };
+      const strokeWeight = weight || 1;
+      
+      // For single node, use existing simple logic
+      if (nodeIds.length === 1) {
+        const result = await sendCommandToFigma("set_stroke_color", {
+          nodeId: nodeIds[0],
+          color,
+          weight: strokeWeight,
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${strokeWeight}`,
+            },
+          ],
+        };
+      }
+      
+      // For multiple nodes, use bulk processing
+      const result = await sendCommandToFigma("set_multiple_stroke_colors", {
+        nodeIds,
+        color,
+        weight: strokeWeight,
       });
-      const typedResult = result as { name: string };
+      
+      const typedResult = result as { 
+        successCount?: number; 
+        failureCount?: number; 
+        totalNodes?: number;
+      };
+      
       return {
         content: [
           {
             type: "text",
-            text: `Set stroke color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
+            text: `Set stroke color for ${typedResult.successCount || 0} of ${typedResult.totalNodes || nodeIds.length} nodes to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${strokeWeight}`,
           },
         ],
       };
@@ -670,8 +731,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)
-              }`,
+            text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -682,30 +742,60 @@ server.tool(
 // Move Node Tool
 server.tool(
   "move_node",
-  "Move a node to a new position in Figma",
+  "Move one or more nodes to a new position in Figma. BULK OPERATIONS: Pass an array of nodeIds to move multiple nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the node to move"),
-    x: z.number().describe("New X position"),
-    y: z.number().describe("New Y position"),
+    nodeId: z.union([
+      z.string().describe("Single node ID"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
+    x: z.number().describe("New X position (relative to the node's parent)"),
+    y: z.number().describe("New Y position (relative to the node's parent)"),
   },
   async ({ nodeId, x, y }: any) => {
     try {
-      const result = await sendCommandToFigma("move_node", { nodeId, x, y });
-      const typedResult = result as { name: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Moved node "${typedResult.name}" to position (${x}, ${y})`,
-          },
-        ],
-      };
+      // Convert to array for unified handling
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+      
+      // For single node, use existing simple logic
+      if (nodeIds.length === 1) {
+        const result = await sendCommandToFigma("move_node", { 
+          nodeId: nodeIds[0], 
+          x, 
+          y 
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Moved node "${typedResult.name}" to position (${x}, ${y})`,
+            },
+          ],
+        };
+      } else {
+        // For multiple nodes, use the bulk operation
+        const result = await sendCommandToFigma("move_multiple_nodes", { 
+          nodeIds, 
+          x, 
+          y 
+        });
+        const typedResult = result as { nodesMoved: number; nodesFailed: number; results: any[] };
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Moved ${typedResult.nodesMoved} of ${nodeIds.length} nodes to position (${x}, ${y}). ${typedResult.nodesFailed} failed.`,
+            },
+          ],
+        };
+      }
     } catch (error) {
       return {
         content: [
           {
             type: "text",
-            text: `Error moving node: ${error instanceof Error ? error.message : String(error)
+            text: `Error moving node(s): ${error instanceof Error ? error.message : String(error)
               }`,
           },
         ],
@@ -751,25 +841,56 @@ server.tool(
 // Resize Node Tool
 server.tool(
   "resize_node",
-  "Resize a node in Figma",
+  "Resize one or more nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to resize multiple nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the node to resize"),
+    nodeId: z.union([
+      z.string().describe("Single node ID"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     width: z.number().positive().describe("New width"),
     height: z.number().positive().describe("New height"),
   },
   async ({ nodeId, width, height }: any) => {
     try {
-      const result = await sendCommandToFigma("resize_node", {
-        nodeId,
+      // Convert to array for unified handling
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+      
+      // For single node, use existing simple logic
+      if (nodeIds.length === 1) {
+        const result = await sendCommandToFigma("resize_node", {
+          nodeId: nodeIds[0],
+          width,
+          height,
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Resized node "${typedResult.name}" to width ${width} and height ${height}`,
+            },
+          ],
+        };
+      }
+      
+      // For multiple nodes, use bulk processing
+      const result = await sendCommandToFigma("resize_multiple_nodes", {
+        nodeIds,
         width,
         height,
       });
-      const typedResult = result as { name: string };
+      
+      const typedResult = result as { 
+        successCount?: number; 
+        failureCount?: number; 
+        totalNodes?: number;
+      };
+      
       return {
         content: [
           {
             type: "text",
-            text: `Resized node "${typedResult.name}" to width ${width} and height ${height}`,
+            text: `Resized ${typedResult.successCount || 0} of ${typedResult.totalNodes || nodeIds.length} nodes to width ${width} and height ${height}`,
           },
         ],
       };
@@ -778,7 +899,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error resizing node: ${error instanceof Error ? error.message : String(error)
+            text: `Error resizing node(s): ${error instanceof Error ? error.message : String(error)
               }`,
           },
         ],
@@ -790,18 +911,44 @@ server.tool(
 // Delete Node Tool
 server.tool(
   "delete_node",
-  "Delete a node from Figma",
+  "Delete one or more nodes from Figma. BULK OPERATIONS: Pass an array of nodeIds to delete multiple nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the node to delete"),
+    nodeId: z.union([
+      z.string().describe("Single node ID"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
   },
   async ({ nodeId }: any) => {
     try {
-      await sendCommandToFigma("delete_node", { nodeId });
+      // Convert to array for unified handling
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+      
+      // For single node, use existing simple logic
+      if (nodeIds.length === 1) {
+        await sendCommandToFigma("delete_node", { nodeId: nodeIds[0] });
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Deleted node with ID: ${nodeIds[0]}`,
+            },
+          ],
+        };
+      }
+      
+      // For multiple nodes, use bulk processing
+      const result = await sendCommandToFigma("delete_multiple_nodes", { nodeIds });
+      const typedResult = result as { 
+        nodesDeleted?: number;
+        nodesFailed?: number;
+        totalNodes?: number;
+      };
+      
       return {
         content: [
           {
             type: "text",
-            text: `Deleted node with ID: ${nodeId}`,
+            text: `Deleted ${typedResult.nodesDeleted || 0} of ${typedResult.totalNodes || nodeIds.length} nodes`,
           },
         ],
       };
@@ -810,8 +957,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Error deleting node: ${error instanceof Error ? error.message : String(error)
-              }`,
+            text: `Error deleting node(s): ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -819,10 +965,10 @@ server.tool(
   }
 );
 
-// Delete Multiple Nodes Tool
+// Delete Multiple Nodes Tool (DEPRECATED - use delete_node with array instead)
 server.tool(
   "delete_multiple_nodes",
-  "Delete multiple nodes from Figma at once",
+  "[DEPRECATED - use delete_node with array instead] Delete multiple nodes from Figma at once",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
   },
@@ -898,26 +1044,56 @@ server.tool(
 // Set Text Content Tool
 server.tool(
   "set_text_content",
-  "Set the text content of an existing text node in Figma",
+  "Set the text content of one or more existing text nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to update multiple text nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the text node to modify"),
-    text: z.string().describe("New text content"),
+    nodeId: z.union([z.string(), z.array(z.string())]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
+    text: z.union([z.string(), z.array(z.string())]).describe("New text content. For multiple nodes: single string applies to all, or array of strings matched by index"),
   },
   async ({ nodeId, text }: any) => {
     try {
-      const result = await sendCommandToFigma("set_text_content", {
-        nodeId,
-        text,
-      });
-      const typedResult = result as { name: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Updated text content of node "${typedResult.name}" to "${text}"`,
-          },
-        ],
-      };
+      // Check if we're dealing with arrays (multiple nodes)
+      if (Array.isArray(nodeId)) {
+        // Multiple nodes case - use the simplified multiple text contents function
+        let textArray: string[];
+        
+        if (Array.isArray(text)) {
+          // Array of texts matched by index
+          textArray = text;
+        } else {
+          // Single text applied to all nodes
+          textArray = nodeId.map(() => text);
+        }
+        
+        const result = await sendCommandToFigma("set_multiple_text_contents_simple", {
+          nodeIds: nodeId,
+          texts: textArray,
+        });
+        
+        const typedResult = result as { successCount: number; failureCount: number; totalNodes: number };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated text content for ${typedResult.successCount} of ${typedResult.totalNodes} nodes. ${typedResult.failureCount} failed.`,
+            },
+          ],
+        };
+      } else {
+        // Single node case - use existing logic
+        const result = await sendCommandToFigma("set_text_content", {
+          nodeId,
+          text,
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Updated text content of node "${typedResult.name}" to "${text}"`,
+            },
+          ],
+        };
+      }
     } catch (error) {
       return {
         content: [
@@ -1081,10 +1257,10 @@ interface SetMultipleAnnotationsParams {
   }>;
 }
 
-// Set Multiple Annotations Tool
+// Set Multiple Annotations Tool (DEPRECATED - use set_annotation with arrays in future)
 server.tool(
   "set_multiple_annotations",
-  "Set multiple annotations parallelly in a node",
+  "[DEPRECATED - will be replaced with unified set_annotation] Set multiple annotations parallelly in a node",
   {
     nodeId: z
       .string()
@@ -1323,9 +1499,12 @@ server.tool(
 // Set Corner Radius Tool
 server.tool(
   "set_corner_radius",
-  "Set the corner radius of a node in Figma",
+  "Set the corner radius of one or more nodes in Figma. BULK OPERATIONS: Pass an array of nodeIds to update multiple nodes at once for better performance.",
   {
-    nodeId: z.string().describe("The ID of the node to modify"),
+    nodeId: z.union([
+      z.string().describe("Single node ID"),
+      z.array(z.string()).describe("Array of node IDs for bulk operations")
+    ]).describe("Single node ID or array of node IDs. PREFER ARRAYS for multiple nodes (e.g., ['123', '456', '789']) for better performance"),
     radius: z.number().min(0).describe("Corner radius value"),
     corners: z
       .array(z.boolean())
@@ -1337,17 +1516,45 @@ server.tool(
   },
   async ({ nodeId, radius, corners }: any) => {
     try {
-      const result = await sendCommandToFigma("set_corner_radius", {
-        nodeId,
+      // Convert to array for unified handling
+      const nodeIds = Array.isArray(nodeId) ? nodeId : [nodeId];
+      
+      // For single node, use existing simple logic
+      if (nodeIds.length === 1) {
+        const result = await sendCommandToFigma("set_corner_radius", {
+          nodeId: nodeIds[0],
+          radius,
+          corners: corners || [true, true, true, true],
+        });
+        const typedResult = result as { name: string };
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Set corner radius of node "${typedResult.name}" to ${radius}px`,
+            },
+          ],
+        };
+      }
+      
+      // For multiple nodes, use bulk processing
+      const result = await sendCommandToFigma("set_multiple_corner_radii", {
+        nodeIds,
         radius,
         corners: corners || [true, true, true, true],
       });
-      const typedResult = result as { name: string };
+      
+      const typedResult = result as { 
+        successCount?: number; 
+        failureCount?: number; 
+        totalNodes?: number;
+      };
+      
       return {
         content: [
           {
             type: "text",
-            text: `Set corner radius of node "${typedResult.name}" to ${radius}px`,
+            text: `Set corner radius for ${typedResult.successCount || 0} of ${typedResult.totalNodes || nodeIds.length} nodes to ${radius}px`,
           },
         ],
       };
@@ -1473,6 +1680,56 @@ server.prompt(
         },
       ],
       description: "Best practices for reading Figma designs",
+    };
+  }
+);
+
+server.prompt(
+  "bulk_operations_strategy",
+  "Best practices for bulk operations in Figma",
+  (extra) => {
+    return {
+      messages: [
+        {
+          role: "assistant",
+          content: {
+            type: "text",
+            text: `CRITICAL: When working with multiple nodes in Figma, ALWAYS use bulk operations for better performance.
+
+## Bulk Operations Best Practices:
+
+1. **ALWAYS use arrays for multiple nodes:**
+   - ❌ BAD: Calling move_node 10 times with individual IDs
+   - ✅ GOOD: Calling move_node once with an array of 10 IDs
+   
+2. **Tools that support bulk operations (PREFER ARRAYS):**
+   - move_node: Pass ['id1', 'id2', 'id3'] to move multiple nodes at once
+   - set_fill_color: Pass ['id1', 'id2', 'id3'] to set colors in bulk
+   - set_stroke_color: Pass ['id1', 'id2', 'id3'] for bulk stroke updates
+   - resize_node: Pass ['id1', 'id2', 'id3'] to resize multiple nodes
+   - delete_node: Pass ['id1', 'id2', 'id3'] to delete in bulk
+   - set_text_content: Pass ['id1', 'id2', 'id3'] for bulk text updates
+   - set_corner_radius: Pass ['id1', 'id2', 'id3'] for bulk radius updates
+
+3. **Performance benefits:**
+   - Bulk operations are 10-100x faster than individual operations
+   - Reduces network overhead and Figma API calls
+   - Prevents UI freezing and improves user experience
+   
+4. **Example workflow:**
+   - First: Use scan_text_nodes or scan_nodes_by_types to get node IDs
+   - Then: Group the IDs by operation type
+   - Finally: Execute bulk operations with arrays
+
+5. **Text content updates:**
+   - For same text on all nodes: set_text_content(['id1', 'id2'], 'New Text')
+   - For different text per node: set_text_content(['id1', 'id2'], ['Text1', 'Text2'])
+
+REMEMBER: Always check if a tool accepts arrays and USE ARRAYS for better performance!`,
+          },
+        },
+      ],
+      description: "Best practices for bulk operations in Figma - CRITICAL for performance",
     };
   }
 );
@@ -1770,10 +2027,10 @@ Remember that text is never just text—it's a core design element that must wor
   }
 );
 
-// Set Multiple Text Contents Tool
+// Set Multiple Text Contents Tool (DEPRECATED - use set_text_content with arrays instead)
 server.tool(
   "set_multiple_text_contents",
-  "Set multiple text contents parallelly in a node",
+  "[DEPRECATED - use set_text_content with arrays instead] Set multiple text contents parallelly in a node",
   {
     nodeId: z
       .string()
@@ -2618,9 +2875,13 @@ type FigmaCommand =
   | "create_frame"
   | "create_text"
   | "set_fill_color"
+  | "set_multiple_fill_colors"
   | "set_stroke_color"
+  | "set_multiple_stroke_colors"
   | "move_node"
+  | "move_multiple_nodes"
   | "resize_node"
+  | "resize_multiple_nodes"
   | "delete_node"
   | "delete_multiple_nodes"
   | "get_styles"
@@ -2631,10 +2892,12 @@ type FigmaCommand =
   | "export_node_as_image"
   | "join"
   | "set_corner_radius"
+  | "set_multiple_corner_radii"
   | "clone_node"
   | "set_text_content"
   | "scan_text_nodes"
   | "set_multiple_text_contents"
+  | "set_multiple_text_contents_simple"
   | "get_annotations"
   | "set_annotation"
   | "set_multiple_annotations"
@@ -2691,6 +2954,10 @@ type CommandParams = {
     b: number;
     a?: number;
   };
+  set_multiple_fill_colors: {
+    nodeIds: string[];
+    color: { r: number; g: number; b: number; a?: number };
+  };
   set_stroke_color: {
     nodeId: string;
     r: number;
@@ -2699,13 +2966,27 @@ type CommandParams = {
     a?: number;
     weight?: number;
   };
+  set_multiple_stroke_colors: {
+    nodeIds: string[];
+    color: { r: number; g: number; b: number; a?: number; weight?: number };
+  };
   move_node: {
     nodeId: string;
     x: number;
     y: number;
   };
+  move_multiple_nodes: {
+    nodeIds: string[];
+    x: number;
+    y: number;
+  };
   resize_node: {
     nodeId: string;
+    width: number;
+    height: number;
+  };
+  resize_multiple_nodes: {
+    nodeIds: string[];
     width: number;
     height: number;
   };
@@ -2746,14 +3027,19 @@ type CommandParams = {
     radius: number;
     corners?: boolean[];
   };
+  set_multiple_corner_radii: {
+    nodeIds: string[];
+    radius: number;
+    corners?: boolean[];
+  };
   clone_node: {
     nodeId: string;
     x?: number;
     y?: number;
   };
   set_text_content: {
-    nodeId: string;
-    text: string;
+    nodeId: string | string[];
+    text: string | string[];
   };
   scan_text_nodes: {
     nodeId: string;
@@ -2763,6 +3049,10 @@ type CommandParams = {
   set_multiple_text_contents: {
     nodeId: string;
     text: Array<{ nodeId: string; text: string }>;
+  };
+  set_multiple_text_contents_simple: {
+    nodeIds: string[];
+    texts: string[];
   };
   get_annotations: {
     nodeId?: string;
