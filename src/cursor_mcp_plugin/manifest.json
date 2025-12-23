@@ -6,7 +6,8 @@
   "ui": "ui.html",
   "editorType": [
     "figma",
-    "figjam"
+    "figjam",
+    "slides"
   ],
   "permissions": [],
   "networkAccess": {
