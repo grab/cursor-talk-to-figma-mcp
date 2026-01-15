@@ -28,7 +28,7 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.13.1",
+    "@modelcontextprotocol/sdk": "^1.24.0",
     "uuid": "latest",
     "ws": "latest",
     "zod": "3.22.4"
