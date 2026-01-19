@@ -129,6 +129,8 @@ async function handleCommand(command, params) {
       return await createText(params);
     case "set_fill_color":
       return await setFillColor(params);
+    case "set_image_fill":
+      return await setImageFill(params);
     case "set_stroke_color":
       return await setStrokeColor(params);
     case "move_node":
@@ -951,6 +953,81 @@ async function setFillColor(params) {
     name: node.name,
     fills: [paintStyle],
   };
+}
+
+async function setImageFill(params) {
+  const { nodeId, imageUrl, imageBase64, scaleMode = "FILL" } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!imageUrl && !imageBase64) {
+    throw new Error("Missing imageUrl or imageBase64 parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (!("fills" in node)) {
+    throw new Error(`Node does not support fills: ${nodeId}`);
+  }
+
+  try {
+    let uint8Array;
+
+    if (imageBase64) {
+      // Decode base64 to Uint8Array
+      const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+      const base64 = imageBase64.replace(/[^A-Za-z0-9+/]/g, '');
+      const len = base64.length;
+      uint8Array = new Uint8Array(Math.floor((len * 3) / 4));
+
+      let j = 0;
+      for (let i = 0; i < len; i += 4) {
+        const a = base64Chars.indexOf(base64[i]);
+        const b = base64Chars.indexOf(base64[i + 1]);
+        const c = base64Chars.indexOf(base64[i + 2]);
+        const d = base64Chars.indexOf(base64[i + 3]);
+
+        uint8Array[j++] = (a << 2) | (b >> 4);
+        if (c !== -1 && base64[i + 2] !== '=') uint8Array[j++] = ((b & 15) << 4) | (c >> 2);
+        if (d !== -1 && base64[i + 3] !== '=') uint8Array[j++] = ((c & 3) << 6) | d;
+      }
+      uint8Array = uint8Array.slice(0, j);
+    } else {
+      // Fetch image from URL
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      uint8Array = new Uint8Array(arrayBuffer);
+    }
+
+    // Create image in Figma
+    const image = figma.createImage(uint8Array);
+
+    // Set image fill
+    const imagePaint = {
+      type: "IMAGE",
+      imageHash: image.hash,
+      scaleMode: scaleMode,
+    };
+
+    node.fills = [imagePaint];
+
+    return {
+      id: node.id,
+      name: node.name,
+      imageHash: image.hash,
+      scaleMode: scaleMode,
+    };
+  } catch (error) {
+    throw new Error(`Failed to set image fill: ${error.message}`);
+  }
 }
 
 async function setStrokeColor(params) {
