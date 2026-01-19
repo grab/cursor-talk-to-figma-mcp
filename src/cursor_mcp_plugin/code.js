@@ -155,6 +155,8 @@ async function handleCommand(command, params) {
       return await setCornerRadius(params);
     case "set_text_content":
       return await setTextContent(params);
+    case "set_font":
+      return await setFont(params);
     case "clone_node":
       return await cloneNode(params);
     case "scan_text_nodes":
@@ -1465,6 +1467,44 @@ async function setTextContent(params) {
     };
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
+  }
+}
+
+async function setFont(params) {
+  const { nodeId, fontFamily, fontStyle } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  if (!fontFamily) {
+    throw new Error("Missing fontFamily parameter");
+  }
+
+  const style = fontStyle || "Regular";
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  try {
+    const newFont = { family: fontFamily, style: style };
+    await figma.loadFontAsync(newFont);
+    node.fontName = newFont;
+
+    return {
+      id: node.id,
+      name: node.name,
+      fontName: node.fontName,
+      characters: node.characters,
+    };
+  } catch (error) {
+    throw new Error(`Error setting font: ${error.message}`);
   }
 }
 
