@@ -1,11 +1,11 @@
 {
-  "name": "cursor-talk-to-figma-mcp",
-  "description": "Cursor Talk to Figma MCP",
+  "name": "vscode-talk-to-figma-mcp",
+  "description": "Talk to Figma MCP - Connect AI coding assistants to Figma via Model Context Protocol",
   "version": "0.3.5",
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {
-    "cursor-talk-to-figma-mcp": "dist/server.js"
+    "vscode-talk-to-figma-mcp": "dist/server.js"
   },
   "files": [
     "dist",

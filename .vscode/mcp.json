@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "TalkToFigma": {
+      "command": "bunx",
+      "args": ["vscode-talk-to-figma-mcp@latest"]
+    }
+  }
+}
