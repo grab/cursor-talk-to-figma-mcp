@@ -53,7 +53,6 @@ Select an integration to configure:
   3) Cursor
   4) Claude Desktop
   5) Claude Code (CLI command)
-  6) Claude Code (local .mcp.json)
 
   q) Quit
 
@@ -103,8 +102,6 @@ claude mcp add FigmaEdit bun run /path/to/figma-edit-mcp/dist/server.js
 ```
 
 Replace `/path/to/figma-edit-mcp` with your actual installation path.
-
-Alternatively, select option `6` to create a local `.mcp.json` file for workspace-level auto-discovery.
 
 ### Claude Desktop
 

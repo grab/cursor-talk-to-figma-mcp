@@ -171,34 +171,12 @@ install_claude_desktop() {
 show_claude_code_instructions() {
     echo ""
     echo "📦 Claude Code CLI Instructions:"
-    echo "To install for Claude Code, run the following command in your terminal:"
+    echo "To install for Claude Code for the Current Project, run the following command in your terminal:"
     echo ""
     echo "  claude mcp add FigmaEdit bun run $PROJECT_DIR/dist/server.js"
     echo ""
 }
 
-# Function to create local .mcp.json for Claude Code workspace config
-install_claude_code_local() {
-    LOCAL_MCP_FILE="$PROJECT_DIR/.mcp.json"
-    
-    echo "📦 Creating local .mcp.json for Claude Code..."
-    
-    cat > "$LOCAL_MCP_FILE" << EOF
-{
-    "mcpServers": {
-        "FigmaEdit": {
-            "command": "bun",
-            "args": [
-                "run",
-                "$PROJECT_DIR/dist/server.js"
-            ]
-        }
-    }
-}
-EOF
-    echo "✅ Created $LOCAL_MCP_FILE"
-    echo "   Claude Code will auto-discover this when you open this project."
-}
 
 # Interactive Menu
 show_menu() {
@@ -208,8 +186,7 @@ show_menu() {
     echo "  2) VS Code / GitHub Copilot"
     echo "  3) Cursor"
     echo "  4) Claude Desktop"
-    echo "  5) Claude Code (CLI command)"
-    echo "  6) Claude Code (local .mcp.json)"
+    echo "  5) Claude Code (Command Line, VS Code, Antigravity)"
     echo ""
     echo "  q) Quit"
     echo ""
@@ -243,11 +220,6 @@ case $choice in
     5)
         show_claude_code_instructions
         echo "After running the command above, Claude Code will be ready to use."
-        ;;
-    6)
-        install_claude_code_local
-        echo ""
-        echo "⚠️  Please reload your IDE to pick up the changes."
         ;;
     q|Q)
         echo "Goodbye!"
