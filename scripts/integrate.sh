@@ -48,9 +48,13 @@ install_cursor() {
                 echo "⚠️  jq not found. Please manually update ~/.cursor/mcp.json"
             fi
         fi
+        echo ""
+        echo "⚠️  Please reload Cursor to pick up the changes."
     else
         echo "ℹ️  Cursor not detected."
+        return 1
     fi
+    return 0
 }
 
 # Function to install for VS Code / Copilot
@@ -85,9 +89,13 @@ install_vscode_mcp() {
                 echo "⚠️  jq not found. Please manually update VS Code mcp.json"
             fi
         fi
+        echo ""
+        echo "⚠️  Please reload VS Code to pick up the changes."
     else
         echo "ℹ️  VS Code not detected."
+        return 1
     fi
+    return 0
 }
 
 # Function to install for Antigravity
@@ -126,11 +134,14 @@ install_antigravity() {
             echo "⚠️  jq not found. Please manually update Antigravity config."
         fi
     fi
+    echo ""
+    echo "⚠️  Please reload Google Antigravity to pick up the changes."
+    return 0
 }
 
 # Function to install for Claude Desktop
 install_claude_desktop() {
-    CLAUDE_CONFIG_DIR="$HOME/.config/claude"
+    CLAUDE_CONFIG_DIR="$HOME/Library/Application Support/Claude"
     CLAUDE_CONFIG_FILE="$CLAUDE_CONFIG_DIR/claude_desktop_config.json"
     
     echo "📦 Configuring Claude Desktop..."
@@ -162,9 +173,13 @@ install_claude_desktop() {
                 echo "⚠️  jq not found. Please update config manually."
             fi
         fi
+        echo ""
+        echo "⚠️  Please restart Claude Desktop to pick up the changes."
     else
         echo "ℹ️  Claude Desktop config not found."
+        return 1
     fi
+    return 0
 }
 
 # Function for Claude Code instructions
@@ -175,6 +190,7 @@ show_claude_code_instructions() {
     echo ""
     echo "  claude mcp add FigmaEdit bun run $PROJECT_DIR/dist/server.js"
     echo ""
+    echo "After running the command above, Claude Code will be ready to use."
 }
 
 
@@ -183,10 +199,10 @@ show_menu() {
     echo "Select an integration to configure:"
     echo ""
     echo "  1) Google Antigravity"
-    echo "  2) VS Code / GitHub Copilot"
+    echo "  2) Visual Studio Code (GitHub Copilot)"
     echo "  3) Cursor"
     echo "  4) Claude Desktop"
-    echo "  5) Claude Code (Command Line, VS Code, Antigravity)"
+    echo "  5) Claude Code (Command Line, Visual Studio Code, Google Antigravity)"
     echo ""
     echo "  q) Quit"
     echo ""
@@ -199,27 +215,18 @@ echo ""
 case $choice in
     1)
         install_antigravity
-        echo ""
-        echo "⚠️  Please reload Google Antigravity to pick up the changes."
         ;;
     2)
         install_vscode_mcp
-        echo ""
-        echo "⚠️  Please reload VS Code to pick up the changes."
         ;;
     3)
         install_cursor
-        echo ""
-        echo "⚠️  Please reload Cursor to pick up the changes."
         ;;
     4)
         install_claude_desktop
-        echo ""
-        echo "⚠️  Please restart Claude Desktop to pick up the changes."
         ;;
     5)
         show_claude_code_instructions
-        echo "After running the command above, Claude Code will be ready to use."
         ;;
     q|Q)
         echo "Goodbye!"
