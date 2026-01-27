@@ -1,40 +1,32 @@
 #!/bin/bash
 
-# Universal setup script for Talk to Figma MCP
-# Supports: Cursor, GitHub Copilot, VS Code, Claude Code, Antigravity
+# Setup script for Figma Edit MCP
+# Installs dependencies and builds the MCP server
+
+echo "🤖 Figma Edit MCP Setup"
+echo "========================================"
+echo ""
+
+# Get the absolute path to this project
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_DIR="$( dirname "$SCRIPT_DIR" )"
+
+cd "$PROJECT_DIR"
 
 # Install dependencies
+echo "📦 Installing dependencies..."
 bun install
 
-# MCP configuration JSON
-MCP_CONFIG='{
-  "mcpServers": {
-    "TalkToFigma": {
-      "command": "bunx",
-      "args": ["vscode-talk-to-figma-mcp@latest"]
-    }
-  }
-}'
+echo ""
 
-# Create config for Cursor
-mkdir -p .cursor
-echo "$MCP_CONFIG" > .cursor/mcp.json
-echo "✅ Created .cursor/mcp.json (for Cursor)"
-
-# Create config for VS Code, Copilot, Antigravity, Claude Code
-mkdir -p .vscode
-echo "$MCP_CONFIG" > .vscode/mcp.json
-echo "✅ Created .vscode/mcp.json (for VS Code, GitHub Copilot, Antigravity, Claude Code)"
+# Build the MCP server
+echo "🔨 Building MCP server..."
+bun run build
 
 echo ""
-echo "🎉 Setup complete! The MCP server is now configured for:"
-echo "   • Cursor"
-echo "   • GitHub Copilot in VS Code"
-echo "   • Google Antigravity"
-echo "   • Claude Code in VS Code"
-echo "   • Claude Code in Antigravity"
+echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "   1. Start the WebSocket server: bun socket"
-echo "   2. Open Figma and run the 'Talk to Figma MCP Plugin'"
-echo "   3. Connect to channel in your AI assistant"
+echo "  1. Run 'bun integrate' to configure your AI coding assistant"
+echo "  2. Run 'bun socket' to start the WebSocket server"
+echo "  3. Install the Figma plugin and connect"

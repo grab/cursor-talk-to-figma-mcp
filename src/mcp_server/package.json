@@ -1,5 +1,5 @@
 {
-  "name": "talk-to-figma-mcp",
+  "name": "figma-edit-mcp",
   "version": "1.0.0",
   "description": "MCP server for Figma integration",
   "main": "server.ts",

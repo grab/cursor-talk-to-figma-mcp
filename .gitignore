@@ -2,3 +2,4 @@ node_modules/
 .cursor/
 dist/
 docs/
+.mcp.json

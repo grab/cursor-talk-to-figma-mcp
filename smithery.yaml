@@ -10,5 +10,5 @@ startCommand:
     |-
     (config) => ({
       command: 'bunx',
-      args: ['cursor-talk-to-figma-mcp']
+      args: ['figma-edit-mcp']
     })
