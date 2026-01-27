@@ -1,4 +1,4 @@
-// This is the main code file for the Cursor MCP Figma plugin
+// This is the main code file for the Figma plugin
 // It handles Figma API commands
 
 // Plugin state
@@ -224,7 +224,7 @@ async function handleCommand(command, params) {
       if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
       }
-      return await getReactions(params.nodeIds);  
+      return await getReactions(params.nodeIds);
     case "set_default_connector":
       return await setDefaultConnector(params);
     case "create_connections":
@@ -454,9 +454,9 @@ async function getReactions(nodeIds) {
       if (processedNodes.has(node.id)) {
         return results;
       }
-      
+
       processedNodes.add(node.id);
-      
+
       // Check if the current node has reactions
       let filteredReactions = [];
       if (node.reactions && node.reactions.length > 0) {
@@ -472,7 +472,7 @@ async function getReactions(nodeIds) {
         });
       }
       const hasFilteredReactions = filteredReactions.length > 0;
-      
+
       // If the node has filtered reactions, add it to results and apply highlight effect
       if (hasFilteredReactions) {
         results.push({
@@ -487,23 +487,23 @@ async function getReactions(nodeIds) {
         // Apply highlight effect (orange border)
         await highlightNodeWithAnimation(node);
       }
-      
+
       // If node has children, recursively search them
       if (node.children) {
         for (const child of node.children) {
           await findNodesWithReactions(child, processedNodes, depth + 1, results);
         }
       }
-      
+
       return results;
     }
-    
+
     // Function to apply animated highlight effect to a node
     async function highlightNodeWithAnimation(node) {
       // Save original stroke properties
       const originalStrokeWeight = node.strokeWeight;
       const originalStrokes = node.strokes ? [...node.strokes] : [];
-      
+
       try {
         // Apply orange border stroke
         node.strokeWeight = 4;
@@ -512,7 +512,7 @@ async function getReactions(nodeIds) {
           color: { r: 1, g: 0.5, b: 0 }, // Orange color
           opacity: 0.8
         }];
-        
+
         // Set timeout for animation effect (restore to original after 1.5 seconds)
         setTimeout(() => {
           try {
@@ -528,17 +528,17 @@ async function getReactions(nodeIds) {
         // Continue even if highlighting fails
       }
     }
-    
+
     // Get node hierarchy path as a string
     function getNodePath(node) {
       const path = [];
       let current = node;
-      
+
       while (current && current.parent) {
         path.unshift(current.name);
         current = current.parent;
       }
-      
+
       return path.join(' > ');
     }
 
@@ -546,13 +546,13 @@ async function getReactions(nodeIds) {
     let allResults = [];
     let processedCount = 0;
     const totalCount = nodeIds.length;
-    
+
     // Iterate through each node and its children to search for reactions
     for (let i = 0; i < nodeIds.length; i++) {
       try {
         const nodeId = nodeIds[i];
         const node = await figma.getNodeByIdAsync(nodeId);
-        
+
         if (!node) {
           processedCount++;
           sendProgressUpdate(
@@ -566,14 +566,14 @@ async function getReactions(nodeIds) {
           );
           continue;
         }
-        
+
         // Search for reactions in the node and its children
         const processedNodes = new Set();
         const nodeResults = await findNodesWithReactions(node, processedNodes);
-        
+
         // Add results
         allResults = allResults.concat(nodeResults);
-        
+
         // Update progress
         processedCount++;
         sendProgressUpdate(
@@ -3187,7 +3187,7 @@ async function setInstanceOverrides(targetInstances, sourceResult) {
                     // if INSTANCE_SWAP use id, otherwise use value
                     if (sourceNode.componentProperties[key].type === 'INSTANCE_SWAP') {
                       properties[key] = sourceNode.componentProperties[key].value;
-                    
+
                     } else {
                       properties[key] = sourceNode.componentProperties[key].value;
                     }
@@ -3564,7 +3564,7 @@ async function setItemSpacing(params) {
 
 async function setDefaultConnector(params) {
   const { connectorId } = params || {};
-  
+
   // If connectorId is provided, search and set by that ID (do not check existing storage)
   if (connectorId) {
     // Get node by specified ID
@@ -3572,32 +3572,32 @@ async function setDefaultConnector(params) {
     if (!node) {
       throw new Error(`Connector node not found with ID: ${connectorId}`);
     }
-    
+
     // Check node type
     if (node.type !== 'CONNECTOR') {
       throw new Error(`Node is not a connector: ${connectorId}`);
     }
-    
+
     // Set the found connector as the default connector
     await figma.clientStorage.setAsync('defaultConnectorId', connectorId);
-    
+
     return {
       success: true,
       message: `Default connector set to: ${connectorId}`,
       connectorId: connectorId
     };
-  } 
+  }
   // If connectorId is not provided, check existing storage
   else {
     // Check if there is an existing default connector in client storage
     try {
       const existingConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
-      
+
       // If there is an existing connector ID, check if the node is still valid
       if (existingConnectorId) {
         try {
           const existingConnector = await figma.getNodeByIdAsync(existingConnectorId);
-          
+
           // If the stored connector still exists and is of type CONNECTOR
           if (existingConnector && existingConnector.type === 'CONNECTOR') {
             return {
@@ -3618,20 +3618,20 @@ async function setDefaultConnector(params) {
     } catch (error) {
       console.log(`Error checking for existing connector: ${error.message}`);
     }
-    
+
     // If there is no stored default connector or it is invalid, find one in the current page
     try {
       // Find CONNECTOR type nodes in the current page
       const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
-      
+
       if (currentPageConnectors && currentPageConnectors.length > 0) {
         // Use the first connector found
         const foundConnector = currentPageConnectors[0];
         const autoFoundId = foundConnector.id;
-        
+
         // Set the found connector as the default connector
         await figma.clientStorage.setAsync('defaultConnectorId', autoFoundId);
-        
+
         return {
           success: true,
           message: `Automatically found and set default connector to: ${autoFoundId}`,
@@ -3659,8 +3659,8 @@ async function createCursorNode(targetNodeId) {
 
     // The targetNodeId has semicolons since it is a nested node.
     // So we need to get the parent node ID from the target node ID and check if we can appendChild to it or not.
-    let parentNodeId = targetNodeId.includes(';') 
-      ? targetNodeId.split(';')[0] 
+    let parentNodeId = targetNodeId.includes(';')
+      ? targetNodeId.split(';')[0]
       : targetNodeId;
     if (!parentNodeId) throw new Error("Could not determine parent node ID");
 
@@ -3723,14 +3723,14 @@ async function createCursorNode(targetNodeId) {
       // if the targetNode has absoluteBoundingBox, set the importedNode's absoluteBoundingBox to the targetNode's absoluteBoundingBox
       console.log('targetNode.absoluteBoundingBox', targetNode.absoluteBoundingBox);
       console.log('parentNode.absoluteBoundingBox', parentNode.absoluteBoundingBox);
-      importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.absoluteBoundingBox.x  + targetNode.absoluteBoundingBox.width / 2 - 48 / 2
+      importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.absoluteBoundingBox.x + targetNode.absoluteBoundingBox.width / 2 - 48 / 2
       importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.absoluteBoundingBox.y + targetNode.absoluteBoundingBox.height / 2 - 48 / 2;
     } else if (
       'x' in targetNode && 'y' in targetNode && 'width' in targetNode && 'height' in targetNode) {
-        // if the targetNode has x, y, width, height, calculate center based on relative position
-        console.log('targetNode.x/y/width/height', targetNode.x, targetNode.y, targetNode.width, targetNode.height);
-        importedNode.x = targetNode.x + targetNode.width / 2 - 48 / 2;
-        importedNode.y = targetNode.y + targetNode.height / 2 - 48 / 2;
+      // if the targetNode has x, y, width, height, calculate center based on relative position
+      console.log('targetNode.x/y/width/height', targetNode.x, targetNode.y, targetNode.width, targetNode.height);
+      importedNode.x = targetNode.x + targetNode.width / 2 - 48 / 2;
+      importedNode.y = targetNode.y + targetNode.height / 2 - 48 / 2;
     } else {
       // Fallback: Place at top-left of target if possible, otherwise at (0,0) relative to parent
       if ('x' in targetNode && 'y' in targetNode) {
@@ -3749,7 +3749,7 @@ async function createCursorNode(targetNodeId) {
 
 
     return { id: importedNode.id, node: importedNode };
-    
+
   } catch (error) {
     console.error("Error creating cursor from SVG:", error);
     return { id: null, node: null, error: error.message };
@@ -3760,9 +3760,9 @@ async function createConnections(params) {
   if (!params || !params.connections || !Array.isArray(params.connections)) {
     throw new Error('Missing or invalid connections parameter');
   }
-  
+
   const { connections } = params;
-  
+
   // Command ID for progress tracking
   const commandId = generateCommandId();
   sendProgressUpdate(
@@ -3774,13 +3774,13 @@ async function createConnections(params) {
     0,
     `Starting to create ${connections.length} connections`
   );
-  
+
   // Get default connector ID from client storage
   const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
   if (!defaultConnectorId) {
     throw new Error('No default connector set. Please try one of the following options to create connections:\n1. Create a connector in FigJam and copy/paste it to your current page, then run the "set_default_connector" command.\n2. Select an existing connector on the current page, then run the "set_default_connector" command.');
   }
-  
+
   // Get the default connector
   const defaultConnector = await figma.getNodeByIdAsync(defaultConnectorId);
   if (!defaultConnector) {
@@ -3789,15 +3789,15 @@ async function createConnections(params) {
   if (defaultConnector.type !== 'CONNECTOR') {
     throw new Error(`Node is not a connector: ${defaultConnectorId}`);
   }
-  
+
   // Results array for connection creation
   const results = [];
   let processedCount = 0;
   const totalCount = connections.length;
-  
+
   // Preload fonts (used for text if provided)
   let fontLoaded = false;
-  
+
   for (let i = 0; i < connections.length; i++) {
     try {
       const { startNodeId: originalStartId, endNodeId: originalEndId, text } = connections[i];
@@ -3811,9 +3811,9 @@ async function createConnections(params) {
         if (!cursorResult || !cursorResult.id) {
           throw new Error(`Failed to create cursor node for nested start node: ${startId}`);
         }
-        startId = cursorResult.id; 
-      }  
-      
+        startId = cursorResult.id;
+      }
+
       const startNode = await figma.getNodeByIdAsync(startId);
       if (!startNode) throw new Error(`Start node not found with ID: ${startId}`);
 
@@ -3829,24 +3829,24 @@ async function createConnections(params) {
       const endNode = await figma.getNodeByIdAsync(endId);
       if (!endNode) throw new Error(`End node not found with ID: ${endId}`);
 
-      
+
       // Clone the default connector
       const clonedConnector = defaultConnector.clone();
-      
+
       // Update connector name using potentially replaced node names
       clonedConnector.name = `TTF_Connector/${startNode.id}/${endNode.id}`;
-      
+
       // Set start and end points using potentially replaced IDs
       clonedConnector.connectorStart = {
         endpointNodeId: startId,
         magnet: 'AUTO'
       };
-      
+
       clonedConnector.connectorEnd = {
         endpointNodeId: endId,
         magnet: 'AUTO'
       };
-      
+
       // Add text (if provided)
       if (text) {
         try {
@@ -3875,7 +3875,7 @@ async function createConnections(params) {
               }
             }
           }
-          
+
           // Set the text
           clonedConnector.text.characters = text;
         } catch (textError) {
@@ -3888,12 +3888,12 @@ async function createConnections(params) {
             text: "",
             textError: textError.message
           });
-          
+
           // Continue to next connection
           continue;
         }
       }
-      
+
       // Add to results (using the *original* IDs for reference if needed)
       results.push({
         id: clonedConnector.id,
@@ -3903,7 +3903,7 @@ async function createConnections(params) {
         usedEndNodeId: endId,     // ID actually used for connection
         text: text || ""
       });
-      
+
       // Update progress
       processedCount++;
       sendProgressUpdate(
@@ -3915,7 +3915,7 @@ async function createConnections(params) {
         processedCount,
         `Created connection ${processedCount}/${totalCount}`
       );
-      
+
     } catch (error) {
       console.error("Error creating connection", error);
       // Continue processing remaining connections even if an error occurs
@@ -3929,14 +3929,14 @@ async function createConnections(params) {
         processedCount,
         `Error creating connection: ${error.message}`
       );
-      
+
       results.push({
         error: error.message,
         connectionInfo: connections[i]
       });
     }
   }
-  
+
   // Completion update
   sendProgressUpdate(
     commandId,
@@ -3947,7 +3947,7 @@ async function createConnections(params) {
     totalCount,
     `Completed creating ${results.length} connections`
   );
-  
+
   return {
     success: true,
     count: results.length,
@@ -3968,7 +3968,7 @@ async function setFocus(params) {
 
   // Set selection to the node
   figma.currentPage.selection = [node];
-  
+
   // Scroll and zoom to show the node in viewport
   figma.viewport.scrollAndZoomIntoView([node]);
 
@@ -3993,7 +3993,7 @@ async function setSelections(params) {
   // Get all valid nodes
   const nodes = [];
   const notFoundIds = [];
-  
+
   for (const nodeId of params.nodeIds) {
     const node = await figma.getNodeByIdAsync(nodeId);
     if (node) {
@@ -4009,7 +4009,7 @@ async function setSelections(params) {
 
   // Set selection to the nodes
   figma.currentPage.selection = nodes;
-  
+
   // Scroll and zoom to show all nodes in viewport
   figma.viewport.scrollAndZoomIntoView(nodes);
 

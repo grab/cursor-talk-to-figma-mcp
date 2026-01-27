@@ -61,6 +61,36 @@ const logger = {
   log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
 };
 
+/**
+ * Normalize node ID from Figma URL format to API format
+ * Converts dash-separated IDs (e.g., "20485-41") to colon-separated (e.g., "20485:41")
+ * This allows users to paste node IDs directly from Figma URLs
+ * @param nodeId - The node ID to normalize
+ * @returns Normalized node ID in API format
+ */
+function normalizeNodeId(nodeId: string | undefined): string | undefined {
+  if (!nodeId || typeof nodeId !== 'string') {
+    return nodeId;
+  }
+
+  // Replace dash with colon if it matches the pattern: digits-digits
+  // This handles Figma URL format (20485-41) -> API format (20485:41)
+  return nodeId.replace(/^(\d+)-(\d+)$/, '$1:$2');
+}
+
+/**
+ * Normalize an array of node IDs from URL format to API format
+ * @param nodeIds - Array of node IDs to normalize
+ * @returns Array of normalized node IDs
+ */
+function normalizeNodeIds(nodeIds: string[] | undefined): string[] | undefined {
+  if (!nodeIds || !Array.isArray(nodeIds)) {
+    return nodeIds;
+  }
+
+  return nodeIds.map(id => normalizeNodeId(id) || id);
+}
+
 // WebSocket connection and request tracking
 let ws: WebSocket | null = null;
 const pendingRequests = new Map<string, {
@@ -75,7 +105,7 @@ let currentChannel: string | null = null;
 
 // Create MCP server
 const server = new McpServer({
-  name: "TalkToFigmaMCP",
+  name: "FigmaEditMCP",
   version: "1.0.0",
 });
 
@@ -1042,6 +1072,7 @@ server.tool(
   },
   async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_annotation", {
         nodeId,
         annotationId,
@@ -1337,6 +1368,7 @@ server.tool(
   },
   async ({ nodeId, radius, corners }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_corner_radius", {
         nodeId,
         radius,
@@ -2103,6 +2135,7 @@ server.tool(
   },
   async ({ nodeId, layoutMode, layoutWrap }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_layout_mode", {
         nodeId,
         layoutMode,
@@ -2143,6 +2176,7 @@ server.tool(
   },
   async ({ nodeId, paddingTop, paddingRight, paddingBottom, paddingLeft }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_padding", {
         nodeId,
         paddingTop,
@@ -2201,6 +2235,7 @@ server.tool(
   },
   async ({ nodeId, primaryAxisAlignItems, counterAxisAlignItems }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_axis_align", {
         nodeId,
         primaryAxisAlignItems,
@@ -2255,6 +2290,7 @@ server.tool(
   },
   async ({ nodeId, layoutSizingHorizontal, layoutSizingVertical }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_layout_sizing", {
         nodeId,
         layoutSizingHorizontal,
@@ -2301,12 +2337,12 @@ server.tool(
     itemSpacing: z.number().optional().describe("Distance between children. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN."),
     counterAxisSpacing: z.number().optional().describe("Distance between wrapped rows/columns. Only works when layoutWrap is set to WRAP.")
   },
-  async ({ nodeId, itemSpacing, counterAxisSpacing}: any) => {
+  async ({ nodeId, itemSpacing, counterAxisSpacing }: any) => {
     try {
       const params: any = { nodeId };
       if (itemSpacing !== undefined) params.itemSpacing = itemSpacing;
       if (counterAxisSpacing !== undefined) params.counterAxisSpacing = counterAxisSpacing;
-      
+
       const result = await sendCommandToFigma("set_item_spacing", params);
       const typedResult = result as { name: string, itemSpacing?: number, counterAxisSpacing?: number };
 
@@ -2467,6 +2503,7 @@ server.tool(
   },
   async ({ nodeId }: any) => {
     try {
+      nodeId = normalizeNodeId(nodeId);
       const result = await sendCommandToFigma("set_focus", { nodeId });
       const typedResult = result as { name: string; id: string };
       return {
@@ -2989,17 +3026,71 @@ function sendCommandToFigma(
     }
 
     const id = uuidv4();
+
+    // Normalize node IDs in params (convert URL format to API format)
+    const normalizedParams = { ...(params as any) };
+
+    // Handle single nodeId parameter
+    if (normalizedParams.nodeId) {
+      normalizedParams.nodeId = normalizeNodeId(normalizedParams.nodeId);
+    }
+
+    // Handle nodeIds array parameter
+    if (normalizedParams.nodeIds) {
+      normalizedParams.nodeIds = normalizeNodeIds(normalizedParams.nodeIds);
+    }
+
+    // Handle sourceInstanceId (used in set_instance_overrides)
+    if (normalizedParams.sourceInstanceId) {
+      normalizedParams.sourceInstanceId = normalizeNodeId(normalizedParams.sourceInstanceId);
+    }
+
+    // Handle targetNodeIds array (used in set_instance_overrides)
+    if (normalizedParams.targetNodeIds) {
+      normalizedParams.targetNodeIds = normalizeNodeIds(normalizedParams.targetNodeIds);
+    }
+
+    // Handle parentId parameter
+    if (normalizedParams.parentId) {
+      normalizedParams.parentId = normalizeNodeId(normalizedParams.parentId);
+    }
+
+    // Handle connections array (used in create_connections)
+    if (normalizedParams.connections && Array.isArray(normalizedParams.connections)) {
+      normalizedParams.connections = normalizedParams.connections.map((conn: any) => ({
+        ...conn,
+        startNodeId: normalizeNodeId(conn.startNodeId) || conn.startNodeId,
+        endNodeId: normalizeNodeId(conn.endNodeId) || conn.endNodeId
+      }));
+    }
+
+    // Handle text array for set_multiple_text_contents
+    if (normalizedParams.text && Array.isArray(normalizedParams.text)) {
+      normalizedParams.text = normalizedParams.text.map((item: any) => ({
+        ...item,
+        nodeId: normalizeNodeId(item.nodeId) || item.nodeId
+      }));
+    }
+
+    // Handle annotations array for set_multiple_annotations
+    if (normalizedParams.annotations && Array.isArray(normalizedParams.annotations)) {
+      normalizedParams.annotations = normalizedParams.annotations.map((annotation: any) => ({
+        ...annotation,
+        nodeId: normalizeNodeId(annotation.nodeId) || annotation.nodeId
+      }));
+    }
+
     const request = {
       id,
       type: command === "join" ? "join" : "message",
       ...(command === "join"
-        ? { channel: (params as any).channel }
+        ? { channel: normalizedParams.channel }
         : { channel: currentChannel }),
       message: {
         id,
         command,
         params: {
-          ...(params as any),
+          ...normalizedParams,
           commandId: id, // Include the command ID in params
         },
       },

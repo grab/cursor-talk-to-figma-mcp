@@ -1,6 +1,6 @@
 {
-  "name": "Talk to Figma MCP Plugin",
-  "id": "talk-to-figma-mcp-plugin",
+  "name": "Figma Edit MCP Plugin",
+  "id": "figma-edit-mcp-plugin",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
