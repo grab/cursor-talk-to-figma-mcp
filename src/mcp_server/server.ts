@@ -1302,7 +1302,7 @@ server.prompt(
      * Set proper fontWeight for different text elements
 
 6. Mofifying existing elements:
-  - use set_text_content() to modify text content.
+  - use set_multiple_text_contents() to modify text content.
 
 7. Visual Hierarchy:
    - Position elements in logical reading order (top to bottom)
@@ -1314,7 +1314,7 @@ server.prompt(
      * Smaller for helper text/links
 
 8. Best Practices:
-   - Verify each creation with get_node_info()
+   - Verify each creation with get_nodes_info()
    - Use parentId to maintain proper hierarchy
    - Group related elements together in frames
    - Keep consistent spacing and alignment
@@ -1356,9 +1356,9 @@ server.prompt(
             type: "text",
             text: `When reading Figma designs, follow these best practices:
 
-1. Start with selection:
-   - First use read_my_design() to understand the current selection
-   - If no selection ask user to select single or multiple nodes
+1. Start with Document Info:
+   - Use get_document_info() to explore the page structure
+   - Identify nodes by their IDs
 `,
           },
         },
@@ -1550,7 +1550,7 @@ server.prompt(
   * Navigation (menu items, breadcrumbs)
 \`\`\`
 scan_text_nodes(nodeId: "node-id")
-get_node_info(nodeId: "node-id")  // optional
+get_nodes_info(nodeIds: ["node-id"])  // optional
 \`\`\`
 
 ## 2. Strategic Chunking for Complex Designs
@@ -1795,12 +1795,13 @@ The process of converting manual annotations (numbered/alphabetical indicators w
 
 ## Step 1: Get Selection and Initial Setup
 
-First, get the selected frame or component that contains annotations:
+First, use get_document_info to find the IDs of the frames or components:
 
 \`\`\`typescript
-// Get the selected frame/component
-const selection = await get_selection();
-const selectedNodeId = selection[0].id
+// Get document structure
+const doc = await get_document_info();
+// Find relevant node IDs from the response
+const selectedNodeId = "..." // extracted from doc
 
 // Get available annotation categories for later use
 const annotationData = await get_annotations({
@@ -1946,10 +1947,8 @@ This strategy enables transferring content and property overrides from a source 
 ## Step-by-Step Process
 
 ### 1. Selection Analysis
-- Use \`get_selection()\` to identify the parent component or selected instances
-- For parent components, scan for instances with \`scan_nodes_by_types({ nodeId: "parent-id", types: ["INSTANCE"] })\`
-- Identify custom slots by name patterns (e.g. "Custom Slot*" or "Instance Slot") or by examining text content
-- Determine which is the source instance (with content to copy) and which are targets (where to apply content)
+- Use \`get_document_info()\` to explore the document structure and identify node IDs.
+- Determine which is the source node (with content to copy) and which are targets (where to apply content).
 
 ### 2. Extract Source Overrides
 - Use \`get_instance_overrides()\` to extract customizations from the source instance
@@ -1968,12 +1967,12 @@ This strategy enables transferring content and property overrides from a source 
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`get_node_info()\` or \`read_my_design()\`
+- Verify results with \`get_nodes_info()\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips
 - Always join the appropriate channel first with \`join_channel()\`
-- When working with multiple targets, check the full selection with \`get_selection()\`
+- When working with multiple targets, verify their IDs with \`get_document_info()\`.
 - Preserve component relationships by using instance overrides rather than direct text manipulation`,
           },
         },
@@ -2419,7 +2418,7 @@ You will receive JSON data from the \`get_reactions\` tool. This data contains a
 ## Step-by-Step Process
 
 ### 1. Preparation & Context Gathering
-   - **Action:** Call \`read_my_design\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
+   - **Action:** Call \`get_nodes_info\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
    - **Action:** Call \`set_default_connector\` **without** the \`connectorId\` parameter.
    - **Check Result:** Analyze the response from \`set_default_connector\`.
      - If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
@@ -2439,7 +2438,7 @@ You will receive JSON data from the \`get_reactions\` tool. This data contains a
 
 ### 3. Generate Connector Text Labels
    - **For each extracted connection:** Create a concise, descriptive text label string.
-   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`read_my_design\` or by calling \`get_node_info\` if necessary) to generate the label.
+   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`get_nodes_info\` or by calling \`get_nodes_info\` if necessary) to generate the label.
    - **Example Labels:**
      - If \`triggerType\` is "ON\_CLICK" and \`actionType\` is "NAVIGATE": "On click, navigate to [Destination Node Name]"
      - If \`triggerType\` is "ON\_DRAG" and \`actionType\` is "OPEN\_OVERLAY": "On drag, open [Destination Node Name] overlay"
@@ -2474,10 +2473,7 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
-  | "get_selection"
-  | "get_node_info"
   | "get_nodes_info"
-  | "read_my_design"
   | "create_rectangle"
   | "create_frame"
   | "create_text"
@@ -2512,8 +2508,6 @@ type FigmaCommand =
 
 type CommandParams = {
   get_document_info: Record<string, never>;
-  get_selection: Record<string, never>;
-  get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };
   create_rectangle: {
     x: number;
