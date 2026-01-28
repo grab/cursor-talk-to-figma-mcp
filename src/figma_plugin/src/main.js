@@ -27,10 +27,63 @@ import { scanTextNodes, setMultipleTextContents } from '../handlers/textHandlers
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, getNodeVariables, setBoundVariable } from '../handlers/variableHandlers.js';
 
+// Constants
+const ERRORS = {
+    READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
+    OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
+    PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
+    CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
+    ROOT_INSTANCE_DISALLOWED: "Operation Denied: Cannot create instance at root with current editable scope. Verify if user intends for the instance to be created on this page. If so, advise user to disconnect plugin, paste a link to this page into Link to Selection field, then reconnect plugin.",
+
+    MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
+    MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
+    MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
+    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
+};
+
 // Plugin state
 const state = {
     serverPort: 3055, // Default port
+    scopeRootId: null,
+    readOnly: false // Default to false, but connection flow will set this
 };
+
+// Helper: Check if a node is within the allowed scope
+async function checkScopeAccess(nodeId) {
+    if (state.readOnly) return false;
+
+    // If scope is not set, we assume restricted access (deny) unless strict flow says otherwise.
+    // However, based on the flow: "Empty -> Read-Only", "Link -> Scoped".
+    // So if we are NOT read-only, we MUST have a scopeRootId.
+    if (!state.scopeRootId) return false;
+
+    let node = await figma.getNodeByIdAsync(nodeId);
+    // Be robust against missing nodes
+    if (!node) return false;
+
+    // Traverse up
+    while (node) {
+        if (node.id === state.scopeRootId) return true;
+        node = node.parent;
+    }
+    return false;
+}
+
+// Helper: Parse Node ID from URL
+function parseNodeIdFromUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        const nodeId = urlObj.searchParams.get("node-id");
+        return nodeId ? nodeId.replace(/-/g, ":") : null;
+    } catch (e) {
+        // Fallback for simple paste? Or maybe strictly require URL structure
+        // Figma often copies as: "https://www.figma.com/design/..."
+        // Regex fallback might be safer if URL object fails or protocol is weird
+        const match = url.match(/node-id=([^&]+)/);
+        if (match) return match[1].replace(/-/g, ":");
+        return null;
+    }
+}
 
 // Show UI
 figma.showUI(__html__, { width: 350, height: 450 });
@@ -46,6 +99,35 @@ figma.ui.onmessage = async (msg) => {
             break;
         case "close-plugin":
             figma.closePlugin();
+            break;
+        case "validate-scope-link":
+            const nodeId = parseNodeIdFromUrl(msg.link);
+            if (!nodeId) {
+                figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Invalid Figma URL" });
+                return;
+            }
+            const node = await figma.getNodeByIdAsync(nodeId);
+            if (node) {
+                figma.ui.postMessage({
+                    type: "scope-validation-result",
+                    valid: true,
+                    nodeName: node.name,
+                    nodeId: node.id
+                });
+            } else {
+                figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Node not found in current document" });
+            }
+            break;
+        case "set-scope":
+            if (msg.scopeNodeId) {
+                state.scopeRootId = msg.scopeNodeId;
+                state.readOnly = false;
+                figma.notify(`Scope locked to node: ${msg.scopeNodeId}`);
+            } else {
+                state.scopeRootId = null;
+                state.readOnly = true;
+                figma.notify("Connected in Read-Only Mode");
+            }
             break;
         case "execute-command":
             // Execute commands received from UI (which gets them from WebSocket)
@@ -70,7 +152,8 @@ figma.ui.onmessage = async (msg) => {
 
 // Listen for plugin commands from menu
 figma.on("run", ({ command }) => {
-    figma.ui.postMessage({ type: "auto-connect" });
+    // Auto-connect removed to enforce Scope Selection workflow.
+    // figma.ui.postMessage({ type: "auto-connect" });
 });
 
 // Update plugin settings
@@ -93,48 +176,79 @@ async function handleCommand(command, params) {
             return await getSelection();
         case "get_nodes_info":
             if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
-                throw new Error("Missing or invalid nodeIds parameter");
+                throw new Error(ERRORS.MISSING_NODE_IDS);
             }
             return await getNodesInfo(params.nodeIds);
         case "read_my_design":
             return await readMyDesign();
         case "create_rectangle":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
             return await createRectangle(params);
         case "create_frame":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
             return await createFrame(params);
         case "create_text":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
             return await createText(params);
         case "set_fill_color":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setFillColor(params);
         case "set_stroke_color":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setStrokeColor(params);
         case "move_node":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await moveNode(params);
         case "resize_node":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await resizeNode(params);
         case "delete_multiple_nodes":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) throw new Error(ERRORS.MISSING_NODE_IDS);
+            for (const id of params.nodeIds) {
+                if (!(await checkScopeAccess(id))) throw new Error(`Operation denied: Node ${id} outside scope`);
+            }
             return await deleteMultipleNodes(params);
         case "get_styles":
             return await getStyles();
         case "get_local_components":
             return await getLocalComponents();
         case "create_component_instance":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            // Create component instance always appends to currentPage (Root), so it violates scope if scope is anything other than Page.
+            // If scope is active, we must DENY this operation until the handler supports parentId.
+            if (state.scopeRootId || state.readOnly) throw new Error(ERRORS.ROOT_INSTANCE_DISALLOWED);
             return await createComponentInstance(params);
         case "export_node_as_image":
             return await exportNodeAsImage(params);
         case "set_corner_radius":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setCornerRadius(params);
         case "clone_node":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE);
             return await cloneNode(params);
         case "scan_text_nodes":
             return await scanTextNodes(params);
         case "set_multiple_text_contents":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setMultipleTextContents(params);
         case "get_annotations":
             return await getAnnotations(params);
         case "scan_nodes_by_types":
             return await scanNodesByTypes(params);
         case "set_multiple_annotations":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setMultipleAnnotations(params);
         case "get_instance_overrides":
             // Check if instanceNode parameter is provided
@@ -150,11 +264,18 @@ async function handleCommand(command, params) {
             return await getInstanceOverrides();
 
         case "set_instance_overrides":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+
             // Check if instanceNodeIds parameter is provided
             if (params && params.targetNodeIds) {
                 // Validate that targetNodeIds is an array
                 if (!Array.isArray(params.targetNodeIds)) {
-                    throw new Error("targetNodeIds must be an array");
+                    throw new Error(ERRORS.INVALID_TARGET_NODE_IDS);
+                }
+
+                // Permission check
+                for (const id of params.targetNodeIds) {
+                    if (!(await checkScopeAccess(id))) throw new Error(`Operation denied: Target instance ${id} outside scope`);
                 }
 
                 // Get the instance nodes by IDs
@@ -175,39 +296,61 @@ async function handleCommand(command, params) {
                     }
                     return await setInstanceOverrides(targetNodes.targetInstances, sourceInstanceData);
                 } else {
-                    throw new Error("Missing sourceInstanceId parameter");
+                    throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
                 }
             }
-            throw new Error("Missing targetNodeIds parameter");
+            throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
 
         case "set_layout_mode":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setLayoutMode(params);
         case "set_padding":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setPadding(params);
         case "set_axis_align":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setAxisAlign(params);
         case "set_layout_sizing":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setLayoutSizing(params);
         case "set_item_spacing":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setItemSpacing(params);
         case "get_reactions":
             if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
-                throw new Error("Missing or invalid nodeIds parameter");
+                throw new Error(ERRORS.MISSING_NODE_IDS);
             }
             return await getReactions(params.nodeIds);
         case "set_default_connector":
+            // Read-only / Local storage operation. Allowed.
             return await setDefaultConnector(params);
         case "create_connections":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (params && params.connections && Array.isArray(params.connections)) {
+                for (const conn of params.connections) {
+                    if (!(await checkScopeAccess(conn.startNodeId))) throw new Error(`Operation denied: Start node ${conn.startNodeId} outside scope`);
+                    if (!(await checkScopeAccess(conn.endNodeId))) throw new Error(`Operation denied: End node ${conn.endNodeId} outside scope`);
+                }
+            }
             return await createConnections(params);
         case "set_selections":
             return await setSelections(params);
         case "set_node_name":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setNodeName(params);
         case "get_variables":
             return await getVariables(params);
         case "get_node_variables":
             return await getNodeVariables(params);
         case "set_bound_variable":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             return await setBoundVariable(params);
         default:
             throw new Error(`Unknown command: ${command}`);

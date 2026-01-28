@@ -37,12 +37,11 @@
 
     button {
       background-color: #18a0fb;
-      border: none;
+      border: 1px solid transparent;
       color: white;
       padding: 8px 12px;
       border-radius: 6px;
-      margin-top: 8px;
-      margin-bottom: 8px;
+      margin: 0;
       cursor: pointer;
       font-size: 14px;
       transition: background-color 0.2s;
@@ -71,7 +70,7 @@
       border: 1px solid #444444;
       border-radius: 4px;
       padding: 8px;
-      margin-bottom: 12px;
+      margin: 0;
       font-size: 14px;
       width: 100%;
       box-sizing: border-box;
@@ -88,7 +87,7 @@
     }
 
     .status {
-      margin-top: 16px;
+      margin-bottom: 16px;
       padding: 12px;
       border-radius: 6px;
       font-size: 14px;
@@ -110,7 +109,7 @@
     }
 
     .section {
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
 
     .hidden {
@@ -246,7 +245,7 @@
       </div>
       <div class="header-text">
         <h1>Figma Edit MCP Plugin</h1>
-        <p>Connect Figma to AI coding assistants using MCP</p>
+        <p>Connect Figma to AI Agents using MCP</p>
       </div>
     </div>
 
@@ -257,22 +256,25 @@
 
     <div id="content-connection" class="tab-content active">
       <div class="section">
+        <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode)</label>
+        <input type="text" id="scope-link" placeholder="Paste Figma Link to Restrict Editing Scope"
+          style="width: 100%; box-sizing: border-box;" />
+        <div id="scope-status" style="font-size: 11px; margin-top: 4px; display: none;"></div>
+      </div>
+
+      <div class="section" style="margin-bottom: 20px;">
         <label for="port">WebSocket Server Port</label>
-        <div style="display: flex; gap: 8px">
-          <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" />
+        <div style="display: flex; gap: 8px; align-items: stretch;">
+          <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" style="flex: 1;" />
           <button id="btn-connect" class="primary">Connect</button>
         </div>
       </div>
 
       <div id="connection-status" class="status disconnected">
-        Not connected to Cursor MCP server
+        Not connected to Figma Edit MCP server
       </div>
 
-      <div class="section">
-        <button id="btn-disconnect" class="secondary" disabled>
-          Disconnect
-        </button>
-      </div>
+
 
       <!-- Add Progress Bar Section -->
       <div id="progress-container" class="section hidden">
@@ -294,16 +296,17 @@
       <div class="section">
         <h2>About Figma Edit MCP Plugin</h2>
         <p>
-          This plugin allows AI coding assistants (Cursor, GitHub Copilot, Claude Code, Antigravity) to communicate with
+          This plugin allows AI Agents (Cursor, GitHub Copilot, Claude Code, Antigravity) to communicate
+          with
           Figma, enabling
           AI-assisted design operations.
-          <a class="link" onclick="window.open(`https://github.com/neozhang/figma-edit-mcp`, '_blank')">Github</a>
+          <a class="link" onclick="window.open(`https://github.com/neozhehan/figma-edit-mcp`, '_blank')">Github</a>
         </p>
         <p>Version: 1.0.0</p>
 
         <h2>How to Use</h2>
         <ol>
-          <li>Make sure the MCP server is running in your AI coding assistant</li>
+          <li>Make sure the Figma EditMCP server is running</li>
           <li>Connect to the server using the port number (default: 3055)</li>
           <li>Once connected, you can interact with Figma through your AI assistant</li>
         </ol>
@@ -319,14 +322,15 @@
       connected: false,
       socket: null,
       serverPort: 3055,
+      verifiedNodeId: null,
       pendingRequests: new Map(),
       channel: null,
     };
 
     // UI Elements
     const portInput = document.getElementById("port");
+    const scopeLinkInput = document.getElementById("scope-link");
     const connectButton = document.getElementById("btn-connect");
-    const disconnectButton = document.getElementById("btn-disconnect");
     const connectionStatus = document.getElementById("connection-status");
     const toast = document.getElementById("toast");
 
@@ -352,9 +356,26 @@
       connectionStatus.className = `status ${isConnected ? "connected" : "disconnected"
         }`;
 
-      connectButton.disabled = isConnected;
-      disconnectButton.disabled = !isConnected;
+      if (isConnected) {
+        connectButton.textContent = "Disconnect";
+        connectButton.className = "secondary";
+        connectButton.disabled = false;
+        if (!state.verifiedNodeId) {
+          scopeLinkInput.placeholder = "Connected in Read-Only Mode";
+        }
+      } else {
+        if (message === "Connecting..." || message === "Disconnecting...") {
+          connectButton.textContent = message;
+          connectButton.disabled = true;
+        } else {
+          connectButton.textContent = "Connect";
+          connectButton.className = "primary";
+          connectButton.disabled = false;
+          scopeLinkInput.placeholder = "Paste Figma Link to Restrict Editing Scope";
+        }
+      }
       portInput.disabled = isConnected;
+      scopeLinkInput.disabled = isConnected;
     }
 
     function showToast(message = "Copied to clipboard!") {
@@ -392,10 +413,12 @@
         state.socket = new WebSocket(`ws://localhost:${port}`);
 
         state.socket.onopen = () => {
-          // Generate random channel name
-          const channelName = generateChannelName();
+          // Use existing channel name if available, otherwise generate new one
+          if (!state.channel) {
+            state.channel = generateChannelName();
+          }
+          const channelName = state.channel;
           console.log("Joining channel:", channelName);
-          state.channel = channelName;
 
           // Join the channel using the same format as App.tsx
           state.socket.send(
@@ -420,9 +443,9 @@
                 // Enhanced status message with copy button
                 const statusHtml = `
                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span>Connected to server. Channel: <strong>${channelName}</strong></span>
+                        <span>Plugin Connected${!state.verifiedNodeId ? ' (Read-Only)' : ''}<br>Channel Code: <strong>${channelName}</strong></span>
                         <button class="copy-btn" onclick="copyChannelToClipboard()" title="Copy Channel Code">
-                           Copy
+                           Copy Code
                         </button>
                     </div>
                 `;
@@ -494,7 +517,7 @@
       // If it's a response to a previous request
       if (data.id && state.pendingRequests.has(data.id)) {
         const { resolve, reject } = state.pendingRequests.get(data.id);
-        state.pendingRequests.delete(data.id);
+        state.pendingRequests.delete(id);
 
         if (data.error) {
           reject(new Error(data.error));
@@ -613,7 +636,7 @@
 
     // Add this function after the generateId() function
     function generateChannelName() {
-      const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
+      const characters = "abcdefghjkmnopqrstuvxyz023456789";
       let result = "";
       for (let i = 0; i < 8; i++) {
         result += characters.charAt(
@@ -636,19 +659,50 @@
     });
 
     // Connect to server
-    connectButton.addEventListener("click", () => {
-      const port = parseInt(portInput.value, 10) || 3055;
+    connectButton.onclick = () => {
+      if (state.connected) {
+        updateConnectionStatus(false, "Disconnecting...");
+        connectionStatus.className = "status info";
+        disconnectFromServer();
+        return;
+      }
+
+      const scopeInput = document.getElementById("scope-link");
+      const scopeStatus = document.getElementById("scope-status");
+      const link = scopeInput.value.trim();
+
+      if (link.length > 0 && !state.verifiedNodeId) {
+        // Invalid link state
+        scopeStatus.textContent = "Please provide a valid link or clear the field for Read-Only mode.";
+        scopeStatus.style.color = '#ff9999';
+        scopeStatus.style.display = 'block';
+        return;
+      }
+
+      // Set the scope in the plugin logic
+      parent.postMessage({ pluginMessage: { type: 'set-scope', scopeNodeId: state.verifiedNodeId } }, '*');
+
+      const port = parseInt(portInput.value, 10);
       updateConnectionStatus(false, "Connecting...");
       connectionStatus.className = "status info";
       connectToServer(port);
+    };
+
+    // Scope input validation listener
+    document.getElementById("scope-link").addEventListener("input", (e) => {
+      const link = e.target.value.trim();
+      const scopeStatus = document.getElementById("scope-status");
+
+      if (link.length === 0) {
+        state.verifiedNodeId = null;
+        scopeStatus.style.display = 'none';
+        return;
+      }
+
+      parent.postMessage({ pluginMessage: { type: 'validate-scope-link', link } }, '*');
     });
 
-    // Disconnect from server
-    disconnectButton.addEventListener("click", () => {
-      updateConnectionStatus(false, "Disconnecting...");
-      connectionStatus.className = "status info";
-      disconnectFromServer();
-    });
+
 
     // Function to update progress UI
     function updateProgressUI(progressData) {
@@ -732,7 +786,7 @@
           connectButton.click();
           break;
         case "auto-disconnect":
-          disconnectButton.click();
+          if (state.connected) connectButton.click();
           break;
         case "command-result":
           // Forward the result from plugin code back to WebSocket
@@ -741,6 +795,20 @@
         case "command-error":
           // Forward the error from plugin code back to WebSocket
           sendErrorResponse(message.id, message.error);
+          break;
+        case "scope-validation-result":
+          const scopeStatus = document.getElementById("scope-status");
+          if (message.valid) {
+            state.verifiedNodeId = message.nodeId;
+            scopeStatus.textContent = `✓ Scope: ${message.nodeName}`;
+            scopeStatus.style.color = '#4ade80'; // Green
+            scopeStatus.style.display = 'block';
+          } else {
+            state.verifiedNodeId = null;
+            scopeStatus.textContent = `✗ ${message.reason}`;
+            scopeStatus.style.color = '#ff9999'; // Red
+            scopeStatus.style.display = 'block';
+          }
           break;
         case "command_progress":
           // Update UI with progress information
