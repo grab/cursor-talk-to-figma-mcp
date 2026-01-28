@@ -413,10 +413,12 @@
         state.socket = new WebSocket(`ws://localhost:${port}`);
 
         state.socket.onopen = () => {
-          // Generate random channel name
-          const channelName = generateChannelName();
+          // Use existing channel name if available, otherwise generate new one
+          if (!state.channel) {
+            state.channel = generateChannelName();
+          }
+          const channelName = state.channel;
           console.log("Joining channel:", channelName);
-          state.channel = channelName;
 
           // Join the channel using the same format as App.tsx
           state.socket.send(
