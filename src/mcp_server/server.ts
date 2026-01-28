@@ -145,6 +145,7 @@ server.tool(
   }
 );
 
+/*
 // Selection Tool
 server.tool(
   "get_selection",
@@ -174,7 +175,9 @@ server.tool(
     }
   }
 );
+*/
 
+/*
 // Read My Design Tool
 server.tool(
   "read_my_design",
@@ -204,38 +207,8 @@ server.tool(
     }
   }
 );
+*/
 
-// Node Info Tool
-server.tool(
-  "get_node_info",
-  "Get detailed information about a specific node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the node to get information about"),
-  },
-  async ({ nodeId }: any) => {
-    try {
-      const result = await sendCommandToFigma("get_node_info", { nodeId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(filterFigmaNode(result))
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 function rgbaToHex(color: any): string {
   // skip if color is already hex
@@ -343,23 +316,20 @@ function filterFigmaNode(node: any) {
 // Nodes Info Tool
 server.tool(
   "get_nodes_info",
-  "Get detailed information about multiple nodes in Figma",
+  "Get detailed information about one or more nodes in Figma",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
   },
   async ({ nodeIds }: any) => {
     try {
-      const results = await Promise.all(
-        nodeIds.map(async (nodeId: any) => {
-          const result = await sendCommandToFigma('get_node_info', { nodeId });
-          return { nodeId, info: result };
-        })
-      );
+      nodeIds = normalizeNodeIds(nodeIds);
+      const results = await sendCommandToFigma("get_nodes_info", { nodeIds });
+
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
+            text: JSON.stringify(results)
           }
         ]
       };
@@ -817,42 +787,11 @@ server.tool(
   }
 );
 
-// Delete Node Tool
-server.tool(
-  "delete_node",
-  "Delete a node from Figma",
-  {
-    nodeId: z.string().describe("The ID of the node to delete"),
-  },
-  async ({ nodeId }: any) => {
-    try {
-      await sendCommandToFigma("delete_node", { nodeId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Deleted node with ID: ${nodeId}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting node: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Delete Multiple Nodes Tool
 server.tool(
   "delete_multiple_nodes",
-  "Delete multiple nodes from Figma at once",
+  "Delete one or more nodes from Figma at once",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
   },
@@ -925,42 +864,6 @@ server.tool(
   }
 );
 
-// Set Text Content Tool
-server.tool(
-  "set_text_content",
-  "Set the text content of an existing text node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the text node to modify"),
-    text: z.string().describe("New text content"),
-  },
-  async ({ nodeId, text }: any) => {
-    try {
-      const result = await sendCommandToFigma("set_text_content", {
-        nodeId,
-        text,
-      });
-      const typedResult = result as { name: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Updated text content of node "${typedResult.name}" to "${text}"`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Get Styles Tool
 server.tool(
@@ -1057,50 +960,6 @@ server.tool(
   }
 );
 
-// Set Annotation Tool
-server.tool(
-  "set_annotation",
-  "Create or update an annotation",
-  {
-    nodeId: z.string().describe("The ID of the node to annotate"),
-    annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
-    labelMarkdown: z.string().describe("The annotation text in markdown format"),
-    categoryId: z.string().optional().describe("The ID of the annotation category"),
-    properties: z.array(z.object({
-      type: z.string()
-    })).optional().describe("Additional properties for the annotation")
-  },
-  async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }: any) => {
-    try {
-      nodeId = normalizeNodeId(nodeId);
-      const result = await sendCommandToFigma("set_annotation", {
-        nodeId,
-        annotationId,
-        labelMarkdown,
-        categoryId,
-        properties
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
 interface SetMultipleAnnotationsParams {
   nodeId: string;
   annotations: Array<{
@@ -1115,7 +974,7 @@ interface SetMultipleAnnotationsParams {
 // Set Multiple Annotations Tool
 server.tool(
   "set_multiple_annotations",
-  "Set multiple annotations parallelly in a node",
+  "Set one or more annotations parallelly in a node",
   {
     nodeId: z
       .string()
@@ -1443,7 +1302,7 @@ server.prompt(
      * Set proper fontWeight for different text elements
 
 6. Mofifying existing elements:
-  - use set_text_content() to modify text content.
+  - use set_multiple_text_contents() to modify text content.
 
 7. Visual Hierarchy:
    - Position elements in logical reading order (top to bottom)
@@ -1455,7 +1314,7 @@ server.prompt(
      * Smaller for helper text/links
 
 8. Best Practices:
-   - Verify each creation with get_node_info()
+   - Verify each creation with get_nodes_info()
    - Use parentId to maintain proper hierarchy
    - Group related elements together in frames
    - Keep consistent spacing and alignment
@@ -1497,9 +1356,9 @@ server.prompt(
             type: "text",
             text: `When reading Figma designs, follow these best practices:
 
-1. Start with selection:
-   - First use read_my_design() to understand the current selection
-   - If no selection ask user to select single or multiple nodes
+1. Start with Document Info:
+   - Use get_document_info() to explore the page structure
+   - Identify nodes by their IDs
 `,
           },
         },
@@ -1691,7 +1550,7 @@ server.prompt(
   * Navigation (menu items, breadcrumbs)
 \`\`\`
 scan_text_nodes(nodeId: "node-id")
-get_node_info(nodeId: "node-id")  // optional
+get_nodes_info(nodeIds: ["node-id"])  // optional
 \`\`\`
 
 ## 2. Strategic Chunking for Complex Designs
@@ -1805,7 +1664,7 @@ Remember that text is never just text—it's a core design element that must wor
 // Set Multiple Text Contents Tool
 server.tool(
   "set_multiple_text_contents",
-  "Set multiple text contents parallelly in a node",
+  "Set one or more text contents parallelly in a node",
   {
     nodeId: z
       .string()
@@ -1936,12 +1795,13 @@ The process of converting manual annotations (numbered/alphabetical indicators w
 
 ## Step 1: Get Selection and Initial Setup
 
-First, get the selected frame or component that contains annotations:
+First, use get_document_info to find the IDs of the frames or components:
 
 \`\`\`typescript
-// Get the selected frame/component
-const selection = await get_selection();
-const selectedNodeId = selection[0].id
+// Get document structure
+const doc = await get_document_info();
+// Find relevant node IDs from the response
+const selectedNodeId = "..." // extracted from doc
 
 // Get available annotation categories for later use
 const annotationData = await get_annotations({
@@ -2087,10 +1947,8 @@ This strategy enables transferring content and property overrides from a source 
 ## Step-by-Step Process
 
 ### 1. Selection Analysis
-- Use \`get_selection()\` to identify the parent component or selected instances
-- For parent components, scan for instances with \`scan_nodes_by_types({ nodeId: "parent-id", types: ["INSTANCE"] })\`
-- Identify custom slots by name patterns (e.g. "Custom Slot*" or "Instance Slot") or by examining text content
-- Determine which is the source instance (with content to copy) and which are targets (where to apply content)
+- Use \`get_document_info()\` to explore the document structure and identify node IDs.
+- Determine which is the source node (with content to copy) and which are targets (where to apply content).
 
 ### 2. Extract Source Overrides
 - Use \`get_instance_overrides()\` to extract customizations from the source instance
@@ -2109,12 +1967,12 @@ This strategy enables transferring content and property overrides from a source 
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`get_node_info()\` or \`read_my_design()\`
+- Verify results with \`get_nodes_info()\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips
 - Always join the appropriate channel first with \`join_channel()\`
-- When working with multiple targets, check the full selection with \`get_selection()\`
+- When working with multiple targets, verify their IDs with \`get_document_info()\`.
 - Preserve component relationships by using instance overrides rather than direct text manipulation`,
           },
         },
@@ -2494,43 +2352,11 @@ server.tool(
   }
 );
 
-// Set Focus Tool
-server.tool(
-  "set_focus",
-  "Set focus on a specific node in Figma by selecting it and scrolling viewport to it",
-  {
-    nodeId: z.string().describe("The ID of the node to focus on"),
-  },
-  async ({ nodeId }: any) => {
-    try {
-      nodeId = normalizeNodeId(nodeId);
-      const result = await sendCommandToFigma("set_focus", { nodeId });
-      const typedResult = result as { name: string; id: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Focused on node "${typedResult.name}" (ID: ${typedResult.id})`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting focus: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Set Selections Tool
 server.tool(
   "set_selections",
-  "Set selection to multiple nodes in Figma and scroll viewport to show them",
+  "Set selection to one or more nodes in Figma and focus them",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to select"),
   },
@@ -2592,7 +2418,7 @@ You will receive JSON data from the \`get_reactions\` tool. This data contains a
 ## Step-by-Step Process
 
 ### 1. Preparation & Context Gathering
-   - **Action:** Call \`read_my_design\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
+   - **Action:** Call \`get_nodes_info\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
    - **Action:** Call \`set_default_connector\` **without** the \`connectorId\` parameter.
    - **Check Result:** Analyze the response from \`set_default_connector\`.
      - If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
@@ -2612,7 +2438,7 @@ You will receive JSON data from the \`get_reactions\` tool. This data contains a
 
 ### 3. Generate Connector Text Labels
    - **For each extracted connection:** Create a concise, descriptive text label string.
-   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`read_my_design\` or by calling \`get_node_info\` if necessary) to generate the label.
+   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`get_nodes_info\` or by calling \`get_nodes_info\` if necessary) to generate the label.
    - **Example Labels:**
      - If \`triggerType\` is "ON\_CLICK" and \`actionType\` is "NAVIGATE": "On click, navigate to [Destination Node Name]"
      - If \`triggerType\` is "ON\_DRAG" and \`actionType\` is "OPEN\_OVERLAY": "On drag, open [Destination Node Name] overlay"
@@ -2647,10 +2473,7 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
-  | "get_selection"
-  | "get_node_info"
   | "get_nodes_info"
-  | "read_my_design"
   | "create_rectangle"
   | "create_frame"
   | "create_text"
@@ -2658,7 +2481,6 @@ type FigmaCommand =
   | "set_stroke_color"
   | "move_node"
   | "resize_node"
-  | "delete_node"
   | "delete_multiple_nodes"
   | "get_styles"
   | "get_local_components"
@@ -2669,11 +2491,9 @@ type FigmaCommand =
   | "join"
   | "set_corner_radius"
   | "clone_node"
-  | "set_text_content"
   | "scan_text_nodes"
   | "set_multiple_text_contents"
   | "get_annotations"
-  | "set_annotation"
   | "set_multiple_annotations"
   | "scan_nodes_by_types"
   | "set_layout_mode"
@@ -2684,13 +2504,10 @@ type FigmaCommand =
   | "get_reactions"
   | "set_default_connector"
   | "create_connections"
-  | "set_focus"
   | "set_selections";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
-  get_selection: Record<string, never>;
-  get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };
   create_rectangle: {
     x: number;
@@ -2746,9 +2563,6 @@ type CommandParams = {
     width: number;
     height: number;
   };
-  delete_node: {
-    nodeId: string;
-  };
   delete_multiple_nodes: {
     nodeIds: string[];
   };
@@ -2788,10 +2602,6 @@ type CommandParams = {
     x?: number;
     y?: number;
   };
-  set_text_content: {
-    nodeId: string;
-    text: string;
-  };
   scan_text_nodes: {
     nodeId: string;
     useChunking: boolean;
@@ -2804,13 +2614,6 @@ type CommandParams = {
   get_annotations: {
     nodeId?: string;
     includeCategories?: boolean;
-  };
-  set_annotation: {
-    nodeId: string;
-    annotationId?: string;
-    labelMarkdown: string;
-    categoryId?: string;
-    properties?: Array<{ type: string }>;
   };
   set_multiple_annotations: SetMultipleAnnotationsParams;
   scan_nodes_by_types: {
@@ -2827,9 +2630,6 @@ type CommandParams = {
       endNodeId: string;
       text?: string;
     }>;
-  };
-  set_focus: {
-    nodeId: string;
   };
   set_selections: {
     nodeIds: string[];
