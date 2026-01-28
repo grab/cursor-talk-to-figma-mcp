@@ -145,6 +145,7 @@ server.tool(
   }
 );
 
+/*
 // Selection Tool
 server.tool(
   "get_selection",
@@ -174,7 +175,9 @@ server.tool(
     }
   }
 );
+*/
 
+/*
 // Read My Design Tool
 server.tool(
   "read_my_design",
@@ -204,38 +207,8 @@ server.tool(
     }
   }
 );
+*/
 
-// Node Info Tool
-server.tool(
-  "get_node_info",
-  "Get detailed information about a specific node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the node to get information about"),
-  },
-  async ({ nodeId }: any) => {
-    try {
-      const result = await sendCommandToFigma("get_node_info", { nodeId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(filterFigmaNode(result))
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error getting node info: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 function rgbaToHex(color: any): string {
   // skip if color is already hex
@@ -343,23 +316,20 @@ function filterFigmaNode(node: any) {
 // Nodes Info Tool
 server.tool(
   "get_nodes_info",
-  "Get detailed information about multiple nodes in Figma",
+  "Get detailed information about one or more nodes in Figma",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to get information about")
   },
   async ({ nodeIds }: any) => {
     try {
-      const results = await Promise.all(
-        nodeIds.map(async (nodeId: any) => {
-          const result = await sendCommandToFigma('get_node_info', { nodeId });
-          return { nodeId, info: result };
-        })
-      );
+      nodeIds = normalizeNodeIds(nodeIds);
+      const results = await sendCommandToFigma("get_nodes_info", { nodeIds });
+
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(results.map((result) => filterFigmaNode(result.info)))
+            text: JSON.stringify(results)
           }
         ]
       };
@@ -817,42 +787,11 @@ server.tool(
   }
 );
 
-// Delete Node Tool
-server.tool(
-  "delete_node",
-  "Delete a node from Figma",
-  {
-    nodeId: z.string().describe("The ID of the node to delete"),
-  },
-  async ({ nodeId }: any) => {
-    try {
-      await sendCommandToFigma("delete_node", { nodeId });
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Deleted node with ID: ${nodeId}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error deleting node: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Delete Multiple Nodes Tool
 server.tool(
   "delete_multiple_nodes",
-  "Delete multiple nodes from Figma at once",
+  "Delete one or more nodes from Figma at once",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to delete"),
   },
@@ -925,42 +864,6 @@ server.tool(
   }
 );
 
-// Set Text Content Tool
-server.tool(
-  "set_text_content",
-  "Set the text content of an existing text node in Figma",
-  {
-    nodeId: z.string().describe("The ID of the text node to modify"),
-    text: z.string().describe("New text content"),
-  },
-  async ({ nodeId, text }: any) => {
-    try {
-      const result = await sendCommandToFigma("set_text_content", {
-        nodeId,
-        text,
-      });
-      const typedResult = result as { name: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Updated text content of node "${typedResult.name}" to "${text}"`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting text content: ${error instanceof Error ? error.message : String(error)
-              }`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Get Styles Tool
 server.tool(
@@ -1057,50 +960,6 @@ server.tool(
   }
 );
 
-// Set Annotation Tool
-server.tool(
-  "set_annotation",
-  "Create or update an annotation",
-  {
-    nodeId: z.string().describe("The ID of the node to annotate"),
-    annotationId: z.string().optional().describe("The ID of the annotation to update (if updating existing annotation)"),
-    labelMarkdown: z.string().describe("The annotation text in markdown format"),
-    categoryId: z.string().optional().describe("The ID of the annotation category"),
-    properties: z.array(z.object({
-      type: z.string()
-    })).optional().describe("Additional properties for the annotation")
-  },
-  async ({ nodeId, annotationId, labelMarkdown, categoryId, properties }: any) => {
-    try {
-      nodeId = normalizeNodeId(nodeId);
-      const result = await sendCommandToFigma("set_annotation", {
-        nodeId,
-        annotationId,
-        labelMarkdown,
-        categoryId,
-        properties
-      });
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result)
-          }
-        ]
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting annotation: ${error instanceof Error ? error.message : String(error)}`
-          }
-        ]
-      };
-    }
-  }
-);
-
 interface SetMultipleAnnotationsParams {
   nodeId: string;
   annotations: Array<{
@@ -1115,7 +974,7 @@ interface SetMultipleAnnotationsParams {
 // Set Multiple Annotations Tool
 server.tool(
   "set_multiple_annotations",
-  "Set multiple annotations parallelly in a node",
+  "Set one or more annotations parallelly in a node",
   {
     nodeId: z
       .string()
@@ -1805,7 +1664,7 @@ Remember that text is never just text—it's a core design element that must wor
 // Set Multiple Text Contents Tool
 server.tool(
   "set_multiple_text_contents",
-  "Set multiple text contents parallelly in a node",
+  "Set one or more text contents parallelly in a node",
   {
     nodeId: z
       .string()
@@ -2494,43 +2353,11 @@ server.tool(
   }
 );
 
-// Set Focus Tool
-server.tool(
-  "set_focus",
-  "Set focus on a specific node in Figma by selecting it and scrolling viewport to it",
-  {
-    nodeId: z.string().describe("The ID of the node to focus on"),
-  },
-  async ({ nodeId }: any) => {
-    try {
-      nodeId = normalizeNodeId(nodeId);
-      const result = await sendCommandToFigma("set_focus", { nodeId });
-      const typedResult = result as { name: string; id: string };
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Focused on node "${typedResult.name}" (ID: ${typedResult.id})`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Error setting focus: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
-      };
-    }
-  }
-);
 
 // Set Selections Tool
 server.tool(
   "set_selections",
-  "Set selection to multiple nodes in Figma and scroll viewport to show them",
+  "Set selection to one or more nodes in Figma and focus them",
   {
     nodeIds: z.array(z.string()).describe("Array of node IDs to select"),
   },
@@ -2658,7 +2485,6 @@ type FigmaCommand =
   | "set_stroke_color"
   | "move_node"
   | "resize_node"
-  | "delete_node"
   | "delete_multiple_nodes"
   | "get_styles"
   | "get_local_components"
@@ -2669,11 +2495,9 @@ type FigmaCommand =
   | "join"
   | "set_corner_radius"
   | "clone_node"
-  | "set_text_content"
   | "scan_text_nodes"
   | "set_multiple_text_contents"
   | "get_annotations"
-  | "set_annotation"
   | "set_multiple_annotations"
   | "scan_nodes_by_types"
   | "set_layout_mode"
@@ -2684,7 +2508,6 @@ type FigmaCommand =
   | "get_reactions"
   | "set_default_connector"
   | "create_connections"
-  | "set_focus"
   | "set_selections";
 
 type CommandParams = {
@@ -2746,9 +2569,6 @@ type CommandParams = {
     width: number;
     height: number;
   };
-  delete_node: {
-    nodeId: string;
-  };
   delete_multiple_nodes: {
     nodeIds: string[];
   };
@@ -2788,10 +2608,6 @@ type CommandParams = {
     x?: number;
     y?: number;
   };
-  set_text_content: {
-    nodeId: string;
-    text: string;
-  };
   scan_text_nodes: {
     nodeId: string;
     useChunking: boolean;
@@ -2804,13 +2620,6 @@ type CommandParams = {
   get_annotations: {
     nodeId?: string;
     includeCategories?: boolean;
-  };
-  set_annotation: {
-    nodeId: string;
-    annotationId?: string;
-    labelMarkdown: string;
-    categoryId?: string;
-    properties?: Array<{ type: string }>;
   };
   set_multiple_annotations: SetMultipleAnnotationsParams;
   scan_nodes_by_types: {
@@ -2827,9 +2636,6 @@ type CommandParams = {
       endNodeId: string;
       text?: string;
     }>;
-  };
-  set_focus: {
-    nodeId: string;
   };
   set_selections: {
     nodeIds: string[];

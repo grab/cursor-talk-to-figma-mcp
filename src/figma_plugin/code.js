@@ -109,11 +109,6 @@ async function handleCommand(command, params) {
       return await getDocumentInfo();
     case "get_selection":
       return await getSelection();
-    case "get_node_info":
-      if (!params || !params.nodeId) {
-        throw new Error("Missing nodeId parameter");
-      }
-      return await getNodeInfo(params.nodeId);
     case "get_nodes_info":
       if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
@@ -135,8 +130,6 @@ async function handleCommand(command, params) {
       return await moveNode(params);
     case "resize_node":
       return await resizeNode(params);
-    case "delete_node":
-      return await deleteNode(params);
     case "delete_multiple_nodes":
       return await deleteMultipleNodes(params);
     case "get_styles":
@@ -151,8 +144,6 @@ async function handleCommand(command, params) {
       return await exportNodeAsImage(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
-    case "set_text_content":
-      return await setTextContent(params);
     case "clone_node":
       return await cloneNode(params);
     case "scan_text_nodes":
@@ -161,8 +152,6 @@ async function handleCommand(command, params) {
       return await setMultipleTextContents(params);
     case "get_annotations":
       return await getAnnotations(params);
-    case "set_annotation":
-      return await setAnnotation(params);
     case "scan_nodes_by_types":
       return await scanNodesByTypes(params);
     case "set_multiple_annotations":
@@ -229,8 +218,6 @@ async function handleCommand(command, params) {
       return await setDefaultConnector(params);
     case "create_connections":
       return await createConnections(params);
-    case "set_focus":
-      return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
     default:
@@ -392,19 +379,6 @@ function filterFigmaNode(node) {
   return filtered;
 }
 
-async function getNodeInfo(nodeId) {
-  const node = await figma.getNodeByIdAsync(nodeId);
-
-  if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
-  }
-
-  const response = await node.exportAsync({
-    format: "JSON_REST_V1",
-  });
-
-  return filterFigmaNode(response.document);
-}
 
 async function getNodesInfo(nodeIds) {
   try {
@@ -1068,29 +1042,6 @@ async function resizeNode(params) {
   };
 }
 
-async function deleteNode(params) {
-  const { nodeId } = params || {};
-
-  if (!nodeId) {
-    throw new Error("Missing nodeId parameter");
-  }
-
-  const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
-  }
-
-  // Save node info before deleting
-  const nodeInfo = {
-    id: node.id,
-    name: node.name,
-    type: node.type,
-  };
-
-  node.remove();
-
-  return nodeInfo;
-}
 
 async function getStyles() {
   const styles = {
@@ -1355,41 +1306,6 @@ async function setCornerRadius(params) {
   };
 }
 
-async function setTextContent(params) {
-  const { nodeId, text } = params || {};
-
-  if (!nodeId) {
-    throw new Error("Missing nodeId parameter");
-  }
-
-  if (text === undefined) {
-    throw new Error("Missing text parameter");
-  }
-
-  const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) {
-    throw new Error(`Node not found with ID: ${nodeId}`);
-  }
-
-  if (node.type !== "TEXT") {
-    throw new Error(`Node is not a text node: ${nodeId}`);
-  }
-
-  try {
-    await figma.loadFontAsync(node.fontName);
-
-    await setCharacters(node, text);
-
-    return {
-      id: node.id,
-      name: node.name,
-      characters: node.characters,
-      fontName: node.fontName,
-    };
-  } catch (error) {
-    throw new Error(`Error setting text content: ${error.message}`);
-  }
-}
 
 // Initialize settings on load
 (async function initializePlugin() {
@@ -2458,103 +2374,6 @@ async function getAnnotations(params) {
   }
 }
 
-async function setAnnotation(params) {
-  try {
-    console.log("=== setAnnotation Debug Start ===");
-    console.log("Input params:", JSON.stringify(params, null, 2));
-
-    const { nodeId, annotationId, labelMarkdown, categoryId, properties } =
-      params;
-
-    // Validate required parameters
-    if (!nodeId) {
-      console.error("Validation failed: Missing nodeId");
-      return { success: false, error: "Missing nodeId" };
-    }
-
-    if (!labelMarkdown) {
-      console.error("Validation failed: Missing labelMarkdown");
-      return { success: false, error: "Missing labelMarkdown" };
-    }
-
-    console.log("Attempting to get node:", nodeId);
-    // Get and validate node
-    const node = await figma.getNodeByIdAsync(nodeId);
-    console.log("Node lookup result:", {
-      id: nodeId,
-      found: !!node,
-      type: node ? node.type : undefined,
-      name: node ? node.name : undefined,
-      hasAnnotations: node ? "annotations" in node : false,
-    });
-
-    if (!node) {
-      console.error("Node lookup failed:", nodeId);
-      return { success: false, error: `Node not found: ${nodeId}` };
-    }
-
-    // Validate node supports annotations
-    if (!("annotations" in node)) {
-      console.error("Node annotation support check failed:", {
-        nodeType: node.type,
-        nodeId: node.id,
-      });
-      return {
-        success: false,
-        error: `Node type ${node.type} does not support annotations`,
-      };
-    }
-
-    // Create the annotation object
-    const newAnnotation = {
-      labelMarkdown,
-    };
-
-    // Validate and add categoryId if provided
-    if (categoryId) {
-      console.log("Adding categoryId to annotation:", categoryId);
-      newAnnotation.categoryId = categoryId;
-    }
-
-    // Validate and add properties if provided
-    if (properties && Array.isArray(properties) && properties.length > 0) {
-      console.log(
-        "Adding properties to annotation:",
-        JSON.stringify(properties, null, 2)
-      );
-      newAnnotation.properties = properties;
-    }
-
-    // Log current annotations before update
-    console.log("Current node annotations:", node.annotations);
-
-    // Overwrite annotations
-    console.log(
-      "Setting new annotation:",
-      JSON.stringify(newAnnotation, null, 2)
-    );
-    node.annotations = [newAnnotation];
-
-    // Verify the update
-    console.log("Updated node annotations:", node.annotations);
-    console.log("=== setAnnotation Debug End ===");
-
-    return {
-      success: true,
-      nodeId: node.id,
-      name: node.name,
-      annotations: node.annotations,
-    };
-  } catch (error) {
-    console.error("=== setAnnotation Error ===");
-    console.error("Error details:", {
-      message: error.message,
-      stack: error.stack,
-      params: JSON.stringify(params, null, 2),
-    });
-    return { success: false, error: error.message };
-  }
-}
 
 /**
  * Scan for nodes with specific types within a node
@@ -3956,29 +3775,6 @@ async function createConnections(params) {
 }
 
 // Set focus on a specific node
-async function setFocus(params) {
-  if (!params || !params.nodeId) {
-    throw new Error("Missing nodeId parameter");
-  }
-
-  const node = await figma.getNodeByIdAsync(params.nodeId);
-  if (!node) {
-    throw new Error(`Node with ID ${params.nodeId} not found`);
-  }
-
-  // Set selection to the node
-  figma.currentPage.selection = [node];
-
-  // Scroll and zoom to show the node in viewport
-  figma.viewport.scrollAndZoomIntoView([node]);
-
-  return {
-    success: true,
-    name: node.name,
-    id: node.id,
-    message: `Focused on node "${node.name}"`
-  };
-}
 
 // Set selection to multiple nodes
 async function setSelections(params) {
