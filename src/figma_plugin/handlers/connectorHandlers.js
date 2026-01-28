@@ -59,8 +59,7 @@ export async function getReactions(nodeIds) {
                     reactions: filteredReactions,
                     path: getNodePath(node)
                 });
-                // Apply highlight effect (orange border)
-                await highlightNodeWithAnimation(node);
+
             }
 
             // If node has children, recursively search them
@@ -73,36 +72,7 @@ export async function getReactions(nodeIds) {
             return results;
         }
 
-        // Function to apply animated highlight effect to a node
-        async function highlightNodeWithAnimation(node) {
-            // Save original stroke properties
-            const originalStrokeWeight = node.strokeWeight;
-            const originalStrokes = node.strokes ? [...node.strokes] : [];
 
-            try {
-                // Apply orange border stroke
-                node.strokeWeight = 4;
-                node.strokes = [{
-                    type: 'SOLID',
-                    color: { r: 1, g: 0.5, b: 0 }, // Orange color
-                    opacity: 0.8
-                }];
-
-                // Set timeout for animation effect (restore to original after 1.5 seconds)
-                setTimeout(() => {
-                    try {
-                        // Restore original stroke properties
-                        node.strokeWeight = originalStrokeWeight;
-                        node.strokes = originalStrokes;
-                    } catch (restoreError) {
-                        console.error(`Error restoring node stroke: ${restoreError.message}`);
-                    }
-                }, 1500);
-            } catch (highlightError) {
-                console.error(`Error highlighting node: ${highlightError.message}`);
-                // Continue even if highlighting fails
-            }
-        }
 
         // Get node hierarchy path as a string
         function getNodePath(node) {
