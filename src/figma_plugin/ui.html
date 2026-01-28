@@ -192,13 +192,47 @@
       object-fit: contain;
     }
 
-    /* Progress styles */
-    .operation-complete {
-      color: #4ade80;
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: #333;
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+      z-index: 1000;
     }
 
-    .operation-error {
-      color: #ff9999;
+    .toast.show {
+      opacity: 1;
+    }
+
+    .copy-btn {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid #ffffff;
+      padding: 2px 8px;
+      margin-left: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      color: #ffffff;
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background-color: #ffffff;
+      color: #1a472a;
+      border-color: #ffffff;
     }
   </style>
 </head>
@@ -263,8 +297,7 @@
           This plugin allows AI coding assistants (Cursor, GitHub Copilot, Claude Code, Antigravity) to communicate with
           Figma, enabling
           AI-assisted design operations.
-          <a class="link"
-            onclick="window.open(`https://github.com/neozhang/figma-edit-mcp`, '_blank')">Github</a>
+          <a class="link" onclick="window.open(`https://github.com/neozhang/figma-edit-mcp`, '_blank')">Github</a>
         </p>
         <p>Version: 1.0.0</p>
 
@@ -277,6 +310,8 @@
       </div>
     </div>
   </div>
+
+  <div id="toast" class="toast">Copied to clipboard!</div>
 
   <script>
     // WebSocket connection state
@@ -293,6 +328,7 @@
     const connectButton = document.getElementById("btn-connect");
     const disconnectButton = document.getElementById("btn-disconnect");
     const connectionStatus = document.getElementById("connection-status");
+    const toast = document.getElementById("toast");
 
     // Tabs
     const tabs = document.querySelectorAll(".tab");
@@ -319,6 +355,29 @@
       connectButton.disabled = isConnected;
       disconnectButton.disabled = !isConnected;
       portInput.disabled = isConnected;
+    }
+
+    function showToast(message = "Copied to clipboard!") {
+      toast.textContent = message;
+      toast.classList.add("show");
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, 2000);
+    }
+
+    function copyChannelToClipboard() {
+      if (state.channel) {
+        // Create a temporary textarea element to copy text
+        // This is required because navigator.clipboard may not be available in Figma iframe context
+        // or might require permissions that are tricky. The textarea method is reliable.
+        const el = document.createElement('textarea');
+        el.value = state.channel;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        showToast("Channel code copied: " + state.channel);
+      }
     }
 
     // Connect to WebSocket server
@@ -357,9 +416,20 @@
               if (data.message && data.message.result) {
                 state.connected = true;
                 const channelName = data.channel;
+
+                // Enhanced status message with copy button
+                const statusHtml = `
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>Connected to server. Channel: <strong>${channelName}</strong></span>
+                        <button class="copy-btn" onclick="copyChannelToClipboard()" title="Copy Channel Code">
+                           Copy
+                        </button>
+                    </div>
+                `;
+
                 updateConnectionStatus(
                   true,
-                  `Connected to server on port ${port} in channel: <strong>${channelName}</strong>`
+                  statusHtml
                 );
 
                 // Notify the plugin code
