@@ -171,19 +171,37 @@ export async function setBoundVariable(params) {
 
     // Case B: Set Bound Variable (Property)
     if (field) {
-        // variableId can be null to unbind
         try {
+            let variable = null;
             if (variableId) {
-                const variable = await figma.variables.getVariableByIdAsync(variableId);
+                variable = await figma.variables.getVariableByIdAsync(variableId);
                 if (!variable) throw new Error(`Variable ${variableId} not found`);
-
-                node.setBoundVariable(field, variable);
-                return { success: true, message: `Bound ${field} to variable ${variable.name}` };
-            } else {
-                // Unbind
-                node.setBoundVariable(field, null);
-                return { success: true, message: `Unbound variable from ${field}` };
             }
+
+            // Special handling for fills and strokes (paints)
+            if (field === 'fills' || field === 'strokes') {
+                const paints = JSON.parse(JSON.stringify(node[field]));
+                let modified = false;
+                for (let i = 0; i < paints.length; i++) {
+                    if (paints[i].type === 'SOLID') {
+                        paints[i] = figma.variables.setBoundVariableForPaint(paints[i], 'color', variable);
+                        modified = true;
+                    }
+                }
+
+                if (modified) {
+                    node[field] = paints;
+                    const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
+                    return { success: true, message: action };
+                }
+                return { success: false, message: `No SOLID paints found in ${field} to bind variable` };
+            }
+
+            // Standard properties
+            node.setBoundVariable(field, variable);
+            const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
+            return { success: true, message: action };
+
         } catch (e) {
             throw new Error(`Failed to set bound variable: ${e.message}`);
         }
