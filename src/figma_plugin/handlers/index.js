@@ -72,3 +72,10 @@ export {
     scanNodesByTypes,
     setMultipleAnnotations
 } from './annotationHandlers.js';
+
+// Variable handlers
+export {
+    getVariables,
+    getNodeVariables,
+    setBoundVariable
+} from './variableHandlers.js';

@@ -3,3 +3,4 @@ node_modules/
 dist/
 docs/
 .mcp.json
+src/figma_plugin/code.js

@@ -25,6 +25,7 @@ import {
 import { getReactions, setDefaultConnector, createConnections } from '../handlers/connectorHandlers.js';
 import { scanTextNodes, setMultipleTextContents } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
+import { getVariables, getNodeVariables, setBoundVariable } from '../handlers/variableHandlers.js';
 
 // Plugin state
 const state = {
@@ -202,6 +203,12 @@ async function handleCommand(command, params) {
             return await setSelections(params);
         case "set_node_name":
             return await setNodeName(params);
+        case "get_variables":
+            return await getVariables(params);
+        case "get_node_variables":
+            return await getNodeVariables(params);
+        case "set_bound_variable":
+            return await setBoundVariable(params);
         default:
             throw new Error(`Unknown command: ${command}`);
     }

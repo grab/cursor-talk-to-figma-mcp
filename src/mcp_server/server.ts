@@ -2542,7 +2542,10 @@ type FigmaCommand =
   | "set_default_connector"
   | "create_connections"
   | "set_selections"
-  | "set_node_name";
+  | "set_node_name"
+  | "get_variables"
+  | "get_node_variables"
+  | "set_bound_variable";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2675,6 +2678,19 @@ type CommandParams = {
   set_node_name: {
     nodeId: string;
     name: string;
+  };
+  get_variables: {
+    variableId?: string;
+  };
+  get_node_variables: {
+    nodeId: string;
+  };
+  set_bound_variable: {
+    nodeId: string;
+    field?: string;
+    variableId?: string | null;
+    collectionId?: string;
+    modeId?: string;
   };
 };
 
@@ -3002,6 +3018,111 @@ server.tool(
             type: "text",
             text: `Error joining channel: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Variables Tool
+server.tool(
+  "get_variables",
+  "Get all local variables/collections or detailed info for a specific variable by ID",
+  {
+    variableId: z.string().optional().describe("Optional ID of a specific variable to retrieve"),
+  },
+  async ({ variableId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_variables", { variableId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting variables: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Get Node Variables Tool
+server.tool(
+  "get_node_variables",
+  "Get bound variables and explicit variable modes for a specific node",
+  {
+    nodeId: z.string().describe("The ID of the node to inspect"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      nodeId = normalizeNodeId(nodeId);
+      const result = await sendCommandToFigma("get_node_variables", { nodeId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting node variables: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Bound Variable Tool
+server.tool(
+  "set_bound_variable",
+  "Bind a variable to a node's property or set explicit variable mode",
+  {
+    nodeId: z.string().describe("The ID of the node to modify"),
+    field: z.string().optional().describe("The property field to bind (e.g. 'fills', 'width', 'fontName')"),
+    variableId: z.string().optional().describe("The ID of the variable to bind. Pass null/undefined to unbind."),
+    collectionId: z.string().optional().describe("If setting mode: The collection ID"),
+    modeId: z.string().optional().describe("If setting mode: The mode ID to set for the collection"),
+  },
+  async ({ nodeId, field, variableId, collectionId, modeId }: any) => {
+    try {
+      nodeId = normalizeNodeId(nodeId);
+      const result = await sendCommandToFigma("set_bound_variable", {
+        nodeId,
+        field,
+        variableId,
+        collectionId,
+        modeId
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting bound variable: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
