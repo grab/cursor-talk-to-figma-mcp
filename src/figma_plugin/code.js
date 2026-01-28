@@ -1661,7 +1661,6 @@
             reactions: filteredReactions,
             path: getNodePath(node)
           });
-          await highlightNodeWithAnimation(node);
         }
         if (node.children) {
           for (const child of node.children) {
@@ -1669,29 +1668,6 @@
           }
         }
         return results;
-      }
-      async function highlightNodeWithAnimation(node) {
-        const originalStrokeWeight = node.strokeWeight;
-        const originalStrokes = node.strokes ? [...node.strokes] : [];
-        try {
-          node.strokeWeight = 4;
-          node.strokes = [{
-            type: "SOLID",
-            color: { r: 1, g: 0.5, b: 0 },
-            // Orange color
-            opacity: 0.8
-          }];
-          setTimeout(() => {
-            try {
-              node.strokeWeight = originalStrokeWeight;
-              node.strokes = originalStrokes;
-            } catch (restoreError) {
-              console.error(`Error restoring node stroke: ${restoreError.message}`);
-            }
-          }, 1500);
-        } catch (highlightError) {
-          console.error(`Error highlighting node: ${highlightError.message}`);
-        }
       }
       let allResults = [];
       let processedCount = 0;
@@ -2264,23 +2240,6 @@
         path: parentPath.join(" > "),
         depth
       };
-      try {
-        const originalFills = JSON.parse(JSON.stringify(node.fills));
-        node.fills = [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 0.5, b: 0 },
-            opacity: 0.3
-          }
-        ];
-        try {
-          node.fills = originalFills;
-        } catch (err) {
-          console.error("Error resetting fills:", err);
-        }
-      } catch (highlightErr) {
-        console.error("Error highlighting text node:", highlightErr);
-      }
       return safeTextNode;
     } catch (nodeErr) {
       console.error("Error processing text node:", nodeErr);
@@ -2315,23 +2274,6 @@
           path: nodePath.join(" > "),
           depth
         };
-        try {
-          const originalFills = JSON.parse(JSON.stringify(node.fills));
-          node.fills = [
-            {
-              type: "SOLID",
-              color: { r: 1, g: 0.5, b: 0 },
-              opacity: 0.3
-            }
-          ];
-          try {
-            node.fills = originalFills;
-          } catch (err) {
-            console.error("Error resetting fills:", err);
-          }
-        } catch (highlightErr) {
-          console.error("Error highlighting text node:", highlightErr);
-        }
         textNodes.push(safeTextNode);
       } catch (nodeErr) {
         console.error("Error processing text node:", nodeErr);
@@ -2472,33 +2414,10 @@
           const originalText = textNode.characters;
           console.log(`Original text: "${originalText}"`);
           console.log(`Will translate to: "${replacement.text}"`);
-          let originalFills;
-          try {
-            originalFills = JSON.parse(JSON.stringify(textNode.fills));
-            textNode.fills = [
-              {
-                type: "SOLID",
-                color: { r: 1, g: 0.5, b: 0 },
-                opacity: 0.3
-              }
-            ];
-          } catch (highlightErr) {
-            console.error(
-              `Error highlighting text node: ${highlightErr.message}`
-            );
-          }
           await setTextContent({
             nodeId: replacement.nodeId,
             text: replacement.text
           });
-          if (originalFills) {
-            try {
-              await delay(500);
-              textNode.fills = originalFills;
-            } catch (restoreErr) {
-              console.error(`Error restoring fills: ${restoreErr.message}`);
-            }
-          }
           console.log(
             `Successfully replaced text in node: ${replacement.nodeId}`
           );
@@ -2840,6 +2759,158 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return summary;
   }
 
+  // src/figma_plugin/handlers/variableHandlers.js
+  async function getVariables(params) {
+    const { variableId } = params || {};
+    try {
+      if (variableId) {
+        const variable = await figma.variables.getVariableByIdAsync(variableId);
+        if (!variable) {
+          return null;
+        }
+        const collection = await figma.variables.getVariableCollectionByIdAsync(
+          variable.variableCollectionId
+        );
+        return {
+          id: variable.id,
+          name: variable.name,
+          key: variable.key,
+          type: variable.resolvedType,
+          // COLOR, FLOAT, STRING, BOOLEAN
+          description: variable.description,
+          collectionId: variable.variableCollectionId,
+          collectionName: collection ? collection.name : "Unknown",
+          remote: variable.remote,
+          scopes: variable.scopes,
+          valuesByMode: variable.valuesByMode
+          // { modeId: value }
+        };
+      }
+      const collections = await figma.variables.getLocalVariableCollectionsAsync();
+      const variables = await figma.variables.getLocalVariablesAsync();
+      const mappedCollections = collections.map((c) => ({
+        id: c.id,
+        name: c.name,
+        key: c.key,
+        modes: c.modes,
+        // [{ modeId, name }, ...]
+        defaultModeId: c.defaultModeId,
+        remote: c.remote,
+        variableIds: c.variableIds
+      }));
+      const mappedVariables = variables.map((v) => ({
+        id: v.id,
+        name: v.name,
+        key: v.key,
+        type: v.resolvedType,
+        collectionId: v.variableCollectionId,
+        valuesByMode: v.valuesByMode,
+        description: v.description
+      }));
+      return {
+        collections: mappedCollections,
+        variables: mappedVariables
+      };
+    } catch (err) {
+      throw new Error(`Error getting variables: ${err.message}`);
+    }
+  }
+  async function getNodeVariables(params) {
+    const { nodeId } = params || {};
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+    const boundVariables = node.boundVariables || {};
+    const explicitVariableModes = node.explicitVariableModes || {};
+    const resolvedModes = {};
+    if (Object.keys(explicitVariableModes).length > 0) {
+      try {
+        const collections = await Promise.all(
+          Object.keys(explicitVariableModes).map((id) => figma.variables.getVariableCollectionByIdAsync(id))
+        );
+        collections.forEach((collection) => {
+          if (collection) {
+            const modeId = explicitVariableModes[collection.id];
+            const mode = collection.modes.find((m) => m.modeId === modeId);
+            resolvedModes[collection.id] = {
+              collectionName: collection.name,
+              modeId,
+              modeName: mode ? mode.name : "Unknown Mode"
+            };
+          }
+        });
+      } catch (e) {
+      }
+    }
+    const resolvedBindings = {};
+    for (const [field, alias] of Object.entries(boundVariables)) {
+      if (alias && alias.id) {
+        try {
+          const v = await figma.variables.getVariableByIdAsync(alias.id);
+          resolvedBindings[field] = {
+            variableId: alias.id,
+            variableName: v ? v.name : "Unknown Variable"
+          };
+        } catch (e) {
+          resolvedBindings[field] = alias;
+        }
+      } else {
+        resolvedBindings[field] = alias;
+      }
+    }
+    return {
+      nodeId: node.id,
+      name: node.name,
+      boundVariables: resolvedBindings,
+      // enriched with names where possible
+      rawBoundVariables: boundVariables,
+      // raw data
+      explicitVariableModes,
+      resolvedExplicitModes: resolvedModes
+    };
+  }
+  async function setBoundVariable(params) {
+    const { nodeId, field, variableId, collectionId, modeId } = params || {};
+    if (!nodeId) {
+      throw new Error("Missing nodeId parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+    if (collectionId !== void 0) {
+      if (modeId === void 0) {
+        throw new Error("Missing modeId when setting collection mode");
+      }
+      try {
+        await node.setExplicitVariableModeForCollection(collectionId, modeId);
+        return { success: true, message: `Set mode ${modeId} for collection ${collectionId}` };
+      } catch (e) {
+        throw new Error(`Failed to set explicit variable mode: ${e.message}`);
+      }
+    }
+    if (field) {
+      try {
+        if (variableId) {
+          const variable = await figma.variables.getVariableByIdAsync(variableId);
+          if (!variable) throw new Error(`Variable ${variableId} not found`);
+          node.setBoundVariable(field, variable);
+          return { success: true, message: `Bound ${field} to variable ${variable.name}` };
+        } else {
+          node.setBoundVariable(field, null);
+          return { success: true, message: `Unbound variable from ${field}` };
+        }
+      } catch (e) {
+        throw new Error(`Failed to set bound variable: ${e.message}`);
+      }
+    }
+    throw new Error("Must provide either (field + variableId) or (collectionId + modeId)");
+  }
+
   // src/figma_plugin/src/main.js
   var state = {
     serverPort: 3055
@@ -2992,6 +3063,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await setSelections(params);
       case "set_node_name":
         return await setNodeName(params);
+      case "get_variables":
+        return await getVariables(params);
+      case "get_node_variables":
+        return await getNodeVariables(params);
+      case "set_bound_variable":
+        return await setBoundVariable(params);
       default:
         throw new Error(`Unknown command: ${command}`);
     }
