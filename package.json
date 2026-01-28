@@ -20,11 +20,15 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
+    "plugin:build": "node src/figma_plugin/build.js",
+    "plugin:watch": "node src/figma_plugin/build.js --watch",
+    "build:all": "npm run build && npm run plugin:build",
     "pub:release": "bun run build && npm publish"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "bun-types": "^1.2.5",
+    "esbuild": "^0.27.2",
     "tsup": "^8.4.0",
     "typescript": "^5.0.0"
   },
