@@ -23,6 +23,10 @@ echo ""
 echo "🔨 Building MCP server..."
 bun run build
 
+# Build the Figma Plugin
+echo "🎨 Building Figma Plugin..."
+npm run plugin:build
+
 echo ""
 echo "✅ Setup complete!"
 echo ""
