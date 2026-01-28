@@ -1,6 +1,6 @@
 // src/figma_plugin/handlers/variableHandlers.js
 
-import { filterFigmaNode } from "../utils/nodeUtils";
+import { filterFigmaNode } from "../utils/nodeUtils.js";
 
 export async function getVariables(params) {
     const { variableId } = params || {};
