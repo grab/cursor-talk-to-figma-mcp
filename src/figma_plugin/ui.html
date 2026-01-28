@@ -37,12 +37,11 @@
 
     button {
       background-color: #18a0fb;
-      border: none;
+      border: 1px solid transparent;
       color: white;
       padding: 8px 12px;
       border-radius: 6px;
-      margin-top: 8px;
-      margin-bottom: 8px;
+      margin: 0;
       cursor: pointer;
       font-size: 14px;
       transition: background-color 0.2s;
@@ -71,7 +70,7 @@
       border: 1px solid #444444;
       border-radius: 4px;
       padding: 8px;
-      margin-bottom: 12px;
+      margin: 0;
       font-size: 14px;
       width: 100%;
       box-sizing: border-box;
@@ -88,7 +87,7 @@
     }
 
     .status {
-      margin-top: 16px;
+      margin-bottom: 16px;
       padding: 12px;
       border-radius: 6px;
       font-size: 14px;
@@ -110,7 +109,7 @@
     }
 
     .section {
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
 
     .hidden {
@@ -246,7 +245,7 @@
       </div>
       <div class="header-text">
         <h1>Figma Edit MCP Plugin</h1>
-        <p>Connect Figma to AI coding assistants using MCP</p>
+        <p>Connect Figma to AI Agents using MCP</p>
       </div>
     </div>
 
@@ -257,326 +256,310 @@
 
     <div id="content-connection" class="tab-content active">
       <div class="section">
-        <div class="section">
-          <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode)</label>
-          <input type="text" id="scope-link" placeholder="Paste Figma Link to Restrict Editing Scope"
-            style="margin-bottom: 8px; width: 100%; box-sizing: border-box;" />
-          <div id="scope-status" style="font-size: 11px; margin-top: -4px; margin-bottom: 12px; display: none;"></div>
+        <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode)</label>
+        <input type="text" id="scope-link" placeholder="Paste Figma Link to Restrict Editing Scope"
+          style="width: 100%; box-sizing: border-box;" />
+        <div id="scope-status" style="font-size: 11px; margin-top: 4px; display: none;"></div>
+      </div>
 
-          <label for="port">WebSocket Server Port</label>
-          <div style="display: flex; gap: 8px">
-            <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" />
-            <button id="btn-connect" class="primary">Connect</button>
-          </div>
-        </div>
-
-        <div id="connection-status" class="status disconnected">
-          Not connected to Cursor MCP server
-        </div>
-
-        <div class="section">
-          <button id="btn-disconnect" class="secondary" disabled>
-            Disconnect
-          </button>
-        </div>
-
-        <!-- Add Progress Bar Section -->
-        <div id="progress-container" class="section hidden">
-          <h2>Operation Progress</h2>
-          <div id="progress-message">No operation in progress</div>
-          <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
-            <div id="progress-bar"
-              style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;">
-            </div>
-          </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
-            <div id="progress-status">Not started</div>
-            <div id="progress-percentage">0%</div>
-          </div>
+      <div class="section" style="margin-bottom: 20px;">
+        <label for="port">WebSocket Server Port</label>
+        <div style="display: flex; gap: 8px; align-items: stretch;">
+          <input type="number" id="port" placeholder="3055" value="3055" min="1024" max="65535" style="flex: 1;" />
+          <button id="btn-connect" class="primary">Connect</button>
         </div>
       </div>
 
-      <div id="content-about" class="tab-content">
-        <div class="section">
-          <h2>About Figma Edit MCP Plugin</h2>
-          <p>
-            This plugin allows AI coding assistants (Cursor, GitHub Copilot, Claude Code, Antigravity) to communicate
-            with
-            Figma, enabling
-            AI-assisted design operations.
-            <a class="link" onclick="window.open(`https://github.com/neozhang/figma-edit-mcp`, '_blank')">Github</a>
-          </p>
-          <p>Version: 1.0.0</p>
+      <div id="connection-status" class="status disconnected">
+        Not connected to Figma Edit MCP server
+      </div>
 
-          <h2>How to Use</h2>
-          <ol>
-            <li>Make sure the MCP server is running in your AI coding assistant</li>
-            <li>Connect to the server using the port number (default: 3055)</li>
-            <li>Once connected, you can interact with Figma through your AI assistant</li>
-          </ol>
+
+
+      <!-- Add Progress Bar Section -->
+      <div id="progress-container" class="section hidden">
+        <h2>Operation Progress</h2>
+        <div id="progress-message">No operation in progress</div>
+        <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
+          <div id="progress-bar"
+            style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;">
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
+          <div id="progress-status">Not started</div>
+          <div id="progress-percentage">0%</div>
         </div>
       </div>
     </div>
 
-    <div id="toast" class="toast">Copied to clipboard!</div>
+    <div id="content-about" class="tab-content">
+      <div class="section">
+        <h2>About Figma Edit MCP Plugin</h2>
+        <p>
+          This plugin allows AI Agents (Cursor, GitHub Copilot, Claude Code, Antigravity) to communicate
+          with
+          Figma, enabling
+          AI-assisted design operations.
+          <a class="link" onclick="window.open(`https://github.com/neozhehan/figma-edit-mcp`, '_blank')">Github</a>
+        </p>
+        <p>Version: 1.0.0</p>
 
-    <script>
-      // WebSocket connection state
-      const state = {
-        connected: false,
-        socket: null,
-        serverPort: 3055,
-        verifiedNodeId: null,
-        pendingRequests: new Map(),
-        channel: null,
-      };
+        <h2>How to Use</h2>
+        <ol>
+          <li>Make sure the Figma EditMCP server is running</li>
+          <li>Connect to the server using the port number (default: 3055)</li>
+          <li>Once connected, you can interact with Figma through your AI assistant</li>
+        </ol>
+      </div>
+    </div>
+  </div>
 
-      // UI Elements
-      const portInput = document.getElementById("port");
-      const connectButton = document.getElementById("btn-connect");
-      const disconnectButton = document.getElementById("btn-disconnect");
-      const connectionStatus = document.getElementById("connection-status");
-      const toast = document.getElementById("toast");
+  <div id="toast" class="toast">Copied to clipboard!</div>
 
-      // Tabs
-      const tabs = document.querySelectorAll(".tab");
-      const tabContents = document.querySelectorAll(".tab-content");
+  <script>
+    // WebSocket connection state
+    const state = {
+      connected: false,
+      socket: null,
+      serverPort: 3055,
+      verifiedNodeId: null,
+      pendingRequests: new Map(),
+      channel: null,
+    };
 
-      // Add UI elements for progress tracking
-      const progressContainer = document.getElementById("progress-container");
-      const progressBar = document.getElementById("progress-bar");
-      const progressMessage = document.getElementById("progress-message");
-      const progressStatus = document.getElementById("progress-status");
-      const progressPercentage = document.getElementById("progress-percentage");
+    // UI Elements
+    const portInput = document.getElementById("port");
+    const scopeLinkInput = document.getElementById("scope-link");
+    const connectButton = document.getElementById("btn-connect");
+    const connectionStatus = document.getElementById("connection-status");
+    const toast = document.getElementById("toast");
 
-      // Initialize UI
-      function updateConnectionStatus(isConnected, message) {
-        state.connected = isConnected;
-        connectionStatus.innerHTML =
-          message ||
-          (isConnected
-            ? "Connected to MCP server"
-            : "Not connected to MCP server");
-        connectionStatus.className = `status ${isConnected ? "connected" : "disconnected"
-          }`;
+    // Tabs
+    const tabs = document.querySelectorAll(".tab");
+    const tabContents = document.querySelectorAll(".tab-content");
 
-        connectButton.disabled = isConnected;
-        disconnectButton.disabled = !isConnected;
-        portInput.disabled = isConnected;
-      }
+    // Add UI elements for progress tracking
+    const progressContainer = document.getElementById("progress-container");
+    const progressBar = document.getElementById("progress-bar");
+    const progressMessage = document.getElementById("progress-message");
+    const progressStatus = document.getElementById("progress-status");
+    const progressPercentage = document.getElementById("progress-percentage");
 
-      function showToast(message = "Copied to clipboard!") {
-        toast.textContent = message;
-        toast.classList.add("show");
-        setTimeout(() => {
-          toast.classList.remove("show");
-        }, 2000);
-      }
+    // Initialize UI
+    function updateConnectionStatus(isConnected, message) {
+      state.connected = isConnected;
+      connectionStatus.innerHTML =
+        message ||
+        (isConnected
+          ? "Connected to MCP server"
+          : "Not connected to MCP server");
+      connectionStatus.className = `status ${isConnected ? "connected" : "disconnected"
+        }`;
 
-      function copyChannelToClipboard() {
-        if (state.channel) {
-          // Create a temporary textarea element to copy text
-          // This is required because navigator.clipboard may not be available in Figma iframe context
-          // or might require permissions that are tricky. The textarea method is reliable.
-          const el = document.createElement('textarea');
-          el.value = state.channel;
-          document.body.appendChild(el);
-          el.select();
-          document.execCommand('copy');
-          document.body.removeChild(el);
-          showToast("Channel code copied: " + state.channel);
+      if (isConnected) {
+        connectButton.textContent = "Disconnect";
+        connectButton.className = "secondary";
+        connectButton.disabled = false;
+        if (!state.verifiedNodeId) {
+          scopeLinkInput.placeholder = "Connected in Read-Only Mode";
+        }
+      } else {
+        if (message === "Connecting..." || message === "Disconnecting...") {
+          connectButton.textContent = message;
+          connectButton.disabled = true;
+        } else {
+          connectButton.textContent = "Connect";
+          connectButton.className = "primary";
+          connectButton.disabled = false;
+          scopeLinkInput.placeholder = "Paste Figma Link to Restrict Editing Scope";
         }
       }
+      portInput.disabled = isConnected;
+      scopeLinkInput.disabled = isConnected;
+    }
 
-      // Connect to WebSocket server
-      async function connectToServer(port) {
-        try {
-          if (state.connected && state.socket) {
-            updateConnectionStatus(true, "Already connected to server");
-            return;
-          }
+    function showToast(message = "Copied to clipboard!") {
+      toast.textContent = message;
+      toast.classList.add("show");
+      setTimeout(() => {
+        toast.classList.remove("show");
+      }, 2000);
+    }
 
-          state.serverPort = port;
-          state.socket = new WebSocket(`ws://localhost:${port}`);
+    function copyChannelToClipboard() {
+      if (state.channel) {
+        // Create a temporary textarea element to copy text
+        // This is required because navigator.clipboard may not be available in Figma iframe context
+        // or might require permissions that are tricky. The textarea method is reliable.
+        const el = document.createElement('textarea');
+        el.value = state.channel;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        showToast("Channel code copied: " + state.channel);
+      }
+    }
 
-          state.socket.onopen = () => {
-            // Generate random channel name
-            const channelName = generateChannelName();
-            console.log("Joining channel:", channelName);
-            state.channel = channelName;
+    // Connect to WebSocket server
+    async function connectToServer(port) {
+      try {
+        if (state.connected && state.socket) {
+          updateConnectionStatus(true, "Already connected to server");
+          return;
+        }
 
-            // Join the channel using the same format as App.tsx
-            state.socket.send(
-              JSON.stringify({
-                type: "join",
-                channel: channelName.trim(),
-              })
-            );
-          };
+        state.serverPort = port;
+        state.socket = new WebSocket(`ws://localhost:${port}`);
 
-          state.socket.onmessage = (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              console.log("Received message:", data);
+        state.socket.onopen = () => {
+          // Generate random channel name
+          const channelName = generateChannelName();
+          console.log("Joining channel:", channelName);
+          state.channel = channelName;
 
-              if (data.type === "system") {
-                // Successfully joined channel
-                if (data.message && data.message.result) {
-                  state.connected = true;
-                  const channelName = data.channel;
+          // Join the channel using the same format as App.tsx
+          state.socket.send(
+            JSON.stringify({
+              type: "join",
+              channel: channelName.trim(),
+            })
+          );
+        };
 
-                  // Enhanced status message with copy button
-                  const statusHtml = `
+        state.socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log("Received message:", data);
+
+            if (data.type === "system") {
+              // Successfully joined channel
+              if (data.message && data.message.result) {
+                state.connected = true;
+                const channelName = data.channel;
+
+                // Enhanced status message with copy button
+                const statusHtml = `
                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <span>Connected to server. Channel: <strong>${channelName}</strong></span>
+                        <span>Plugin Connected${!state.verifiedNodeId ? ' (Read-Only)' : ''}<br>Channel Code: <strong>${channelName}</strong></span>
                         <button class="copy-btn" onclick="copyChannelToClipboard()" title="Copy Channel Code">
-                           Copy
+                           Copy Code
                         </button>
                     </div>
                 `;
 
-                  updateConnectionStatus(
-                    true,
-                    statusHtml
-                  );
+                updateConnectionStatus(
+                  true,
+                  statusHtml
+                );
 
-                  // Notify the plugin code
-                  parent.postMessage(
-                    {
-                      pluginMessage: {
-                        type: "notify",
-                        message: `Connected to MCP server on port ${port} in channel: ${channelName}`,
-                      },
+                // Notify the plugin code
+                parent.postMessage(
+                  {
+                    pluginMessage: {
+                      type: "notify",
+                      message: `Connected to MCP server on port ${port} in channel: ${channelName}`,
                     },
-                    "*"
-                  );
-                }
-              } else if (data.type === "error") {
-                console.error("Error:", data.message);
-                updateConnectionStatus(false, `Error: ${data.message}`);
-                state.socket.close();
+                  },
+                  "*"
+                );
               }
-
-              handleSocketMessage(data);
-            } catch (error) {
-              console.error("Error parsing message:", error);
+            } else if (data.type === "error") {
+              console.error("Error:", data.message);
+              updateConnectionStatus(false, `Error: ${data.message}`);
+              state.socket.close();
             }
-          };
 
-          state.socket.onclose = () => {
-            state.connected = false;
-            state.socket = null;
-            updateConnectionStatus(false, "Disconnected from server");
-          };
-
-          state.socket.onerror = (error) => {
-            console.error("WebSocket error:", error);
-            updateConnectionStatus(false, "Connection error");
-            state.connected = false;
-            state.socket = null;
-          };
-        } catch (error) {
-          console.error("Connection error:", error);
-          updateConnectionStatus(
-            false,
-            `Connection error: ${error.message || "Unknown error"}`
-          );
-        }
-      }
-
-      // Disconnect from websocket server
-      function disconnectFromServer() {
-        if (state.socket) {
-          state.socket.close();
-          state.socket = null;
-          state.connected = false;
-          updateConnectionStatus(false, "Disconnected from server");
-        }
-      }
-
-      // Handle messages from the WebSocket
-      async function handleSocketMessage(payload) {
-        const data = payload.message;
-        console.log("handleSocketMessage", data);
-
-        // If it's a response to a previous request
-        if (data.id && state.pendingRequests.has(data.id)) {
-          const { resolve, reject } = state.pendingRequests.get(data.id);
-          state.pendingRequests.delete(id);
-
-          if (data.error) {
-            reject(new Error(data.error));
-          } else {
-            resolve(data.result);
-          }
-          return;
-        }
-
-        // If it's a new command
-        if (data.command) {
-          try {
-            // Send the command to the plugin code
-            parent.postMessage(
-              {
-                pluginMessage: {
-                  type: "execute-command",
-                  id: data.id,
-                  command: data.command,
-                  params: data.params,
-                },
-              },
-              "*"
-            );
+            handleSocketMessage(data);
           } catch (error) {
-            // Send error back to WebSocket
-            sendErrorResponse(
-              data.id,
-              error.message || "Error executing command"
-            );
+            console.error("Error parsing message:", error);
           }
+        };
+
+        state.socket.onclose = () => {
+          state.connected = false;
+          state.socket = null;
+          updateConnectionStatus(false, "Disconnected from server");
+        };
+
+        state.socket.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          updateConnectionStatus(false, "Connection error");
+          state.connected = false;
+          state.socket = null;
+        };
+      } catch (error) {
+        console.error("Connection error:", error);
+        updateConnectionStatus(
+          false,
+          `Connection error: ${error.message || "Unknown error"}`
+        );
+      }
+    }
+
+    // Disconnect from websocket server
+    function disconnectFromServer() {
+      if (state.socket) {
+        state.socket.close();
+        state.socket = null;
+        state.connected = false;
+        updateConnectionStatus(false, "Disconnected from server");
+      }
+    }
+
+    // Handle messages from the WebSocket
+    async function handleSocketMessage(payload) {
+      const data = payload.message;
+      console.log("handleSocketMessage", data);
+
+      // If it's a response to a previous request
+      if (data.id && state.pendingRequests.has(data.id)) {
+        const { resolve, reject } = state.pendingRequests.get(data.id);
+        state.pendingRequests.delete(id);
+
+        if (data.error) {
+          reject(new Error(data.error));
+        } else {
+          resolve(data.result);
         }
+        return;
       }
 
-      // Send a command to the WebSocket server
-      async function sendCommand(command, params) {
-        return new Promise((resolve, reject) => {
-          if (!state.connected || !state.socket) {
-            reject(new Error("Not connected to server"));
-            return;
-          }
-
-          const id = generateId();
-          state.pendingRequests.set(id, { resolve, reject });
-
-          state.socket.send(
-            JSON.stringify({
-              id,
-              type: "message",
-              channel: state.channel,
-              message: {
-                id,
-                command,
-                params,
+      // If it's a new command
+      if (data.command) {
+        try {
+          // Send the command to the plugin code
+          parent.postMessage(
+            {
+              pluginMessage: {
+                type: "execute-command",
+                id: data.id,
+                command: data.command,
+                params: data.params,
               },
-            })
+            },
+            "*"
           );
-
-          // Set timeout to reject the promise after 30 seconds
-          setTimeout(() => {
-            if (state.pendingRequests.has(id)) {
-              state.pendingRequests.delete(id);
-              reject(new Error("Request timed out"));
-            }
-          }, 30000);
-        });
+        } catch (error) {
+          // Send error back to WebSocket
+          sendErrorResponse(
+            data.id,
+            error.message || "Error executing command"
+          );
+        }
       }
+    }
 
-      // Send success response back to WebSocket
-      function sendSuccessResponse(id, result) {
+    // Send a command to the WebSocket server
+    async function sendCommand(command, params) {
+      return new Promise((resolve, reject) => {
         if (!state.connected || !state.socket) {
-          console.error("Cannot send response: socket not connected");
+          reject(new Error("Not connected to server"));
           return;
         }
+
+        const id = generateId();
+        state.pendingRequests.set(id, { resolve, reject });
 
         state.socket.send(
           JSON.stringify({
@@ -585,223 +568,255 @@
             channel: state.channel,
             message: {
               id,
-              result,
+              command,
+              params,
             },
           })
         );
+
+        // Set timeout to reject the promise after 30 seconds
+        setTimeout(() => {
+          if (state.pendingRequests.has(id)) {
+            state.pendingRequests.delete(id);
+            reject(new Error("Request timed out"));
+          }
+        }, 30000);
+      });
+    }
+
+    // Send success response back to WebSocket
+    function sendSuccessResponse(id, result) {
+      if (!state.connected || !state.socket) {
+        console.error("Cannot send response: socket not connected");
+        return;
       }
 
-      // Send error response back to WebSocket
-      function sendErrorResponse(id, errorMessage) {
-        if (!state.connected || !state.socket) {
-          console.error("Cannot send error response: socket not connected");
-          return;
-        }
-
-        state.socket.send(
-          JSON.stringify({
+      state.socket.send(
+        JSON.stringify({
+          id,
+          type: "message",
+          channel: state.channel,
+          message: {
             id,
-            type: "message",
-            channel: state.channel,
-            message: {
-              id,
-              error: errorMessage,
-              result: {}
-            },
-          })
+            result,
+          },
+        })
+      );
+    }
+
+    // Send error response back to WebSocket
+    function sendErrorResponse(id, errorMessage) {
+      if (!state.connected || !state.socket) {
+        console.error("Cannot send error response: socket not connected");
+        return;
+      }
+
+      state.socket.send(
+        JSON.stringify({
+          id,
+          type: "message",
+          channel: state.channel,
+          message: {
+            id,
+            error: errorMessage,
+            result: {}
+          },
+        })
+      );
+    }
+
+    // Helper to generate unique IDs
+    function generateId() {
+      return (
+        Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
+      );
+    }
+
+    // Add this function after the generateId() function
+    function generateChannelName() {
+      const characters = "abcdefghjkmnopqrstuvxyz023456789";
+      let result = "";
+      for (let i = 0; i < 8; i++) {
+        result += characters.charAt(
+          Math.floor(Math.random() * characters.length)
         );
       }
+      return result;
+    }
 
-      // Helper to generate unique IDs
-      function generateId() {
-        return (
-          Date.now().toString(36) + Math.random().toString(36).substr(2, 5)
-        );
-      }
+    // Tab switching
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        tabContents.forEach((c) => c.classList.remove("active"));
 
-      // Add this function after the generateId() function
-      function generateChannelName() {
-        const characters = "abcdefghijklmnopqrstuvwxyz0123456789";
-        let result = "";
-        for (let i = 0; i < 8; i++) {
-          result += characters.charAt(
-            Math.floor(Math.random() * characters.length)
-          );
-        }
-        return result;
-      }
-
-      // Tab switching
-      tabs.forEach((tab) => {
-        tab.addEventListener("click", () => {
-          tabs.forEach((t) => t.classList.remove("active"));
-          tabContents.forEach((c) => c.classList.remove("active"));
-
-          tab.classList.add("active");
-          const contentId = "content-" + tab.id.split("-")[1];
-          document.getElementById(contentId).classList.add("active");
-        });
+        tab.classList.add("active");
+        const contentId = "content-" + tab.id.split("-")[1];
+        document.getElementById(contentId).classList.add("active");
       });
+    });
 
-      // Connect to server
-      connectButton.onclick = () => {
-        const scopeInput = document.getElementById("scope-link");
-        const scopeStatus = document.getElementById("scope-status");
-        const link = scopeInput.value.trim();
-
-        if (link.length > 0 && !state.verifiedNodeId) {
-          // Invalid link state
-          scopeStatus.textContent = "Please provide a valid link or clear the field for Read-Only mode.";
-          scopeStatus.style.color = '#ff9999';
-          scopeStatus.style.display = 'block';
-          return;
-        }
-
-        // Set the scope in the plugin logic
-        parent.postMessage({ pluginMessage: { type: 'set-scope', scopeNodeId: state.verifiedNodeId } }, '*');
-
-        const port = parseInt(portInput.value, 10);
-        updateConnectionStatus(false, "Connecting...");
-        connectionStatus.className = "status info";
-        connectToServer(port);
-      };
-
-      // Scope input validation listener
-      document.getElementById("scope-link").addEventListener("input", (e) => {
-        const link = e.target.value.trim();
-        const scopeStatus = document.getElementById("scope-status");
-
-        if (link.length === 0) {
-          state.verifiedNodeId = null;
-          scopeStatus.style.display = 'none';
-          return;
-        }
-
-        parent.postMessage({ pluginMessage: { type: 'validate-scope-link', link } }, '*');
-      });
-
-      // Disconnect from server
-      disconnectButton.addEventListener("click", () => {
+    // Connect to server
+    connectButton.onclick = () => {
+      if (state.connected) {
         updateConnectionStatus(false, "Disconnecting...");
         connectionStatus.className = "status info";
         disconnectFromServer();
-      });
-
-      // Function to update progress UI
-      function updateProgressUI(progressData) {
-        // Show progress container if hidden
-        progressContainer.classList.remove("hidden");
-
-        // Update progress bar
-        const progress = progressData.progress || 0;
-        progressBar.style.width = `${progress}%`;
-        progressPercentage.textContent = `${progress}%`;
-
-        // Update message
-        progressMessage.textContent = progressData.message || "Operation in progress";
-
-        // Update status text based on operation state
-        if (progressData.status === 'started') {
-          progressStatus.textContent = "Started";
-          progressStatus.className = "";
-        } else if (progressData.status === 'in_progress') {
-          progressStatus.textContent = "In Progress";
-          progressStatus.className = "";
-        } else if (progressData.status === 'completed') {
-          progressStatus.textContent = "Completed";
-          progressStatus.className = "operation-complete";
-
-          // Hide progress container after 5 seconds
-          setTimeout(() => {
-            progressContainer.classList.add("hidden");
-          }, 5000);
-        } else if (progressData.status === 'error') {
-          progressStatus.textContent = "Error";
-          progressStatus.className = "operation-error";
-        }
+        return;
       }
 
-      // Send operation progress update to server
-      function sendProgressUpdateToServer(progressData) {
-        if (!state.connected || !state.socket) {
-          console.error("Cannot send progress update: socket not connected");
-          return;
-        }
+      const scopeInput = document.getElementById("scope-link");
+      const scopeStatus = document.getElementById("scope-status");
+      const link = scopeInput.value.trim();
 
-        console.log("Sending progress update to server:", progressData);
+      if (link.length > 0 && !state.verifiedNodeId) {
+        // Invalid link state
+        scopeStatus.textContent = "Please provide a valid link or clear the field for Read-Only mode.";
+        scopeStatus.style.color = '#ff9999';
+        scopeStatus.style.display = 'block';
+        return;
+      }
 
-        state.socket.send(
-          JSON.stringify({
+      // Set the scope in the plugin logic
+      parent.postMessage({ pluginMessage: { type: 'set-scope', scopeNodeId: state.verifiedNodeId } }, '*');
+
+      const port = parseInt(portInput.value, 10);
+      updateConnectionStatus(false, "Connecting...");
+      connectionStatus.className = "status info";
+      connectToServer(port);
+    };
+
+    // Scope input validation listener
+    document.getElementById("scope-link").addEventListener("input", (e) => {
+      const link = e.target.value.trim();
+      const scopeStatus = document.getElementById("scope-status");
+
+      if (link.length === 0) {
+        state.verifiedNodeId = null;
+        scopeStatus.style.display = 'none';
+        return;
+      }
+
+      parent.postMessage({ pluginMessage: { type: 'validate-scope-link', link } }, '*');
+    });
+
+
+
+    // Function to update progress UI
+    function updateProgressUI(progressData) {
+      // Show progress container if hidden
+      progressContainer.classList.remove("hidden");
+
+      // Update progress bar
+      const progress = progressData.progress || 0;
+      progressBar.style.width = `${progress}%`;
+      progressPercentage.textContent = `${progress}%`;
+
+      // Update message
+      progressMessage.textContent = progressData.message || "Operation in progress";
+
+      // Update status text based on operation state
+      if (progressData.status === 'started') {
+        progressStatus.textContent = "Started";
+        progressStatus.className = "";
+      } else if (progressData.status === 'in_progress') {
+        progressStatus.textContent = "In Progress";
+        progressStatus.className = "";
+      } else if (progressData.status === 'completed') {
+        progressStatus.textContent = "Completed";
+        progressStatus.className = "operation-complete";
+
+        // Hide progress container after 5 seconds
+        setTimeout(() => {
+          progressContainer.classList.add("hidden");
+        }, 5000);
+      } else if (progressData.status === 'error') {
+        progressStatus.textContent = "Error";
+        progressStatus.className = "operation-error";
+      }
+    }
+
+    // Send operation progress update to server
+    function sendProgressUpdateToServer(progressData) {
+      if (!state.connected || !state.socket) {
+        console.error("Cannot send progress update: socket not connected");
+        return;
+      }
+
+      console.log("Sending progress update to server:", progressData);
+
+      state.socket.send(
+        JSON.stringify({
+          id: progressData.commandId,
+          type: "progress_update",
+          channel: state.channel,
+          message: {
             id: progressData.commandId,
             type: "progress_update",
-            channel: state.channel,
-            message: {
-              id: progressData.commandId,
-              type: "progress_update",
-              data: progressData
-            }
-          })
-        );
+            data: progressData
+          }
+        })
+      );
+    }
+
+    // Reset progress UI
+    function resetProgressUI() {
+      progressContainer.classList.add("hidden");
+      progressBar.style.width = "0%";
+      progressMessage.textContent = "No operation in progress";
+      progressStatus.textContent = "Not started";
+      progressStatus.className = "";
+      progressPercentage.textContent = "0%";
+    }
+
+    // Listen for messages from the plugin code
+    window.onmessage = (event) => {
+      const message = event.data.pluginMessage;
+      if (!message) return;
+
+      console.log("Received message from plugin:", message);
+
+      switch (message.type) {
+        case "connection-status":
+          updateConnectionStatus(message.connected, message.message);
+          break;
+        case "auto-connect":
+          connectButton.click();
+          break;
+        case "auto-disconnect":
+          if (state.connected) connectButton.click();
+          break;
+        case "command-result":
+          // Forward the result from plugin code back to WebSocket
+          sendSuccessResponse(message.id, message.result);
+          break;
+        case "command-error":
+          // Forward the error from plugin code back to WebSocket
+          sendErrorResponse(message.id, message.error);
+          break;
+        case "scope-validation-result":
+          const scopeStatus = document.getElementById("scope-status");
+          if (message.valid) {
+            state.verifiedNodeId = message.nodeId;
+            scopeStatus.textContent = `✓ Scope: ${message.nodeName}`;
+            scopeStatus.style.color = '#4ade80'; // Green
+            scopeStatus.style.display = 'block';
+          } else {
+            state.verifiedNodeId = null;
+            scopeStatus.textContent = `✗ ${message.reason}`;
+            scopeStatus.style.color = '#ff9999'; // Red
+            scopeStatus.style.display = 'block';
+          }
+          break;
+        case "command_progress":
+          // Update UI with progress information
+          updateProgressUI(message);
+          // Forward progress update to server
+          sendProgressUpdateToServer(message);
+          break;
       }
-
-      // Reset progress UI
-      function resetProgressUI() {
-        progressContainer.classList.add("hidden");
-        progressBar.style.width = "0%";
-        progressMessage.textContent = "No operation in progress";
-        progressStatus.textContent = "Not started";
-        progressStatus.className = "";
-        progressPercentage.textContent = "0%";
-      }
-
-      // Listen for messages from the plugin code
-      window.onmessage = (event) => {
-        const message = event.data.pluginMessage;
-        if (!message) return;
-
-        console.log("Received message from plugin:", message);
-
-        switch (message.type) {
-          case "connection-status":
-            updateConnectionStatus(message.connected, message.message);
-            break;
-          case "auto-connect":
-            connectButton.click();
-            break;
-          case "auto-disconnect":
-            disconnectButton.click();
-            break;
-          case "command-result":
-            // Forward the result from plugin code back to WebSocket
-            sendSuccessResponse(message.id, message.result);
-            break;
-          case "command-error":
-            // Forward the error from plugin code back to WebSocket
-            sendErrorResponse(message.id, message.error);
-            break;
-          case "scope-validation-result":
-            const scopeStatus = document.getElementById("scope-status");
-            if (message.valid) {
-              state.verifiedNodeId = message.nodeId;
-              scopeStatus.textContent = `✓ Scope: ${message.nodeName}`;
-              scopeStatus.style.color = '#4ade80'; // Green
-              scopeStatus.style.display = 'block';
-            } else {
-              state.verifiedNodeId = null;
-              scopeStatus.textContent = `✗ ${message.reason}`;
-              scopeStatus.style.color = '#ff9999'; // Red
-              scopeStatus.style.display = 'block';
-            }
-            break;
-          case "command_progress":
-            // Update UI with progress information
-            updateProgressUI(message);
-            // Forward progress update to server
-            sendProgressUpdateToServer(message);
-            break;
-        }
-      };
-    </script>
+    };
+  </script>
 </body>
 
 </html>
