@@ -290,29 +290,7 @@ async function processTextNode(node, parentPath, depth) {
             depth: depth,
         };
 
-        // Highlight the node briefly (optional visual feedback)
-        try {
-            const originalFills = JSON.parse(JSON.stringify(node.fills));
-            node.fills = [
-                {
-                    type: "SOLID",
-                    color: { r: 1, g: 0.5, b: 0 },
-                    opacity: 0.3,
-                },
-            ];
 
-            // Brief delay for the highlight to be visible
-            // await delay(100);
-
-            try {
-                node.fills = originalFills;
-            } catch (err) {
-                console.error("Error resetting fills:", err);
-            }
-        } catch (highlightErr) {
-            console.error("Error highlighting text node:", highlightErr);
-            // Continue anyway, highlighting is just visual feedback
-        }
 
         return safeTextNode;
     } catch (nodeErr) {
@@ -365,30 +343,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
                 depth: depth,
             };
 
-            // Only highlight the node if it's not being done via API
-            try {
-                // Safe way to create a temporary highlight without causing serialization issues
-                const originalFills = JSON.parse(JSON.stringify(node.fills));
-                node.fills = [
-                    {
-                        type: "SOLID",
-                        color: { r: 1, g: 0.5, b: 0 },
-                        opacity: 0.3,
-                    },
-                ];
 
-                // Promise-based delay instead of setTimeout
-                // await delay(500);
-
-                try {
-                    node.fills = originalFills;
-                } catch (err) {
-                    console.error("Error resetting fills:", err);
-                }
-            } catch (highlightErr) {
-                console.error("Error highlighting text node:", highlightErr);
-                // Continue anyway, highlighting is just visual feedback
-            }
 
             textNodes.push(safeTextNode);
         } catch (nodeErr) {
@@ -583,25 +538,7 @@ export async function setMultipleTextContents(params) {
                 console.log(`Original text: "${originalText}"`);
                 console.log(`Will translate to: "${replacement.text}"`);
 
-                // Highlight the node before changing text
-                let originalFills;
-                try {
-                    // Save original fills for restoration later
-                    originalFills = JSON.parse(JSON.stringify(textNode.fills));
-                    // Apply highlight color (orange with 30% opacity)
-                    textNode.fills = [
-                        {
-                            type: "SOLID",
-                            color: { r: 1, g: 0.5, b: 0 },
-                            opacity: 0.3,
-                        },
-                    ];
-                } catch (highlightErr) {
-                    console.error(
-                        `Error highlighting text node: ${highlightErr.message}`
-                    );
-                    // Continue anyway, highlighting is just visual feedback
-                }
+
 
                 // Use the setTextContent function to handle font loading and text setting
                 await setTextContent({
@@ -609,16 +546,7 @@ export async function setMultipleTextContents(params) {
                     text: replacement.text,
                 });
 
-                // Keep highlight for a moment after text change, then restore original fills
-                if (originalFills) {
-                    try {
-                        // Use delay function for consistent timing
-                        await delay(500);
-                        textNode.fills = originalFills;
-                    } catch (restoreErr) {
-                        console.error(`Error restoring fills: ${restoreErr.message}`);
-                    }
-                }
+
 
                 console.log(
                     `Successfully replaced text in node: ${replacement.nodeId}`
