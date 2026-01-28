@@ -787,6 +787,43 @@ server.tool(
   }
 );
 
+// Set Node Name Tool
+server.tool(
+  "set_node_name",
+  "Set the name of a node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the node to rename"),
+    name: z.string().describe("New name for the node"),
+  },
+  async ({ nodeId, name }: any) => {
+    try {
+      nodeId = normalizeNodeId(nodeId);
+      const result = await sendCommandToFigma("set_node_name", {
+        nodeId,
+        name,
+      });
+      const typedResult = result as { name: string; oldName: string };
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Renamed node from "${typedResult.oldName}" to "${typedResult.name}"`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 
 // Delete Multiple Nodes Tool
 server.tool(
@@ -1388,7 +1425,7 @@ server.tool(
         nodeId,
         useChunking: true,  // Enable chunking on the plugin side
         chunkSize: 10       // Process 10 nodes at a time
-      });
+      }, 120000);
 
       // If the result indicates chunking was used, format the response accordingly
       if (result && typeof result === 'object' && 'chunks' in result) {
@@ -2504,7 +2541,8 @@ type FigmaCommand =
   | "get_reactions"
   | "set_default_connector"
   | "create_connections"
-  | "set_selections";
+  | "set_selections"
+  | "set_node_name";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2634,7 +2672,10 @@ type CommandParams = {
   set_selections: {
     nodeIds: string[];
   };
-
+  set_node_name: {
+    nodeId: string;
+    name: string;
+  };
 };
 
 
