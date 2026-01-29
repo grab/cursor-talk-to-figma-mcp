@@ -636,9 +636,9 @@
 
     // Add this function after the generateId() function
     function generateChannelName() {
-      const characters = "abcdefghjkmnopqrstuvxyz023456789";
+      const characters = "abcdefghijkmnoprstuvxyz023456789";
       let result = "";
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 4; i++) {
         result += characters.charAt(
           Math.floor(Math.random() * characters.length)
         );

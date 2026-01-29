@@ -74,7 +74,7 @@ export async function getLocalComponents() {
  * @returns {Promise<Object>} Created instance info
  */
 export async function createComponentInstance(params) {
-    const { componentKey, x = 0, y = 0 } = params || {};
+    const { componentKey, x = 0, y = 0, parentId } = params || {};
 
     if (!componentKey) {
         throw new Error("Missing componentKey parameter");
@@ -87,7 +87,20 @@ export async function createComponentInstance(params) {
         instance.x = x;
         instance.y = y;
 
-        figma.currentPage.appendChild(instance);
+        if (parentId) {
+            const parent = await figma.getNodeByIdAsync(parentId);
+            if (!parent) {
+                throw new Error(`Parent node not found with ID: ${parentId}`);
+            }
+            if (parent.type !== "FRAME" && parent.type !== "GROUP" && parent.type !== "SECTION" && parent.type !== "PAGE") {
+                // Allow appending to Page, Frame, Group, Section
+                // Although Page is via currentPage usually.
+                // If parentId is a Page, appendChild works.
+            }
+            parent.appendChild(instance);
+        } else {
+            figma.currentPage.appendChild(instance);
+        }
 
         return {
             id: instance.id,
