@@ -412,7 +412,9 @@
         state.serverPort = port;
         state.socket = new WebSocket(`ws://localhost:${port}`);
 
+        let wasConnected = false;
         state.socket.onopen = () => {
+          wasConnected = true;
           // Use existing channel name if available, otherwise generate new one
           if (!state.channel) {
             state.channel = generateChannelName();
@@ -478,17 +480,24 @@
           }
         };
 
-        state.socket.onclose = () => {
+        state.socket.onclose = (event) => {
+          const previouslyConnected = wasConnected;
           state.connected = false;
           state.socket = null;
-          updateConnectionStatus(false, "Disconnected from server");
+
+          if (previouslyConnected) {
+            updateConnectionStatus(false, "Disconnected from server");
+          } else {
+            updateConnectionStatus(false, `Failed to connect. Is the MCP server running on port ${port}?`);
+          }
         };
 
         state.socket.onerror = (error) => {
           console.error("WebSocket error:", error);
-          updateConnectionStatus(false, "Connection error");
-          state.connected = false;
-          state.socket = null;
+          // onclose will handle the message if it's a failed connection
+          if (state.connected) {
+            updateConnectionStatus(false, "Connection error occurred");
+          }
         };
       } catch (error) {
         console.error("Connection error:", error);
@@ -636,7 +645,7 @@
 
     // Add this function after the generateId() function
     function generateChannelName() {
-      const characters = "abcdefghijkmnoprstuvxyz023456789";
+      const characters = "abcdefghjkmnoprstuvxyz023456789";
       let result = "";
       for (let i = 0; i < 4; i++) {
         result += characters.charAt(

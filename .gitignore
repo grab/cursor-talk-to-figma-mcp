@@ -3,5 +3,5 @@ node_modules/
 dist/
 docs/
 .mcp.json
-src/figma_plugin/code.js
+src/figma_plugin/dist/
 .DS_Store
