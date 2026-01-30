@@ -13,27 +13,7 @@ function handleConnection(ws: ServerWebSocket<any>) {
     message: "Please join a channel to start chatting",
   }));
 
-  ws.close = () => {
-    console.log("Client disconnected");
 
-    // Remove client from their channel
-    channels.forEach((clients, channelName) => {
-      if (clients.has(ws)) {
-        clients.delete(ws);
-
-        // Notify other clients in same channel
-        clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-              type: "system",
-              message: "A user has left the channel",
-              channel: channelName
-            }));
-          }
-        });
-      }
-    });
-  };
 }
 
 const server = Bun.serve({
@@ -171,7 +151,7 @@ const server = Bun.serve({
               client.send(JSON.stringify(broadcastMessage));
             }
           });
-          
+
           if (broadcastCount === 0) {
             console.log(`⚠️  No other clients in channel "${channelName}" to receive message!`);
           } else {
@@ -183,9 +163,23 @@ const server = Bun.serve({
       }
     },
     close(ws: ServerWebSocket<any>) {
+      console.log("Client disconnected");
       // Remove client from their channel
-      channels.forEach((clients) => {
-        clients.delete(ws);
+      channels.forEach((clients, channelName) => {
+        if (clients.has(ws)) {
+          clients.delete(ws);
+
+          // Notify other clients in same channel
+          clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify({
+                type: "system",
+                message: "A user has left the channel",
+                channel: channelName
+              }));
+            }
+          });
+        }
       });
     }
   }

@@ -37,8 +37,8 @@ const ERRORS = {
     ROOT_INSTANCE_DISALLOWED: "Operation Denied: Cannot create instance at root with current editable scope. Verify if user intends for the instance to be created on this page. If so, advise user to disconnect plugin, paste a link to this page into Link to Selection field, then reconnect plugin.",
 
     // Node ID Errors
-    NAME_MISMATCH: "Operation Denied: expectedName does not match name of nodeID. Refresh context & recheck to ensure correct nodeID is passed in.",
-    PARENT_NAME_MISMATCH: "Operation Denied: expectedParentName does not match name of parentID. Refresh context & recheck to ensure correct parentID is passed in.",
+    NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
+    PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
 
     // Parameter Errors
     MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
@@ -200,91 +200,91 @@ async function handleCommand(command, params) {
         case "set_fill_color":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setFillColor(params);
         case "set_stroke_color":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setStrokeColor(params);
         case "set_corner_radius":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setCornerRadius(params);
         case "set_layout_mode":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setLayoutMode(params);
         case "set_padding":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setPadding(params);
         case "set_axis_align":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setAxisAlign(params);
         case "set_layout_sizing":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setLayoutSizing(params);
         case "set_item_spacing":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setItemSpacing(params);
         case "set_bound_variable":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setBoundVariable(params);
         case "set_node_name":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setNodeName(params);
 
         case "move_node":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await moveNode(params);
         case "resize_node":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await resizeNode(params);
         case "clone_node":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.expectedName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await cloneNode(params);
 
         case "create_rectangle":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
-            if (!(await verifyParentName(params ? params.parentId : null, params ? params.expectedParentName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             return await createRectangle(params);
         case "create_frame":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
-            if (!(await verifyParentName(params ? params.parentId : null, params ? params.expectedParentName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             return await createFrame(params);
         case "create_text":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
-            if (!(await verifyParentName(params ? params.parentId : null, params ? params.expectedParentName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             return await createText(params);
         case "create_component_instance":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
 
             if (params && params.parentId) {
                 if (!(await checkScopeAccess(params.parentId))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
-                if (!(await verifyParentName(params.parentId, params.expectedParentName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+                if (!(await verifyParentName(params.parentId, params.parentNodeName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             } else {
                 if (state.scopeRootId) throw new Error(ERRORS.ROOT_INSTANCE_DISALLOWED);
             }
@@ -295,10 +295,10 @@ async function handleCommand(command, params) {
             if (params && params.connections && Array.isArray(params.connections)) {
                 for (const conn of params.connections) {
                     if (!(await checkScopeAccess(conn.startNodeId))) throw new Error(`Operation denied: Start node ${conn.startNodeId} outside editable scope`);
-                    if (!(await verifyNodeName(conn.startNodeId, conn.expectedStartNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                    if (!(await verifyNodeName(conn.startNodeId, conn.startNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
 
                     if (!(await checkScopeAccess(conn.endNodeId))) throw new Error(`Operation denied: End node ${conn.endNodeId} outside editable scope`);
-                    if (!(await verifyNodeName(conn.endNodeId, conn.expectedEndNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                    if (!(await verifyNodeName(conn.endNodeId, conn.endNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
                 }
             }
             return await createConnections(params);
@@ -308,7 +308,7 @@ async function handleCommand(command, params) {
             if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
             for (const item of params.text) {
                 if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
-                if (!(await verifyNodeName(item.nodeId, item.expectedName))) throw new Error(ERRORS.NAME_MISMATCH);
+                if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
             }
             return await setMultipleTextContents(params);
 
@@ -317,7 +317,7 @@ async function handleCommand(command, params) {
             if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
             for (const item of params.annotations) {
                 if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
-                if (!(await verifyNodeName(item.nodeId, item.expectedName))) throw new Error(ERRORS.NAME_MISMATCH);
+                if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
             }
             return await setMultipleAnnotations(params);
 
@@ -328,7 +328,7 @@ async function handleCommand(command, params) {
             const nodeIdsToDelete = [];
             for (const item of params.nodes) {
                 if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
-                if (!(await verifyNodeName(item.nodeId, item.expectedName))) throw new Error(ERRORS.NAME_MISMATCH);
+                if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
                 nodeIdsToDelete.push(item.nodeId);
             }
 
@@ -349,7 +349,7 @@ async function handleCommand(command, params) {
                 // Permission check and name verification
                 for (const item of params.targetNodes) {
                     if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Target instance ${item.nodeId} outside editable scope`);
-                    if (!(await verifyNodeName(item.nodeId, item.expectedName))) throw new Error(ERRORS.NAME_MISMATCH);
+                    if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
                     targetNodeIds.push(item.nodeId);
                 }
 

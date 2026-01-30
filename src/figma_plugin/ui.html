@@ -827,6 +827,11 @@
           break;
       }
     };
+    
+    // Ensure socket is closed when plugin window is closed
+    window.addEventListener('beforeunload', () => {
+      disconnectFromServer();
+    });
   </script>
 </body>
 
