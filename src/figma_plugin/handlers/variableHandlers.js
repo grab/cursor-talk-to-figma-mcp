@@ -209,3 +209,114 @@ export async function setBoundVariable(params) {
 
     throw new Error("Must provide either (field + variableId) or (collectionId + modeId)");
 }
+
+/**
+ * Handles comprehensive variable management
+ * @param {Object} params - Parameters object
+ * @param {string} params.action - Action type: CREATE_COLLECTION, CREATE_VARIABLE, SET_VALUE
+ * @returns {Promise<Object>} Result of the operation
+ */
+export async function handleVariableRequest(params) {
+    const { action } = params || {};
+
+    if (!action) {
+        throw new Error("Missing action parameter");
+    }
+
+    switch (action) {
+        case 'CREATE_COLLECTION': {
+            const { name, modeName } = params;
+            if (!name) throw new Error("Missing name for collection");
+
+            const collection = figma.variables.createVariableCollection(name);
+            if (modeName) {
+                collection.renameMode(collection.modes[0].modeId, modeName);
+            }
+
+            return {
+                id: collection.id,
+                name: collection.name,
+                defaultModeId: collection.defaultModeId,
+                modes: collection.modes
+            };
+        }
+
+        case 'CREATE_VARIABLE': {
+            const { collectionId, name, type, value } = params;
+            if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
+
+            // Resolve resolvedType string to VariableResolvedType
+            // 'FLOAT', 'COLOR', 'STRING', 'BOOLEAN'
+            let resolvedType;
+            if (type === 'FLOAT') resolvedType = "FLOAT";
+            else if (type === 'COLOR') resolvedType = "COLOR";
+            else if (type === 'STRING') resolvedType = "STRING";
+            else if (type === 'BOOLEAN') resolvedType = "BOOLEAN";
+            else throw new Error(`Invalid variable type: ${type}`);
+
+            const variable = figma.variables.createVariable(name, collectionId, resolvedType);
+
+            // Set initial value if provided (for default mode)
+            if (value !== undefined) {
+                const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+                const defaultModeId = collection.defaultModeId;
+
+                // Value parsing for color
+                let parsedValue = value;
+                if (resolvedType === 'COLOR' && typeof value === 'object') {
+                    // Expect {r, g, b, a} 0-1
+                    parsedValue = {
+                        r: value.r || 0,
+                        g: value.g || 0,
+                        b: value.b || 0,
+                    };
+                    // Alpha is invalid for setValueForMode? documentation says RGBA or RGB
+                    // Actually setValueForMode takes R, G, B, A in 0-1 range. But verify API.
+                    parsedValue = {
+                        r: value.r || 0,
+                        g: value.g || 0,
+                        b: value.b || 0,
+                        a: value.a !== undefined ? value.a : 1
+                    };
+                }
+
+                variable.setValueForMode(defaultModeId, parsedValue);
+            }
+
+            return {
+                id: variable.id,
+                name: variable.name,
+                key: variable.key,
+                type: variable.resolvedType
+            };
+        }
+
+        case 'SET_VALUE': {
+            const { variableId, modeId, value } = params;
+            if (!variableId || !modeId || value === undefined) throw new Error("Missing parameters for setting variable value");
+
+            const variable = await figma.variables.getVariableByIdAsync(variableId);
+            if (!variable) throw new Error("Variable not found");
+
+            // Handle Aliases
+            if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
+                variable.setValueForMode(modeId, {
+                    type: 'VARIABLE_ALIAS',
+                    id: value.id
+                });
+            } else {
+                variable.setValueForMode(modeId, value);
+            }
+
+            return {
+                success: true,
+                variableId: variable.id,
+                modeId: modeId,
+                value: value
+            };
+        }
+
+        default:
+            throw new Error(`Unknown variable action: ${action}`);
+    }
+}

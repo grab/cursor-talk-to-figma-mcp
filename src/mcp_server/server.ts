@@ -2585,7 +2585,13 @@ type FigmaCommand =
   | "set_node_name"
   | "get_variables"
   | "get_node_variables"
-  | "set_bound_variable";
+  | "set_bound_variable"
+  | "manage_variables"
+  | "create_style"
+  | "apply_style"
+  | "create_component"
+  | "create_node_from_svg"
+  | "set_effects";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -3231,6 +3237,157 @@ server.tool(
           },
         ],
       };
+    }
+  }
+);
+
+// Manage Variables Tool
+server.tool(
+  "manage_variables",
+  "Comprehensive tool to create collections, variables, and set values/aliases.",
+  {
+    action: z.enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "SET_VALUE"]).describe("Action type"),
+    name: z.string().optional().describe("Name for collection or variable"),
+    modeName: z.string().optional().describe("Mode name (for CREATE_COLLECTION)"),
+    collectionId: z.string().optional().describe("Collection ID (for CREATE_VARIABLE)"),
+    type: z.enum(["FLOAT", "COLOR", "STRING", "BOOLEAN"]).optional().describe("Variable type (for CREATE_VARIABLE)"),
+    value: z.union([z.string(), z.number(), z.boolean(), z.object({
+      r: z.number(), g: z.number(), b: z.number(), a: z.number().optional()
+    }), z.object({
+      type: z.literal("VARIABLE_ALIAS"), id: z.string()
+    })]).optional().describe("Value for the variable (or alias)"),
+    variableId: z.string().optional().describe("Variable ID (for SET_VALUE or alias)"),
+    modeId: z.string().optional().describe("Mode ID (for SET_VALUE)")
+  },
+  async ({ action, name, modeName, collectionId, type, value, variableId, modeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("manage_variables", {
+        action, name, modeName, collectionId, type, value, variableId, modeId
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }]
+      };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error managing variables: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Create Style Tool
+server.tool(
+  "create_style",
+  "Creates named styles (Text, Paint, Effect, Grid).",
+  {
+    type: z.enum(["TEXT", "PAINT", "EFFECT", "GRID"]).describe("Type of style to create"),
+    name: z.string().describe("Name of the style"),
+    description: z.string().optional().describe("Description of the style"),
+    properties: z.object({
+      fontName: z.object({ family: z.string(), style: z.string() }).optional(),
+      fontSize: z.number().optional(),
+      paints: z.array(z.any()).optional(),
+      effects: z.array(z.any()).optional(),
+      layoutGrids: z.array(z.any()).optional(),
+      // Add more properties as needed for comprehensive style creation
+    }).optional().describe("Properties for the style")
+  },
+  async ({ type, name, description, properties }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_style", { type, name, description, properties });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating style: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Apply Style Tool
+server.tool(
+  "apply_style",
+  "Applies a style to a node by ID.",
+  {
+    nodeId: z.string().describe("The ID of the node to apply style to"),
+    nodeName: z.string().describe("Name of the node to verify against"),
+    styleId: z.string().describe("The ID of the style to apply"),
+    styleType: z.enum(["TEXT", "FILL", "STROKE", "EFFECT", "GRID"]).describe("Type of style to apply (target property)")
+  },
+  async ({ nodeId, nodeName, styleId, styleType }: any) => {
+    try {
+      nodeId = normalizeNodeId(nodeId);
+      const result = await sendCommandToFigma("apply_style", { nodeId, nodeName, styleId, styleType });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error applying style: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Create Component Tool
+server.tool(
+  "create_component",
+  "Transforms a frame into a main component.",
+  {
+    nodeId: z.string().describe("The ID of the frame to convert to a component"),
+    nodeName: z.string().describe("Name of the node to verify against")
+  },
+  async ({ nodeId, nodeName }: any) => {
+    try {
+      nodeId = normalizeNodeId(nodeId);
+      const result = await sendCommandToFigma("create_component", { nodeId, nodeName });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating component: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Create Node From SVG Tool
+server.tool(
+  "create_node_from_svg",
+  "Creates a node from an SVG string.",
+  {
+    svg: z.string().describe("The SVG XML string"),
+    name: z.string().optional().describe("Name for the new node"),
+    parentId: z.string().optional().describe("Parent ID to append to"),
+    parentNodeName: z.string().optional().describe("Parent Name to verify against"),
+    x: z.number().optional().describe("X position"),
+    y: z.number().optional().describe("Y position")
+  },
+  async ({ svg, name, parentId, parentNodeName, x, y }: any) => {
+    try {
+      if (parentId) parentId = normalizeNodeId(parentId);
+      const result = await sendCommandToFigma("create_node_from_svg", { svg, name, parentId, parentNodeName, x, y });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error creating node from SVG: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// Set Effects Tool
+server.tool(
+  "set_effects",
+  "Applies shadow/effect arrays to nodes.",
+  {
+    nodeId: z.string().describe("The ID of the node to modify"),
+    nodeName: z.string().describe("Name of the node to verify against"),
+    effects: z.array(z.object({
+      type: z.enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]),
+      visible: z.boolean().optional(),
+      color: z.object({ r: z.number(), g: z.number(), b: z.number(), a: z.number().optional() }).optional(),
+      offset: z.object({ x: z.number(), y: z.number() }).optional(),
+      radius: z.number().optional(),
+      spread: z.number().optional(),
+      blendMode: z.string().optional(),
+      showShadowBehindNode: z.boolean().optional()
+    })).describe("Array of effect objects")
+  },
+  async ({ nodeId, nodeName, effects }: any) => {
+    try {
+      nodeId = normalizeNodeId(nodeId);
+      const result = await sendCommandToFigma("set_effects", { nodeId, nodeName, effects });
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error setting effects: ${error instanceof Error ? error.message : String(error)}` }] };
     }
   }
 );

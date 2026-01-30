@@ -489,3 +489,102 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
         return { success: false, message };
     }
 }
+
+/**
+ * Creates a component from an existing frame
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the frame to convert
+ * @returns {Promise<Object>} Created component info
+ */
+export async function createComponent(params) {
+    const { nodeId } = params || {};
+
+    if (!nodeId) {
+        throw new Error("Missing nodeId parameter");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (node.type !== "FRAME") {
+        throw new Error(`Target node must be a FRAME, got ${node.type}`);
+    }
+
+    try {
+        const component = figma.createComponent(); // This creates a new empty component
+
+        // Copy basic properties
+        component.name = node.name;
+        // Resize first
+        component.resize(node.width, node.height);
+
+        // Position and Hierarchy
+        // We need to keep the component in the same hierarchy
+        // Insert component into parent at the index of the node
+        if (node.parent) {
+            const index = node.parent.children.indexOf(node);
+            node.parent.insertChild(index, component);
+            component.x = node.x;
+            component.y = node.y;
+        }
+
+        // Styles and properties
+        component.fills = node.fills;
+        component.strokes = node.strokes;
+        component.strokeWeight = node.strokeWeight;
+        component.strokeAlign = node.strokeAlign;
+        component.strokeCap = node.strokeCap;
+        component.strokeJoin = node.strokeJoin;
+        component.dashPattern = node.dashPattern;
+        component.effects = node.effects;
+        component.layoutGrids = node.layoutGrids;
+        component.opacity = node.opacity;
+        component.blendMode = node.blendMode;
+        component.isMask = node.isMask;
+
+        // Corner Radius (handle mixed)
+        if (node.cornerRadius !== figma.mixed) {
+            component.cornerRadius = node.cornerRadius;
+        } else {
+            component.topLeftRadius = node.topLeftRadius;
+            component.topRightRadius = node.topRightRadius;
+            component.bottomLeftRadius = node.bottomLeftRadius;
+            component.bottomRightRadius = node.bottomRightRadius;
+        }
+
+        // Auto Layout
+        // If the frame has auto-layout, apply it to the component
+        if (node.layoutMode !== "NONE") {
+            component.layoutMode = node.layoutMode;
+            component.primaryAxisSizingMode = node.primaryAxisSizingMode;
+            component.counterAxisSizingMode = node.counterAxisSizingMode;
+            component.primaryAxisAlignItems = node.primaryAxisAlignItems;
+            component.counterAxisAlignItems = node.counterAxisAlignItems;
+            component.paddingLeft = node.paddingLeft;
+            component.paddingRight = node.paddingRight;
+            component.paddingTop = node.paddingTop;
+            component.paddingBottom = node.paddingBottom;
+            component.itemSpacing = node.itemSpacing;
+        }
+
+        // Move children
+        // Clone the list of children to iterate over, as appendChild modifies the live children list
+        const childrenToMove = [...node.children];
+        for (const child of childrenToMove) {
+            component.appendChild(child);
+        }
+
+        // Remove original frame
+        node.remove();
+
+        return {
+            id: component.id,
+            name: component.name,
+            type: "COMPONENT"
+        };
+    } catch (error) {
+        throw new Error(`Error creating component: ${error.message}`);
+    }
+}
