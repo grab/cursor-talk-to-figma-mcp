@@ -10,7 +10,8 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign } from '../handlers/nodeReaders.js';
 import { createRectangle, createFrame, createText, cloneNode } from '../handlers/nodeCreators.js';
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName } from '../handlers/nodeModifiers.js';
-import { setFillColor, setStrokeColor, setCornerRadius } from '../handlers/stylingHandlers.js';
+import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
+
 import { setLayoutMode, setPadding, setAxisAlign, setLayoutSizing, setItemSpacing } from '../handlers/layoutHandlers.js';
 import {
     getStyles,
@@ -20,12 +21,17 @@ import {
     getInstanceOverrides,
     getValidTargetInstances,
     getSourceInstanceData,
-    setInstanceOverrides
+    setInstanceOverrides,
+    createComponent
 } from '../handlers/componentHandlers.js';
+
 import { getReactions, setDefaultConnector, createConnections } from '../handlers/connectorHandlers.js';
 import { scanTextNodes, setMultipleTextContents } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
-import { getVariables, getNodeVariables, setBoundVariable } from '../handlers/variableHandlers.js';
+import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest } from '../handlers/variableHandlers.js';
+import { createStyle, applyStyle } from '../handlers/styleHandlers.js';
+import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
+
 
 // Constants
 const ERRORS = {
@@ -425,6 +431,43 @@ async function handleCommand(command, params) {
             return await getVariables(params);
         case "get_node_variables":
             return await getNodeVariables(params);
+
+        case "manage_variables":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            // Document level, no scope check needed for creation? 
+            // Often variables are global. But if we are scoped to a page/frame... variables are collection based.
+            // Collections are document global. So we allow it if not read-only.
+            return await handleVariableRequest(params);
+
+        case "create_style":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            // Styles are document global.
+            return await createStyle(params);
+
+        case "apply_style":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await applyStyle(params);
+
+        case "create_component":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await createComponent(params);
+
+        case "create_node_from_svg":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            // For creation, we check parent Scope
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            return await createNodeFromSvg(params);
+
+        case "set_effects":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await setEffects(params);
 
         default:
             throw new Error(`Unknown command: ${command}`);

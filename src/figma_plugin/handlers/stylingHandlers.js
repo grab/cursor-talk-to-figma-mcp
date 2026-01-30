@@ -180,3 +180,69 @@ export async function setCornerRadius(params) {
             "bottomLeftRadius" in node ? node.bottomLeftRadius : undefined,
     };
 }
+
+/**
+ * Sets effects (shadows, blurs) on a node
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the node to modify
+ * @param {Array} params.effects - Array of effect objects
+ * @returns {Promise<Object>} Result with node info and applied effects
+ */
+export async function setEffects(params) {
+    const { nodeId, effects } = params || {};
+
+    if (!nodeId) {
+        throw new Error("Missing nodeId parameter");
+    }
+
+    if (!effects || !Array.isArray(effects)) {
+        throw new Error("Missing effects parameter or it is not an array");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (!("effects" in node)) {
+        throw new Error(`Node does not support effects: ${nodeId}`);
+    }
+
+    // Validate and process effects (basic validation)
+    const processedEffects = effects.map(effect => {
+        if (!effect.type) {
+            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+        }
+
+        // Defaults for required fields if missing, to prevent crashes
+        const baseEffect = {
+            type: effect.type,
+            visible: effect.visible !== undefined ? effect.visible : true,
+        };
+
+        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+            return Object.assign({}, baseEffect, {
+                color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
+                offset: effect.offset || { x: 0, y: 4 },
+                radius: effect.radius !== undefined ? effect.radius : 4,
+                spread: effect.spread !== undefined ? effect.spread : 0,
+                blendMode: effect.blendMode || "NORMAL",
+                showShadowBehindNode: effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false,
+            });
+        } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+            return Object.assign({}, baseEffect, {
+                radius: effect.radius !== undefined ? effect.radius : 4,
+            });
+        }
+
+        return effect; // Pass through if it matches schema perfectly or is unknown type
+    });
+
+    node.effects = processedEffects;
+
+    return {
+        id: node.id,
+        name: node.name,
+        effects: node.effects
+    };
+}
