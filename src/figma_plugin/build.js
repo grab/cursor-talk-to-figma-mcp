@@ -18,7 +18,7 @@ async function build() {
     const ctx = await esbuild.context({
         entryPoints: [join(__dirname, 'src/main.js')],
         bundle: true,
-        outfile: join(__dirname, 'code.js'),
+        outfile: join(__dirname, 'dist/code.js'),
         format: 'iife',
         target: ['es2020'],
         platform: 'browser',

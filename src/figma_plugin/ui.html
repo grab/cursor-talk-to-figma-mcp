@@ -233,6 +233,10 @@
       color: #1a472a;
       border-color: #ffffff;
     }
+
+    button svg {
+      pointer-events: none;
+    }
   </style>
 </head>
 
@@ -257,8 +261,16 @@
     <div id="content-connection" class="tab-content active">
       <div class="section">
         <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode)</label>
-        <input type="text" id="scope-link" placeholder="Paste Figma Link to Restrict Editing Scope"
-          style="width: 100%; box-sizing: border-box;" />
+        <div style="display: flex; gap: 8px; align-items: stretch;">
+          <input type="text" id="scope-link" placeholder="Paste Figma Link for Editing" style="flex: 1;" />
+          <button id="btn-copy-link" class="secondary" disabled title="Copy Link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+          </button>
+        </div>
         <div id="scope-status" style="font-size: 11px; margin-top: 4px; display: none;"></div>
       </div>
 
@@ -333,6 +345,7 @@
     const connectButton = document.getElementById("btn-connect");
     const connectionStatus = document.getElementById("connection-status");
     const toast = document.getElementById("toast");
+    const copyLinkButton = document.getElementById("btn-copy-link");
 
     // Tabs
     const tabs = document.querySelectorAll(".tab");
@@ -386,18 +399,25 @@
       }, 2000);
     }
 
+    function copyTextToClipboard(text, successMessage) {
+      if (!text) return;
+      // Create a temporary textarea element to copy text
+      // This is required because navigator.clipboard may not be available in Figma iframe context
+      // or might require permissions that are tricky. The textarea method is reliable.
+      const el = document.createElement('textarea');
+      el.value = text;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      if (successMessage) {
+        showToast(successMessage);
+      }
+    }
+
     function copyChannelToClipboard() {
       if (state.channel) {
-        // Create a temporary textarea element to copy text
-        // This is required because navigator.clipboard may not be available in Figma iframe context
-        // or might require permissions that are tricky. The textarea method is reliable.
-        const el = document.createElement('textarea');
-        el.value = state.channel;
-        document.body.appendChild(el);
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-        showToast("Channel code copied: " + state.channel);
+        copyTextToClipboard(state.channel, "Channel code copied: " + state.channel);
       }
     }
 
@@ -412,7 +432,9 @@
         state.serverPort = port;
         state.socket = new WebSocket(`ws://localhost:${port}`);
 
+        let wasConnected = false;
         state.socket.onopen = () => {
+          wasConnected = true;
           // Use existing channel name if available, otherwise generate new one
           if (!state.channel) {
             state.channel = generateChannelName();
@@ -444,8 +466,8 @@
                 const statusHtml = `
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                         <span>Plugin Connected${!state.verifiedNodeId ? ' (Read-Only)' : ''}<br>Channel Code: <strong>${channelName}</strong></span>
-                        <button class="copy-btn" onclick="copyChannelToClipboard()" title="Copy Channel Code">
-                           Copy Code
+                        <button class="copy-btn" onclick="copyChannelToClipboard()" title="Copy Channel Code" style="padding: 4px;">
+                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                         </button>
                     </div>
                 `;
@@ -478,17 +500,24 @@
           }
         };
 
-        state.socket.onclose = () => {
+        state.socket.onclose = (event) => {
+          const previouslyConnected = wasConnected;
           state.connected = false;
           state.socket = null;
-          updateConnectionStatus(false, "Disconnected from server");
+
+          if (previouslyConnected) {
+            updateConnectionStatus(false, "Disconnected from server");
+          } else {
+            updateConnectionStatus(false, `Failed to connect. Is the MCP server running on port ${port}?`);
+          }
         };
 
         state.socket.onerror = (error) => {
           console.error("WebSocket error:", error);
-          updateConnectionStatus(false, "Connection error");
-          state.connected = false;
-          state.socket = null;
+          // onclose will handle the message if it's a failed connection
+          if (state.connected) {
+            updateConnectionStatus(false, "Connection error occurred");
+          }
         };
       } catch (error) {
         console.error("Connection error:", error);
@@ -636,9 +665,9 @@
 
     // Add this function after the generateId() function
     function generateChannelName() {
-      const characters = "abcdefghjkmnopqrstuvxyz023456789";
+      const characters = "abcdefghjkmnoprstuvxyz023456789";
       let result = "";
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 4; i++) {
         result += characters.charAt(
           Math.floor(Math.random() * characters.length)
         );
@@ -693,6 +722,9 @@
       const link = e.target.value.trim();
       const scopeStatus = document.getElementById("scope-status");
 
+      // Update copy button state
+      copyLinkButton.disabled = link.length === 0;
+
       if (link.length === 0) {
         state.verifiedNodeId = null;
         scopeStatus.style.display = 'none';
@@ -701,6 +733,11 @@
 
       parent.postMessage({ pluginMessage: { type: 'validate-scope-link', link } }, '*');
     });
+
+    // Copy link button click handler
+    copyLinkButton.onclick = () => {
+      copyTextToClipboard(scopeLinkInput.value, "Link copied to clipboard!");
+    };
 
 
 
@@ -818,6 +855,11 @@
           break;
       }
     };
+
+    // Ensure socket is closed when plugin window is closed
+    window.addEventListener('beforeunload', () => {
+      disconnectFromServer();
+    });
   </script>
 </body>
 
