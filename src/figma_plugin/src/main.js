@@ -145,7 +145,8 @@ figma.ui.onmessage = async (msg) => {
                     type: "scope-validation-result",
                     valid: true,
                     nodeName: node.name,
-                    nodeId: node.id
+                    nodeId: node.id,
+                    nodeType: node.type
                 });
             } else {
                 figma.ui.postMessage({ type: "scope-validation-result", valid: false, reason: "Node not found in current document" });

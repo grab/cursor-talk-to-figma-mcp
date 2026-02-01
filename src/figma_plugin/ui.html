@@ -837,7 +837,8 @@
           const scopeStatus = document.getElementById("scope-status");
           if (message.valid) {
             state.verifiedNodeId = message.nodeId;
-            scopeStatus.textContent = `✓ Scope: ${message.nodeName}`;
+            const scopeLabel = message.nodeType === 'PAGE' ? 'Page' : 'Layer';
+            scopeStatus.textContent = `✓ Editable Scope: [${scopeLabel}] ${message.nodeName}`;
             scopeStatus.style.color = '#4ade80'; // Green
             scopeStatus.style.display = 'block';
           } else {

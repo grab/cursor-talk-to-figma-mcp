@@ -208,6 +208,7 @@ The MCP server provides the following tools for interacting with Figma:
 |---|---|
 | `get_document_info` | Get detailed information about the current Figma document |
 | `get_nodes_info` | Get detailed information about one or more nodes by providing an array of node IDs |
+| `scan_nodes_by_types` | Find child nodes matching specific types (e.g., `COMPONENT`, `FRAME`) |
 | `set_selections` | Set selection to one or more nodes and scroll the viewport to show them |
 
 ### Node Creation
@@ -261,7 +262,6 @@ The MCP server provides the following tools for interacting with Figma:
 |---|---|
 | `get_annotations` | Get annotations on a node, including available categories |
 | `set_multiple_annotations` | Batch create or update annotations with markdown support |
-| `scan_nodes_by_types` | Find child nodes matching specific types (e.g., `COMPONENT`, `FRAME`) |
 
 ### Components & Styles
 
@@ -322,6 +322,52 @@ Built-in prompts guide complex multi-step design tasks:
 
 ---
 
+## Hallucination Safeguards
+
+This fork adds multiple layers of protection against AI hallucination damage. These safeguards are enforced inside the Figma plugin at execution time and cannot be bypassed by the MCP server or the AI agent.
+
+### Scope Restriction
+
+Editable scope is locked when the plugin connects.  
+If you paste a HTTP link to a specific Page/Layer, your AI assistant or agent will only be able to make changes to that Page/Layer or its child layers.  
+If you do **NOT** provide a HTTP link to a specific Page/Layer, your AI assistant or agent will **NOT** be able to make any changes to the designs in the current Figma file.    
+Every write operation is checked against this scope before it runs — anything outside the locked scope is denied outright.
+
+| Mode | Effect |
+|---|---|
+| Link provided | Writes allowed only within that node and its descendants |
+| No link (default) | All writes denied; reads always permitted |
+
+### Node Name Verification
+
+Every write tool requires the AI to supply the expected name of the target node (`nodeName`), or the parent node (`parentNodeName` for creation tools).  
+The plugin resolves the actual name by ID and compares it before executing. A mismatch is rejected with an error that directs the agent to refresh its context.
+
+This catches the most common hallucination failure mode: an AI confidently operating on a stale or fabricated node ID that no longer points to the intended target.
+
+| Parameter | Used by |
+|---|---|
+| `nodeName` | All single-node modification tools (17 tools) |
+| `parentNodeName` | All creation tools (4 tools) |
+| Per-item `nodeName` | All multi-node batch tools (6 tools) |
+
+---
+
+## Best Practices
+
+When working with Figma Edit MCP:
+
+1. Always join a channel first with `join_channel` before sending any other commands
+
+---
+
+## Notes
+### Automatic Node ID Normalization
+
+Node IDs copied from Figma URLs use dashes (`20485-41`), but the plugin API expects colons (`20485:41`).  The MCP server automatically converts dash-format IDs before forwarding, so either format works without manual intervention.
+
+---
+
 ## Acknowledgements
 
 This project is a fork of [grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp) by [sonnylazuardi](https://github.com/sonnylazuardi).  
@@ -334,18 +380,9 @@ Thanks to [@dusskapark](https://github.com/dusskapark) for the following contrib
 
 ---
 
-## Best Practices
-
-When working with Figma Edit MCP:
-
-1. Always join a channel first with `join_channel` before sending any other commands
-
-
----
-
 ## License
 
 The MIT License (MIT)
 
-Copyright (c) 2025 Github User sonnylazuardi
+Copyright (c) 2025 Github User sonnylazuardi  
 Copyright (c) 2026 Neo Product LLC

@@ -47,6 +47,81 @@ This guide is **specifically designed for AI agents** to understand, parse, and 
 4. Always validate checkpoints before continuing
 5. **CRITICAL**: Create and update visual progress tracking using Mermaid diagrams at each major checkpoint
 
+---
+
+## 🛡️ Hallucination Safeguards — Rules for AI Agents
+
+**Read this section before executing any Figma commands.**  
+These are hard constraints enforced by the plugin at execution time. They exist specifically to prevent AI agents from damaging designs through hallucinated or stale node references. Violating them will result in denied operations — the plugin will not execute the command.
+
+### 1. Scope is locked at connection time
+
+The user sets an editable scope when the Figma plugin connects. You cannot modify anything outside that scope, and you cannot change or extend the scope programmatically.
+
+- If the user connected **without** a HTTP link to a Figma Page/Layer, the entire session is **read-only**. No write commands will succeed.
+- If the user connected **with** a HTTP link to a Figma Page/Layer, writes are permitted only within that node and its child nodes.
+  
+  **Example:**
+  - User connects with `https://www.figma.com/design/12345/My-File?node-id=100-200`
+  - The editable scope is now the node with ID `100:200` and all its child nodes
+  - You can modify nodes within this scope, but not nodes outside it
+  - You cannot change or extend the scope programmatically  
+  
+<br>
+  
+To get a HTTP Link to a Figma **Page**, your user will have to follow the following steps:
+1. In Figma Desktop App, open the Figma file
+2. Right click on the page name in the Pages section on the left sidebar
+3. Click on "Copy link to page"
+4. Paste the link in the Link to Selection field in the Figma Edit MCP plugin  
+  
+<br>
+
+To get a HTTP Link to a Figma **Layer**, your user will have to follow the following steps:
+1. In Figma Desktop App, open the Figma file
+2. Right click on the Layer name in the Layers section on the left sidebar
+3. Click on "Copy/Paste as" -> "Copy link to selection"
+4. Paste the link in the Link to Selection field in the Figma Edit MCP plugin  
+
+<br>
+  
+**Error Response guide:**
+
+| Error received | What it means | What to do |
+|---|---|---|
+| `READ_ONLY_MODE` | Session is read-only | Inform the user. Only read commands are available. |
+| `OUTSIDE_SCOPE` | Target node is outside the locked scope | Do not retry with the same ID. Inform the user. |
+| `PARENT_OUTSIDE_SCOPE` | Creation target parent is outside scope | The parent you specified is not in the editable tree. |
+| `CLONING_SOURCE_NODE_OUTSIDE_SCOPE` | Cloning source node is outside editable scope | Do not retry with the same ID. Inform the user. |
+
+### 2. Every write command requires name verification
+
+All modification tools require a `nodeName` parameter. All creation tools require a `parentNodeName` parameter. Multi-node batch tools require a name on each individual item in the array. The plugin looks up the real name by ID and rejects the operation if it does not match.
+
+**How to get the correct name:**  
+Read the node first via `get_nodes_info` or `get_document_info`. Use the `name` field from the response verbatim. Do not guess, abbreviate, or fabricate node names.
+
+**Name x ID Mismatch Response Guide:**
+
+| Error received | What it means | What to do |
+|---|---|---|
+| `NAME_MISMATCH` | `nodeName` does not match the actual name of `nodeId` | Your context is stale or the ID is wrong. Call `get_nodes_info` to refresh, then retry with the correct ID and name. |
+| `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId` | Same as above — refresh context before retrying. |
+
+### 3. Do not assume anything about selection state
+
+There are no tools that read or act on "current selection." All tools require explicit node IDs. Never assume you know which node is selected in Figma — always discover nodes through `get_document_info` or `get_nodes_info`.
+
+### 4. Node IDs from Figma URLs work as-is
+
+Figma URLs contain node IDs with dashes (e.g., `20485-41`). The MCP server converts these to colon format (`20485:41`) automatically before forwarding to the plugin. Pass URL-format IDs through unchanged.
+
+### 5. Batch tools verify every item individually
+
+Tools like `delete_multiple_nodes`, `set_multiple_text_contents`, `set_multiple_annotations`, and `set_instance_overrides` run scope and name checks on each item in the array. A single invalid item fails the entire operation. Validate each item's ID and name before calling.
+
+---
+
 ## 📋 System Environment Detection
 
 **CRITICAL FOR AI AGENTS**: Execute these detection commands and use results for branching decisions.
@@ -759,11 +834,13 @@ Progress: 63% Complete - WebSocket Running ✅ - Installing Figma Plugin
 
 ### Step C.3: Install and Configure Figma Plugin
 
-#### 🔌 Install the Community Plugin
+#### 🔌 Install the Plugin Locally
 
-1. **Open the Plugin Page**:
-   - Navigate to: https://www.figma.com/community/plugin/1485687494525374295/figma-edit-mcp-plugin
-   - Click **"Install"** to add the plugin to your Figma account
+1. **Register the plugin with Figma**:
+   - In Figma Desktop, go to `Plugins` → `Development` → `New Plugin`
+   - Choose **"Link existing plugin"**
+   - Select the `src/figma_plugin/manifest.json` file from the cloned repository
+   - The plugin will now appear in your Figma development plugins
 
 2. **Open Figma and Run the Plugin**:
    - Open any Figma file (or create a new one)
