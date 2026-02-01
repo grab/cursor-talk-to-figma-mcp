@@ -1,21 +1,19 @@
 # Figma Edit MCP
 
-This project implements a Model Context Protocol (MCP) integration that allows AI coding assistants to communicate with Figma for reading designs and modifying them programmatically.
+Connect AI coding assistants to Figma via Model Context Protocol. Read designs, create and modify elements, manage components, variables, and styles — all programmatically through your AI assistant.
 
 **Supported AI Integrations:**
-- ✅ Cursor
-- ✅ GitHub Copilot in VS Code
-- ✅ Google Antigravity
-- ✅ Claude Code (VS Code & CLI)
-- ✅ Claude Desktop
-
-https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
+- Cursor
+- GitHub Copilot (VS Code)
+- Google Antigravity
+- Claude Code (VS Code & CLI)
+- Claude Desktop
 
 ## Project Structure
 
-- `src/mcp_server/` - TypeScript MCP server for Figma integration
-- `src/figma_plugin/` - Figma plugin for communicating with AI assistants
-- `src/socket.ts` - WebSocket server that facilitates communication between the MCP server and Figma plugin
+- `src/mcp_server/` — TypeScript MCP server implementing 40+ Figma tools
+- `src/figma_plugin/` — Figma plugin with a modular handler architecture
+- `src/socket.ts` — WebSocket server that bridges communication between the MCP server and the Figma plugin
 
 ## Quick Start
 
@@ -32,7 +30,7 @@ curl -fsSL https://bun.sh/install | bash
 bun setup
 ```
 
-This installs dependencies and builds the MCP server.
+This installs dependencies and builds both the MCP server and the Figma plugin.
 
 ### 3. Configure Integration
 
@@ -48,11 +46,11 @@ You'll see an interactive menu:
 
 Select an integration to configure:
 
-  1) Antigravity
-  2) VS Code / GitHub Copilot
+  1) Google Antigravity
+  2) Visual Studio Code (GitHub Copilot)
   3) Cursor
   4) Claude Desktop
-  5) Claude Code (CLI command)
+  5) Claude Code (Command Line, Visual Studio Code, Google Antigravity)
 
   q) Quit
 
@@ -65,9 +63,11 @@ Enter your choice:
 bun socket
 ```
 
+Keep this terminal running. The WebSocket server bridges communication between your AI assistant and the Figma plugin.
+
 ### 5. Install Figma Plugin
 
-Install from [Figma community page](https://www.figma.com/community/plugin/1485687494525374295/figma-edit-mcp-plugin) or [install locally](#figma-plugin-local-install)
+Install from [install locally](#figma-plugin-local-install)
 
 ---
 
@@ -75,23 +75,24 @@ Install from [Figma community page](https://www.figma.com/community/plugin/14856
 
 Run `bun integrate` and select the appropriate option:
 
-### Cursor
+### Google Antigravity
 
-Select option `3`. Configuration is created at `~/.cursor/mcp.json`.
+Select option `1`. Configuration is created at `~/.gemini/antigravity/mcp_config.json`. Restart Antigravity to load the MCP server — tools are then automatically available.
 
-### GitHub Copilot in VS Code
+### VS Code / GitHub Copilot
 
 1. Requires VS Code 1.102+ with Copilot
 2. Enable Agent Mode in Copilot settings
 3. Select option `2` (creates `~/Library/Application Support/Code/User/mcp.json`)
 4. Use `@workspace` or agent mode to access MCP tools
 
-### Google Antigravity
+### Cursor
 
-1. Select option `1`
-2. Configuration is created at `~/.gemini/antigravity/mcp_config.json`
-3. Restart Antigravity to load the MCP server
-4. MCP tools are automatically available
+Select option `3`. Configuration is created at `~/.cursor/mcp.json`.
+
+### Claude Desktop
+
+Select option `4`. Configuration is created at `~/Library/Application Support/Claude/claude_desktop_config.json`.
 
 ### Claude Code (VS Code & CLI)
 
@@ -103,10 +104,6 @@ claude mcp add FigmaEdit bun run /path/to/figma-edit-mcp/dist/server.js
 
 Replace `/path/to/figma-edit-mcp` with your actual installation path.
 
-### Claude Desktop
-
-Select option `4`. Configuration is created at `~/.config/claude/claude_desktop_config.json`.
-
 ---
 
 ## Manual Configuration
@@ -114,26 +111,11 @@ Select option `4`. Configuration is created at `~/.config/claude/claude_desktop_
 If you prefer manual setup, add the following to your MCP config file:
 
 | Integration | Config File Location |
-|-------------|---------------------|
+|---|---|
 | Cursor | `~/.cursor/mcp.json` |
 | VS Code / Copilot | `~/Library/Application Support/Code/User/mcp.json` |
 | Antigravity | `~/.gemini/antigravity/mcp_config.json` |
-| Claude Desktop | `~/.config/claude/claude_desktop_config.json` |
-
-### Using npm package (recommended for production)
-
-```json
-{
-  "mcpServers": {
-    "FigmaEdit": {
-      "command": "bunx",
-      "args": ["figma-edit-mcp@latest"]
-    }
-  }
-}
-```
-
-### Using local installation (for development)
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 
 ```json
 {
@@ -145,7 +127,6 @@ If you prefer manual setup, add the following to your MCP config file:
   }
 }
 ```
-
 
 ---
 
@@ -162,6 +143,9 @@ bun run build
 
 # Watch mode for development
 bun run dev
+
+# Build both MCP server and Figma plugin
+bun run build:all
 ```
 
 ### WebSocket Server
@@ -183,7 +167,7 @@ bun socket
 
 ## Windows + WSL Guide
 
-1. Install bun via powershell
+1. Install Bun via PowerShell
 
 ```bash
 powershell -c "irm bun.sh/install.ps1|iex"
@@ -196,7 +180,7 @@ powershell -c "irm bun.sh/install.ps1|iex"
 hostname: "0.0.0.0",
 ```
 
-3. Start the websocket
+3. Start the WebSocket server
 
 ```bash
 bun socket
@@ -206,11 +190,11 @@ bun socket
 
 ## Usage
 
-1. Start the WebSocket server
-2. Install the MCP server in your AI coding assistant
+1. Start the WebSocket server (`bun socket`)
+2. Install the MCP server in your AI coding assistant (`bun integrate`)
 3. Open Figma and run the Figma Edit MCP Plugin
-4. Connect the plugin to the WebSocket server by joining a channel using `join_channel`
-5. Use your AI assistant to communicate with Figma using the MCP tools
+4. Join a channel using the `join_channel` tool to establish communication
+5. Use your AI assistant to interact with Figma via the available MCP tools
 
 ---
 
@@ -220,139 +204,148 @@ The MCP server provides the following tools for interacting with Figma:
 
 ### Document & Selection
 
-- `get_document_info` - Get information about the current Figma document
-- `get_selection` - Get information about the current selection
-- `read_my_design` - Get detailed node information about the current selection without parameters
-- `get_node_info` - Get detailed information about a specific node
-- `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
-- `set_focus` - Set focus on a specific node by selecting it and scrolling viewport to it
-- `set_selections` - Set selection to multiple nodes and scroll viewport to show them
+| Tool | Description |
+|---|---|
+| `get_document_info` | Get detailed information about the current Figma document |
+| `get_nodes_info` | Get detailed information about one or more nodes by providing an array of node IDs |
+| `set_selections` | Set selection to one or more nodes and scroll the viewport to show them |
 
-### Annotations
+### Node Creation
 
-- `get_annotations` - Get all annotations in the current document or specific node
-- `set_annotation` - Create or update an annotation with markdown support
-- `set_multiple_annotations` - Batch create/update multiple annotations efficiently
-- `scan_nodes_by_types` - Scan for nodes with specific types (useful for finding annotation targets)
+| Tool | Description |
+|---|---|
+| `create_frame` | Create a frame with optional fill, stroke, and full auto-layout configuration |
+| `create_rectangle` | Create a rectangle with position, size, and optional name |
+| `create_text` | Create a text node with customizable font, size, weight, and color |
+| `create_node_from_svg` | Create a node from an SVG XML string |
 
-### Prototyping & Connections
+### Node Modification
 
-- `get_reactions` - Get all prototype reactions from nodes with visual highlight animation
-- `set_default_connector` - Set a copied FigJam connector as the default connector style for creating connections (must be set before creating connections)
-- `create_connections` - Create FigJam connector lines between nodes, based on prototype flows or custom mapping
-
-### Creating Elements
-
-- `create_rectangle` - Create a new rectangle with position, size, and optional name
-- `create_frame` - Create a new frame with position, size, and optional name
-- `create_text` - Create a new text node with customizable font properties
-
-### Modifying text content
-
-- `scan_text_nodes` - Scan text nodes with intelligent chunking for large designs
-- `set_text_content` - Set the text content of a single text node
-- `set_multiple_text_contents` - Batch update multiple text nodes efficiently
-
-### Auto Layout & Spacing
-
-- `set_layout_mode` - Set the layout mode and wrap behavior of a frame (NONE, HORIZONTAL, VERTICAL)
-- `set_padding` - Set padding values for an auto-layout frame (top, right, bottom, left)
-- `set_axis_align` - Set primary and counter axis alignment for auto-layout frames
-- `set_layout_sizing` - Set horizontal and vertical sizing modes for auto-layout frames (FIXED, HUG, FILL)
-- `set_item_spacing` - Set distance between children in an auto-layout frame
+| Tool | Description |
+|---|---|
+| `move_node` | Move a node to a new position |
+| `resize_node` | Resize a node to new dimensions |
+| `clone_node` | Clone an existing node with an optional position offset |
+| `delete_multiple_nodes` | Delete one or more nodes in a single operation |
+| `set_node_name` | Rename a node in the Figma layer panel |
 
 ### Styling
 
-- `set_fill_color` - Set the fill color of a node (RGBA)
-- `set_stroke_color` - Set the stroke color and weight of a node
-- `set_corner_radius` - Set the corner radius of a node with optional per-corner control
+| Tool | Description |
+|---|---|
+| `set_fill_color` | Set the fill color of a node (RGBA) |
+| `set_stroke_color` | Set the stroke color and weight of a node |
+| `set_corner_radius` | Set corner radius with optional per-corner control |
+| `set_effects` | Apply drop shadow, inner shadow, layer blur, or background blur |
 
-### Layout & Organization
+### Auto Layout & Spacing
 
-- `move_node` - Move a node to a new position
-- `resize_node` - Resize a node with new dimensions
-- `delete_node` - Delete a node
-- `delete_multiple_nodes` - Delete multiple nodes at once efficiently
-- `clone_node` - Create a copy of an existing node with optional position offset
+| Tool | Description |
+|---|---|
+| `set_layout_mode` | Set layout mode (`NONE`, `HORIZONTAL`, `VERTICAL`) and wrap behavior |
+| `set_padding` | Set padding values (top, right, bottom, left) for an auto-layout frame |
+| `set_axis_align` | Set primary and counter axis alignment for auto-layout frames |
+| `set_layout_sizing` | Set horizontal and vertical sizing modes (`FIXED`, `HUG`, `FILL`) |
+| `set_item_spacing` | Set spacing between children and across wrapped rows/columns |
+
+### Text Operations
+
+| Tool | Description |
+|---|---|
+| `scan_text_nodes` | Scan and retrieve all text nodes within a node, with chunking for large designs |
+| `set_multiple_text_contents` | Batch-update text content across multiple nodes in parallel |
+
+### Annotations
+
+| Tool | Description |
+|---|---|
+| `get_annotations` | Get annotations on a node, including available categories |
+| `set_multiple_annotations` | Batch create or update annotations with markdown support |
+| `scan_nodes_by_types` | Find child nodes matching specific types (e.g., `COMPONENT`, `FRAME`) |
 
 ### Components & Styles
 
-- `get_styles` - Get information about local styles
-- `get_local_components` - Get information about local components
-- `create_component_instance` - Create an instance of a component
-- `get_instance_overrides` - Extract override properties from a selected component instance
-- `set_instance_overrides` - Apply extracted overrides to target instances
+| Tool | Description |
+|---|---|
+| `get_styles` | List all local styles in the document |
+| `get_local_components` | List all local components in the document |
+| `create_style` | Create a named style (Text, Paint, Effect, or Grid) |
+| `apply_style` | Apply an existing named style to a node |
+| `create_component` | Convert a frame into a main component |
+| `create_component_instance` | Instantiate a component by key at a given position |
+| `get_instance_overrides` | Extract all override properties from a component instance |
+| `set_instance_overrides` | Apply extracted overrides to one or more target instances |
 
-### Export & Advanced
+### Variables
 
-- `export_node_as_image` - Export a node as an image (PNG, JPG, SVG, or PDF) - limited support on image currently returning base64 as text
+| Tool | Description |
+|---|---|
+| `get_variables` | List all variable collections, or get details for a specific variable by ID |
+| `get_node_variables` | Inspect bound variables and explicit variable modes on a node |
+| `set_bound_variable` | Bind a variable to a node property, or set an explicit variable mode |
+| `manage_variables` | Create collections, create variables, and set values or aliases |
+
+### Prototyping & Connections
+
+| Tool | Description |
+|---|---|
+| `get_reactions` | Extract prototype reactions (click flows, overlays) from nodes |
+| `set_default_connector` | Set a FigJam connector as the default style for new connections |
+| `create_connections` | Draw connector lines between nodes based on mappings or prototype flows |
+
+### Export
+
+| Tool | Description |
+|---|---|
+| `export_node_as_image` | Export a node as PNG, JPG, SVG, or PDF |
 
 ### Connection Management
 
-- `join_channel` - Join a specific channel to communicate with Figma
-
-### MCP Prompts
-
-The MCP server includes several helper prompts to guide you through complex design tasks:
-
-- `design_strategy` - Best practices for working with Figma designs
-- `read_design_strategy` - Best practices for reading Figma designs
-- `text_replacement_strategy` - Systematic approach for replacing text in Figma designs
-- `annotation_conversion_strategy` - Strategy for converting manual annotations to Figma's native annotations
-- `swap_overrides_instances` - Strategy for transferring overrides between component instances in Figma
-- `reaction_to_connector_strategy` - Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions', and guiding the use 'create_connections' in sequence
+| Tool | Description |
+|---|---|
+| `join_channel` | Join a WebSocket channel to establish communication with the Figma plugin |
 
 ---
 
-## Design Automation Examples
+## MCP Prompts
 
-**Bulk text content replacement**
+Built-in prompts guide complex multi-step design tasks:
 
-Thanks to [@dusskapark](https://github.com/dusskapark) for contributing the bulk text replacement feature. Here is the [demo video](https://www.youtube.com/watch?v=j05gGT3xfCs).
+| Prompt | Description |
+|---|---|
+| `design_strategy` | Best practices for creating Figma designs with proper hierarchy and naming |
+| `read_design_strategy` | Best practices for reading and exploring Figma designs |
+| `text_replacement_strategy` | Chunked, progressive approach to bulk text replacement with visual verification |
+| `annotation_conversion_strategy` | Convert legacy manual annotations to Figma's native annotation system |
+| `swap_overrides_instances` | Transfer component instance overrides from a source to multiple targets |
+| `reaction_to_connector_strategy` | Convert prototype reaction flows into visual FigJam connector lines |
 
-**Instance Override Propagation**
-Another contribution from [@dusskapark](https://github.com/dusskapark)
-Propagate component instance overrides from a source instance to multiple target instances with a single command. This feature dramatically reduces repetitive design work when working with component instances that need similar customizations. Check out our [demo video](https://youtu.be/uvuT8LByroI).
+---
+
+## Acknowledgements
+
+This project is a fork of [grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp) by [sonnylazuardi](https://github.com/sonnylazuardi).  
+Thank you to the original authors and contributors for the foundation this project builds on.
+
+Thanks to [@dusskapark](https://github.com/dusskapark) for the following contributions:
+
+- **Bulk text content replacement** — Batch-update text across large designs efficiently. [Demo video](https://www.youtube.com/watch?v=j05gGT3xfCs)
+- **Instance override propagation** — Propagate component instance overrides from a source to multiple targets in a single command, dramatically reducing repetitive design work. [Demo video](https://youtu.be/uvuT8LByroI)
 
 ---
 
 ## Best Practices
 
-When working with the Figma MCP:
+When working with Figma Edit MCP:
 
-1. Always join a channel before sending commands
-2. Get document overview using `get_document_info` first
-3. Check current selection with `get_selection` before modifications
-4. Use appropriate creation tools based on needs:
-   - `create_frame` for containers
-   - `create_rectangle` for basic shapes
-   - `create_text` for text elements
-5. Verify changes using `get_node_info`
-6. Use component instances when possible for consistency
-7. Handle errors appropriately as all commands can throw exceptions
-8. For large designs:
-   - Use chunking parameters in `scan_text_nodes`
-   - Monitor progress through WebSocket updates
-   - Implement appropriate error handling
-9. For text operations:
-   - Use batch operations when possible
-   - Consider structural relationships
-   - Verify changes with targeted exports
-10. For converting legacy annotations:
-    - Scan text nodes to identify numbered markers and descriptions
-    - Use `scan_nodes_by_types` to find UI elements that annotations refer to
-    - Match markers with their target elements using path, name, or proximity
-    - Categorize annotations appropriately with `get_annotations`
-    - Create native annotations with `set_multiple_annotations` in batches
-    - Verify all annotations are properly linked to their targets
-    - Delete legacy annotation nodes after successful conversion
-11. Visualize prototype noodles as FigJam connectors:
-    - Use `get_reactions` to extract prototype flows,
-    - set a default connector with `set_default_connector`,
-    - and generate connector lines with `create_connections` for clear visual flow mapping.
+1. Always join a channel first with `join_channel` before sending any other commands
+
 
 ---
 
 ## License
 
-MIT
+The MIT License (MIT)
+
+Copyright (c) 2025 Github User sonnylazuardi
+Copyright (c) 2026 Neo Product LLC

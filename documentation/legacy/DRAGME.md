@@ -1,4 +1,4 @@
-# README for AI Agent: Figma Edit MCP Setup Guide
+# README for AI Agent: Cursor-Figma MCP Setup Guide
 
 ## 🤖 AI Agent Decision Flow
 
@@ -7,40 +7,40 @@ flowchart TD
     A[Start Setup] --> B{System Check}
     B -->|✅ Pass| C{Admin Access?}
     B -->|❌ Failed| Z[❌ Fix Prerequisites]
-
-    C -->|✅ Yes| D[Method A: Full Install<br/>Homebrew or Direct + Bun]
-    C -->|❌ No| E[Method B: Minimal<br/>No System Changes]
-
-    D --> F[Clone & Build]
+    
+    C -->|✅ Yes| D[Method A: Full Install<br/>Homebrew + Bun]
+    C -->|❌ No| E[Method B: Cursor-Only<br/>No System Changes]
+    
+    D --> F[Clone in Cursor]
     E --> F
-
-    F --> G[Configure MCP Integration]
+    
+    F --> G[Configure MCP]
     G --> H{MCP Connected?}
     H -->|✅ Yes| I[Start WebSocket]
     H -->|❌ No| J[Debug & Retry]
-
+    
     I --> K[Install Figma Plugin]
     K --> L[Test Integration]
     L --> M[✅ Complete]
-
+    
     J --> H
 ```
 
 ## 🎯 Objective
 
-Install and configure Figma Edit MCP with **AI-agent-friendly decision trees** and fail-safe checkpoints at each step. This guide covers cloning the repository, installing dependencies, configuring MCP for your AI coding assistant, and connecting the Figma plugin.
+Install and configure Cursor-Figma MCP integration with **AI-agent-friendly decision trees** and fail-safe checkpoints at each step. This guide uses Cursor's built-in Git clone functionality to directly clone the official repository, simplifying the setup process.
 
 ### 🤖 For AI Agents Reading This Guide
 
 This guide is **specifically designed for AI agents** to understand, parse, and execute setup instructions autonomously. Each section includes:
 
 - **Clear boolean decision points** for branching logic
-- **Explicit command verification steps** with expected outputs
+- **Explicit command verification steps** with expected outputs  
 - **Fallback strategies** when primary methods fail
 - **Environment-specific instructions** based on system capabilities
 - **Checkpoint validations** before proceeding to next steps
 
-**AI Agent Instructions**:
+**AI Agent Instructions**: 
 1. Execute each command and verify the expected output
 2. Follow the branching logic based on system environment
 3. If any step fails, use the provided fallback methods
@@ -59,7 +59,7 @@ echo "=== SYSTEM ENVIRONMENT DETECTION ==="
 OS_TYPE=$(uname -s)
 echo "OS_TYPE: $OS_TYPE"
 
-# 2. Shell Type Detection
+# 2. Shell Type Detection  
 echo "SHELL_TYPE: $SHELL"
 
 # 3. Homebrew Availability
@@ -80,14 +80,18 @@ if [ "$BUN_AVAILABLE" = "YES" ]; then
     echo "BUN_VERSION: $BUN_VERSION"
 fi
 
-# 6. Git Availability
+# 6. Cursor IDE Availability
+CURSOR_AVAILABLE=$(which cursor >/dev/null 2>&1 && echo "YES" || echo "NO")
+echo "CURSOR_AVAILABLE: $CURSOR_AVAILABLE"
+
+# 7. Git Availability
 GIT_AVAILABLE=$(which git >/dev/null 2>&1 && echo "YES" || echo "NO")
 if [ "$GIT_AVAILABLE" = "YES" ]; then
     GIT_VERSION=$(git --version 2>/dev/null || echo "UNKNOWN")
     echo "GIT_VERSION: $GIT_VERSION"
 fi
 
-# 7. Admin/Sudo Access Check
+# 8. Admin/Sudo Access Check
 SUDO_AVAILABLE=$(sudo -n true 2>/dev/null && echo "YES" || echo "NO")
 echo "SUDO_AVAILABLE: $SUDO_AVAILABLE"
 
@@ -102,7 +106,7 @@ echo "=== DETECTION COMPLETE ==="
 
 Use these exact status indicators:
 - ✅ **COMPLETED** - Step finished successfully
-- 🔄 **CURRENT** - Currently executing this step
+- 🔄 **CURRENT** - Currently executing this step  
 - ⏳ **PENDING** - Not started yet
 - ❌ **FAILED** - Step failed, needs attention
 - ⚠️ **WARNING** - Step completed with warnings
@@ -114,13 +118,13 @@ Use these exact status indicators:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method Selection]
-    B --> C[⚡ Dependency Installation]
+    B --> C[⚡ Dependency Installation] 
     C --> D[⚙️ MCP setup and configuration]
     D --> E[🌐 WebSocket Server]
     E --> F[🔌 Figma Plugin]
     F --> G[🧪 Integration Test]
     G --> H[✅ Setup Complete]
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -138,17 +142,17 @@ graph TD
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method Selection]
-    B --> C[⚡ Dependency Installation]
+    B --> C[⚡ Dependency Installation] 
     C --> D[⚙️ MCP setup and configuration]
     D --> E[🌐 WebSocket Server]
     E --> F[🔌 Figma Plugin]
     F --> G[🧪 Integration Test]
     G --> H[✅ Setup Complete]
-
+    
     class A completed
     class B current
     class C,D,E,F,G,H pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -164,15 +168,15 @@ graph TD
 ```mermaid
 graph LR
     A1[🍺 Homebrew Check] --> A2[📦 Install Dependencies]
-    A2 --> A3[⚙️ MCP Setup]
+    A2 --> A3[⚙️ MCP Setup]  
     A3 --> A4[✅ Ready for WebSocket]
 ```
 
-#### For Method B (Minimal Setup):
+#### For Method B (Cursor-Only):
 ```mermaid
 graph LR
-    B1[🖥️ Project Cloned] --> B2[📖 Setup Dependencies]
-    B2 --> B3[⚙️ MCP Setup]
+    B1[🖥️ Project Already Open] --> B2[📖 Setup Dependencies]
+    B2 --> B3[⚙️ MCP Setup] 
     B3 --> B4[✅ Ready for WebSocket]
 ```
 
@@ -181,7 +185,7 @@ graph LR
 **AI Agents MUST update progress diagram at these checkpoints:**
 
 1. **After Environment Detection** (Step 1)
-2. **After Method Selection** (Step 2)
+2. **After Method Selection** (Step 2)  
 3. **After Dependency Installation** (Step 3)
 4. **After MCP Setup and Configuration** (Step 4)
 5. **After WebSocket Start** (Step 5)
@@ -197,7 +201,7 @@ graph LR
 CHECKPOINT [STEP_NUMBER]: [STEP_NAME]
 
 Please create/update the progress tracking diagram to show:
-- Current step: [STEP_NAME]
+- Current step: [STEP_NAME] 
 - Status: [✅ COMPLETED / 🔄 CURRENT / ❌ FAILED]
 - Next step: [NEXT_STEP_NAME]
 - Any warnings or issues encountered
@@ -212,16 +216,16 @@ Based on the detection results above, AI agents should follow this decision tree
 ```bash
 # AI Agent Decision Variables (set based on detection above)
 HOMEBREW_AVAILABLE="YES"  # or "NO"
-NODE_AVAILABLE="YES"      # or "NO"
+NODE_AVAILABLE="YES"      # or "NO" 
 BUN_AVAILABLE="YES"       # or "NO"
-GIT_AVAILABLE="YES"       # or "NO"
+CURSOR_AVAILABLE="YES"    # or "NO"
 SUDO_AVAILABLE="YES"      # or "NO"
 ```
 
 **Decision Tree**:
 - IF `HOMEBREW_AVAILABLE="YES"` AND `SUDO_AVAILABLE="YES"` → **Method A1: Homebrew Installation**
-- ELIF `SUDO_AVAILABLE="YES"` AND `HOMEBREW_AVAILABLE="NO"` → **Method A2: Direct Installation**
-- ELIF `GIT_AVAILABLE="YES"` AND `SUDO_AVAILABLE="NO"` → **Method B: Minimal Setup**
+- ELIF `SUDO_AVAILABLE="YES"` AND `HOMEBREW_AVAILABLE="NO"` → **Method A2: Direct Installation**  
+- ELIF `CURSOR_AVAILABLE="YES"` AND `SUDO_AVAILABLE="NO"` → **Method B: Cursor-Only Setup**
 - ELSE → **Error: Insufficient System Access**
 
 ## 🛡️ Method Selection Based on Environment
@@ -232,16 +236,16 @@ SUDO_AVAILABLE="YES"      # or "NO"
 - Cleanest dependency management
 - Best for macOS systems with Homebrew
 
-### 🔧 Method A2: Direct Installation
+### 🔧 Method A2: Direct Installation  
 **Conditions**: `SUDO_AVAILABLE="YES"` AND `HOMEBREW_AVAILABLE="NO"`
 - Direct installation without package manager
 - For systems without Homebrew but with admin access
 - Manual dependency management
 
-### 📱 Method B: Minimal Setup
-**Conditions**: `GIT_AVAILABLE="YES"` AND `SUDO_AVAILABLE="NO"`
-- No system-wide installations required
-- Assumes Bun is already available or can be installed without admin
+### 📱 Method B: Cursor-Only Setup
+**Conditions**: `CURSOR_AVAILABLE="YES"` AND `SUDO_AVAILABLE="NO"`
+- No system-wide installations
+- Uses Cursor's built-in capabilities
 - For restricted environments
 
 ---
@@ -260,15 +264,15 @@ Please create the Method A1 progress tracking diagram:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method A1 Selected]
-    B --> C[🍺 Homebrew Check]
+    B --> C[🍺 Homebrew Check] 
     C --> D[📦 Install Dependencies]
     D --> E[⚙️ MCP Setup]
     E --> F[🚀 Ready for WebSocket]
-
+    
     class A completed
     class B current
     class C,D,E,F pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -301,7 +305,7 @@ else
     echo "✅ Node.js already available: $NODE_VERSION"
 fi
 
-# Install Bun if not available
+# Install Bun if not available  
 if [ "$BUN_AVAILABLE" = "NO" ]; then
     echo "Installing Bun via Homebrew..."
     brew install bun
@@ -315,8 +319,9 @@ fi
 # Verify installations
 echo "=== DEPENDENCY VERIFICATION ==="
 node --version && echo "✅ Node.js working"
-bun --version && echo "✅ Bun working"
+bun --version && echo "✅ Bun working"  
 git --version && echo "✅ Git working"
+which cursor && echo "✅ Cursor available" || echo "❌ Install Cursor IDE manually"
 ```
 
 **CHECKPOINT A1.1**: All dependencies must show ✅ before proceeding.
@@ -331,37 +336,43 @@ Update Method A1 progress - mark Homebrew Check and Dependencies as completed:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method A1 Selected]
-    B --> C[🍺 Homebrew Check]
+    B --> C[🍺 Homebrew Check] 
     C --> D[📦 Install Dependencies]
     D --> E[⚙️ MCP Setup]
     E --> F[🚀 Ready for WebSocket]
-
+    
     class A,B,C,D completed
     class E current
     class F pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
 ```
 ```
 
-### Step A1.2: Clone, Build, and Configure MCP
+### Step A1.2: MCP Setup via Homebrew Method
+
+**🎯 Project is already cloned and open in Cursor IDE**
+
+1. **Verify project structure**:
 
 ```bash
-# Clone the repository
-git clone https://github.com/neozhehan/figma-edit-mcp.git
-cd figma-edit-mcp
+# Verify current directory (should already be in cursor-talk-to-figma-mcp)
+pwd | grep "cursor-talk-to-figma-mcp" && echo "✅ Correct directory" || echo "❌ ERROR: Wrong directory"
 
 # Verify project structure
 ls package.json src && echo "✅ Project structure valid" || echo "❌ ERROR: Invalid project structure"
 
-# Install dependencies and build
+# Install dependencies and setup
 bun install
 bun run build
 
-# Run setup (installs deps, builds MCP server and Figma plugin)
+# Run setup (this configures MCP automatically)
 bun setup && echo "✅ Setup complete" || echo "❌ ERROR: Setup failed"
+
+# Verify MCP config was created
+test -f .cursor/mcp.json && echo "✅ MCP config created" || echo "❌ ERROR: MCP config missing"
 ```
 
 **AI AGENTS**: Update progress after Method A1 completion:
@@ -374,13 +385,13 @@ Method A1 fully completed, ready for common steps:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method A1 Selected]
-    B --> C[🍺 Homebrew Check]
+    B --> C[🍺 Homebrew Check] 
     C --> D[📦 Install Dependencies]
     D --> E[⚙️ MCP Setup]
     E --> F[🚀 Ready for WebSocket]
-
+    
     class A,B,C,D,E,F completed
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
 ```
 
@@ -405,14 +416,14 @@ Please create the Method A2 progress tracking diagram:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method A2 Selected]
-    B --> C[⚡ Install Bun Direct]
+    B --> C[⚡ Install Bun Direct] 
     C --> D[⚙️ MCP Setup]
     D --> E[🚀 Ready for WebSocket]
-
+    
     class A completed
     class B current
     class C,D,E pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -432,7 +443,7 @@ graph TD
 # Install Bun directly (requires internet access)
 curl -fsSL https://bun.sh/install | bash
 
-# Reload shell environment
+# Reload shell environment 
 if [[ "$SHELL" == *"zsh"* ]]; then
     source ~/.zshrc 2>/dev/null || echo "⚠️ No .zshrc found"
     echo "🐚 Using Zsh shell"
@@ -457,32 +468,36 @@ Update Method A2 progress - Bun installation completed:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method A2 Selected]
-    B --> C[⚡ Install Bun Direct]
+    B --> C[⚡ Install Bun Direct] 
     C --> D[⚙️ MCP Setup]
     D --> E[🚀 Ready for WebSocket]
-
+    
     class A,B,C completed
     class D current
     class E pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
 ```
 ```
 
-### Step A2.2: Clone, Build, and Configure MCP
+### Step A2.2: MCP Setup via Direct Method
+
+**🎯 Project is already cloned and open in Cursor IDE**
+
+1. **Verify project setup**:
 
 ```bash
-# Clone the repository
-git clone https://github.com/neozhehan/figma-edit-mcp.git
-cd figma-edit-mcp
+# Verify current directory (should already be in cursor-talk-to-figma-mcp)
+pwd | grep "cursor-talk-to-figma-mcp" && echo "✅ Correct directory" || echo "❌ ERROR: Wrong directory"
 
 # Verify and setup
 ls package.json src && echo "✅ Project structure valid" || echo "❌ ERROR: Invalid project structure"
 bun install
 bun run build
 bun setup && echo "✅ Setup complete" || echo "❌ ERROR: Setup failed"
+test -f .cursor/mcp.json && echo "✅ MCP config created" || echo "❌ ERROR: MCP config missing"
 ```
 
 **AI AGENTS**: Update progress after Method A2 completion:
@@ -495,12 +510,12 @@ Method A2 fully completed, ready for common steps:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method A2 Selected]
-    B --> C[⚡ Install Bun Direct]
+    B --> C[⚡ Install Bun Direct] 
     C --> D[⚙️ MCP Setup]
     D --> E[🚀 Ready for WebSocket]
-
+    
     class A,B,C,D,E completed
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
 ```
 
@@ -511,29 +526,29 @@ Progress: Method A2 100% Complete ✅ - Proceeding to Common Steps
 
 ---
 
-## 📱 Method B: Minimal Setup
+## 📱 Method B: Cursor-Only Setup
 
 ### 📊 Progress Tracking for Method B
 
 **AI AGENTS**: Start by creating Method B progress diagram:
 
 ```
-CHECKPOINT 1: STARTING METHOD B - MINIMAL SETUP
+CHECKPOINT 1: STARTING METHOD B - CURSOR-ONLY SETUP
 
 Please create the Method B progress tracking diagram:
 
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method B Selected]
-    B --> C[🖥️ Clone Project]
+    B --> C[🖥️ Project Already Open] 
     C --> D[📖 Setup Dependencies]
     D --> E[⚙️ MCP Setup]
     E --> F[🚀 Ready for WebSocket]
-
+    
     class A completed
     class B current
     class C,D,E,F pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -542,67 +557,76 @@ graph TD
 
 ### Prerequisites Check for Method B
 ```bash
-# Verify minimal setup conditions
-[ "$GIT_AVAILABLE" = "YES" ] && echo "✅ Git available" || echo "❌ ERROR: Install Git first"
-[ "$BUN_AVAILABLE" = "YES" ] && echo "✅ Bun available" || echo "⚠️ WARNING: Bun not found — install it before continuing"
+# Verify Cursor-only setup conditions
+[ "$CURSOR_AVAILABLE" = "YES" ] && echo "✅ Cursor IDE available" || echo "❌ ERROR: Install Cursor IDE first"
+[ "$SUDO_AVAILABLE" = "NO" ] && echo "✅ Restricted environment confirmed" || echo "⚠️ Admin access available, consider Method A"
 ```
 
-### Step B.1: Clone and Verify Project
+### Step B.1: Verify Project is Open in Cursor
+
+**🎯 Project is already cloned and open in Cursor IDE**
+
+1. **Verify project is properly loaded**:
+   - Confirm Cursor IDE has the project open
+   - Open terminal in Cursor: `Terminal > New Terminal` (or `Ctrl+Shift+`)
+
+### Step B.2: Setup Dependencies in Cursor
 
 ```bash
-# Clone the repository
-git clone https://github.com/neozhehan/figma-edit-mcp.git
-cd figma-edit-mcp
+# Verify current directory (should already be in cursor-talk-to-figma-mcp)
+pwd | grep "cursor-talk-to-figma-mcp" && echo "✅ Correct directory" || echo "❌ ERROR: Wrong directory"
 
 # Verify project structure
 ls package.json src && echo "✅ Project structure valid" || echo "❌ ERROR: Invalid project structure"
 ```
 
-### Step B.2: Setup Dependencies
-
-```bash
-# Install dependencies and build
-bun install
-bun run build
-bun setup && echo "✅ Setup complete" || echo "❌ ERROR: Setup failed"
-```
-
-**AI AGENTS**: Update progress after project setup:
+**AI AGENTS**: Update progress after project cloning:
 
 ```
-CHECKPOINT 2: PROJECT CLONED AND BUILT
+CHECKPOINT 2: PROJECT CLONED IN CURSOR
 
-Update Method B progress - project setup completed:
+Update Method B progress - project cloned successfully:
 
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method B Selected]
-    B --> C[🖥️ Clone Project]
+    B --> C[🖥️ Project Already Open] 
     C --> D[📖 Setup Dependencies]
     D --> E[⚙️ MCP Setup]
     E --> F[🚀 Ready for WebSocket]
-
+    
     class A,B,C,D completed
     class E current
     class F pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
 ```
 ```
 
-### Step B.3: Configure MCP Integration
+### Step B.3: Follow README Setup in Cursor
 
-Open the project directory in your IDE, then run the integration script:
+**📖 CRITICAL FOR AI AGENTS**: Ask the AI assistant in Cursor to read and execute the README:
 
-```bash
-bun integrate
 ```
+Please read the @readme.md file and help me set up this project by following the installation instructions step by step.
 
-Follow the interactive menu to select your AI coding assistant integration.
+IMPORTANT: For each step in the setup process, please:
+1. Create a Mermaid flowchart showing the complete installation process
+2. Highlight which step we're currently on  
+3. Show what steps are completed, current, and upcoming
+4. Include brief descriptions of what each step does
+5. Update the diagram as we progress through each step
 
-**📖 CRITICAL FOR AI AGENTS**: After running the integrate command, verify the MCP configuration was created for your chosen integration. Refer to the manual configuration table in the readme.md for the expected config file locations.
+Use this Mermaid template structure:
+- Use different colors/styles to show: ✅ Completed, 🔄 Current, ⏳ Upcoming  
+- Include step numbers and brief descriptions
+- Show the flow from Prerequisites → Installation → Configuration → Testing
+- Make it visually clear where we are in the process
+
+This will help track overall progress and determine next steps at each stage.
+```
 
 **AI AGENTS**: Update progress after Method B completion:
 
@@ -614,13 +638,13 @@ Method B fully completed, ready for common steps:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method B Selected]
-    B --> C[🖥️ Clone Project]
+    B --> C[🖥️ Project Already Open] 
     C --> D[📖 Setup Dependencies]
     D --> E[⚙️ MCP Setup]
     E --> F[🚀 Ready for WebSocket]
-
+    
     class A,B,C,D,E,F completed
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
 ```
 
@@ -635,25 +659,32 @@ Progress: Method B 100% Complete ✅ - Proceeding to Common Steps
 
 ### Step C.1: Verify MCP Configuration
 
-**🚨 CRITICAL FOR AI AGENTS**: Verify the project is properly built and the MCP configuration exists.
+**🚨 CRITICAL FOR AI AGENTS**: Project is already cloned and open in Cursor.
 
 ```bash
-# Verify current directory
-pwd | grep "figma-edit-mcp" && echo "✅ Correct directory" || echo "❌ ERROR: Wrong directory"
+# Verify current directory (should already be in cursor-talk-to-figma-mcp)
+pwd | grep "cursor-talk-to-figma-mcp" && echo "✅ Correct directory" || echo "❌ ERROR: Wrong directory"
 
 # Verify project structure
 ls package.json src && echo "✅ Project structure valid" || echo "❌ ERROR: Invalid project structure"
 
-# Verify the dist output exists
-test -f dist/server.js && echo "✅ MCP server built" || echo "❌ ERROR: Run 'bun run build' first"
+# Verify MCP config exists (created by bun setup)
+if [ -f ".cursor/mcp.json" ]; then
+    echo "✅ MCP config found"
+else
+    echo "⚠️ MCP config not found - running setup..."
+    bun setup
+fi
 
-# Run integrate if not already done
-echo "💡 If you haven't run 'bun integrate' yet, do so now to configure your AI assistant."
+echo "✅ Project verified - MCP should be configured"
 ```
 
-**CHECKPOINT C.1**: Verify in your AI coding assistant's settings that "FigmaEdit" shows as connected. For Cursor, open Settings (`Cmd+,` on Mac, `Ctrl+,` on Windows/Linux) and search "MCP".
+**CHECKPOINT C.1**: Verify in Cursor:
+1. Open Settings (`Cmd+,` on Mac, `Ctrl+,` on Windows/Linux)
+2. Search "MCP"  
+3. Confirm "TalkToFigma" shows as "Connected"
 
-**AI AGENTS**: Update overall progress after MCP configuration:
+**AI AGENTS**: Update overall progress after Cursor launch:
 
 ```
 CHECKPOINT 3: MCP SETUP AND CONFIGURATION COMPLETE
@@ -663,17 +694,17 @@ Update overall progress - MCP setup and configured:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method Selection]
-    B --> C[⚡ Dependency Installation]
+    B --> C[⚡ Dependency Installation] 
     C --> D[⚙️ MCP setup and configuration]
     D --> E[🌐 WebSocket Server]
     E --> F[🔌 Figma Plugin]
     F --> G[🧪 Integration Test]
     G --> H[✅ Setup Complete]
-
+    
     class A,B,C,D completed
     class E current
     class F,G,H pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -684,11 +715,11 @@ Progress: 50% Complete - MCP Configured ✅ - Starting WebSocket Server
 
 ### Step C.2: Start WebSocket Server
 
-To ensure stability and easy monitoring, run the WebSocket server in the foreground. This dedicates a terminal to the server, confirms it's always running, and saves all logs to a file for later review.
+To ensure stability and easy monitoring, we will run the WebSocket server in the foreground. This is the recommended method as it dedicates a terminal to the server, confirming it's always running, and saves all logs to a file for later review.
 
 **How to Start and Monitor the Server:**
 
-1.  **Start the Server**: Open a new terminal in your IDE and run the following command. The terminal will become unresponsive, which means the server is running correctly.
+1.  **Start the Server**: Open a new terminal in Cursor and run the following command. The terminal will become unresponsive, which means the server is running correctly.
     ```bash
     # Runs the server in the foreground and saves all logs to websocket.log
     bun socket > websocket.log 2>&1
@@ -706,9 +737,11 @@ To ensure stability and easy monitoring, run the WebSocket server in the foregro
 
 ### 🔍 Verify WebSocket Server Status
 
-**🚨 CRITICAL FOR AI AGENTS**: Use your IDE's terminal monitoring to verify WebSocket server status:
+**🚨 CRITICAL FOR AI AGENTS**: Use Cursor's `@Terminals` to monitor WebSocket server status:
 
 1. **Check Active Terminals**:
+   - In Cursor, type `@Terminals` in chat
+   - This will show all currently running terminal processes
    - Verify you can see the WebSocket server terminal running
    - Confirm the server shows "WebSocket server running on port 3055" message
 
@@ -716,17 +749,17 @@ To ensure stability and easy monitoring, run the WebSocket server in the foregro
    ```bash
    # In a new terminal (don't close the WebSocket terminal!)
    curl -I http://localhost:3055 2>/dev/null && echo "✅ WebSocket server responding" || echo "❌ Server not responding"
-
+   
    # Check port status
    lsof -i :3055 && echo "✅ Port 3055 in use by WebSocket server" || echo "❌ Port 3055 not in use"
    ```
 
 3. **Monitor Server Logs**:
-   - Keep the WebSocket terminal visible
-   - Watch for connection messages when the Figma plugin connects
+   - Keep the WebSocket terminal visible in Cursor
+   - Watch for connection messages when Figma plugin connects
    - Server logs will show plugin connection status in real-time
 
-**⚠️ IMPORTANT**: Do NOT close the WebSocket terminal — it must stay running throughout the entire Figma integration session.
+**⚠️ IMPORTANT**: Do NOT close the WebSocket terminal - it must stay running throughout the entire Figma integration session.
 
 **AI AGENTS**: Update progress after WebSocket server start:
 
@@ -738,17 +771,17 @@ Update progress - WebSocket server successfully started:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method Selection]
-    B --> C[⚡ Dependency Installation]
+    B --> C[⚡ Dependency Installation] 
     C --> D[⚙️ MCP setup and configuration]
     D --> E[🌐 WebSocket Server]
     E --> F[🔌 Figma Plugin]
     F --> G[🧪 Integration Test]
     G --> H[✅ Setup Complete]
-
+    
     class A,B,C,D,E completed
     class F current
     class G,H pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -762,12 +795,12 @@ Progress: 63% Complete - WebSocket Running ✅ - Installing Figma Plugin
 #### 🔌 Install the Community Plugin
 
 1. **Open the Plugin Page**:
-   - Navigate to: https://www.figma.com/community/plugin/1485687494525374295/figma-edit-mcp-plugin
+   - Navigate to: https://www.figma.com/community/plugin/1485687494525374295/cursor-talk-to-figma-mcp-plugin
    - Click **"Install"** to add the plugin to your Figma account
 
 2. **Open Figma and Run the Plugin**:
    - Open any Figma file (or create a new one)
-   - Go to `Plugins` menu → `Figma Edit MCP Plugin`
+   - Go to `Plugins` menu → `Cursor Talk to Figma MCP Plugin`
    - The plugin panel will open
 
 #### ⚙️ Configure Plugin to Connect to Local WebSocket
@@ -781,23 +814,26 @@ Progress: 63% Complete - WebSocket Running ✅ - Installing Figma Plugin
 
 2. **Verify Connection**:
    - The plugin should show **"Connected"** status
-   - You should see a green indicator or success message in the plugin
+   - You should see green indicator or success message in the plugin
 
-#### 📡 Monitor Connection Status
+#### 📡 Monitor Connection Status Using @Terminals
 
-**🔍 IMPORTANT FOR AI AGENTS**: Verify the plugin connection via WebSocket server logs:
+**🔍 IMPORTANT FOR AI AGENTS**: Use Cursor's `@Terminals` to verify the plugin connection:
 
 1. **Check WebSocket Server Logs**:
-   - Look at the WebSocket server terminal or `websocket.log`
-   - When the plugin connects successfully, you should see log messages like:
+   - In Cursor, type `@Terminals` in chat
+   - Look at the WebSocket server terminal
+   - When plugin connects successfully, you should see log messages like:
      ```
-     ✓ Client joined channel "..." (2 total clients)
+     ✅ New WebSocket connection from Figma plugin
+     ✅ Plugin connected successfully
+     ✅ Handshake completed
      ```
 
 2. **Connection Troubleshooting**:
    - If no connection messages appear in server logs, the plugin is not connecting properly
    - Check that WebSocket URL in plugin is set to `ws://localhost:3055`
-   - Verify the WebSocket server is still running
+   - Verify the WebSocket server is still running (check `@Terminals`)
    - Try refreshing the Figma page and reconnecting the plugin
 
 **AI AGENTS**: Update progress after Figma plugin installation:
@@ -810,17 +846,17 @@ Update progress - Figma plugin successfully installed:
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method Selection]
-    B --> C[⚡ Dependency Installation]
+    B --> C[⚡ Dependency Installation] 
     C --> D[⚙️ MCP setup and configuration]
     D --> E[🌐 WebSocket Server]
     E --> F[🔌 Figma Plugin]
     F --> G[🧪 Integration Test]
     G --> H[✅ Setup Complete]
-
+    
     class A,B,C,D,E,F completed
     class G current
     class H pending
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
     classDef current fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
     classDef pending fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
@@ -831,46 +867,48 @@ Progress: 75% Complete - Plugin Installed ✅ - Running Integration Tests
 
 ### Step C.4: Test Integration
 
-#### 🧪 Test MCP Commands in Your AI Assistant
+#### 🧪 Test MCP Commands in Cursor
 
-**In your AI coding assistant (where MCP is connected):**
+**In Cursor (where MCP is connected):**
 
 ```bash
 # Test 1: MCP Connection
 join_channel
 # Expected: "Successfully joined channel" message
 
-# Test 2: Figma Communication
+# Test 2: Figma Communication  
 get_document_info
 # Expected: JSON data from Figma document
 ```
 
-#### 📋 Verify Complete Integration
+#### 📋 Verify Complete Integration Using @Terminals
 
 **🔍 FINAL VERIFICATION FOR AI AGENTS**:
 
 1. **Check All Active Processes**:
-   - Verify the WebSocket server terminal is still running with "WebSocket server running on port 3055"
-   - Verify connection logs showing the Figma plugin is connected
-   - Verify the MCP status showing FigmaEdit as connected in your IDE
+   - In Cursor, type `@Terminals` in chat
+   - Verify you can see:
+     - ✅ **WebSocket server terminal** still running with "WebSocket server running on port 3055"
+     - ✅ **Connection logs** showing Figma plugin is connected
+     - ✅ **MCP status** showing TalkToFigma as connected
 
 2. **Test End-to-End Communication**:
    ```bash
-   # In your AI assistant, test these MCP commands:
+   # In Cursor chat, test these MCP commands:
    get_document_info
-   get_nodes_info
+   get_selection
    ```
    - Commands should return JSON data from your Figma document
-   - Check WebSocket server logs — they should show command activity
+   - Check `@Terminals` - WebSocket logs should show command activity
    - Figma plugin should show activity/response indicators
 
 3. **Integration Status Checklist**:
-   - ✅ WebSocket server running (visible in terminal)
+   - ✅ WebSocket server running (visible in `@Terminals`)
    - ✅ Figma plugin connected (connection logs in server terminal)
    - ✅ MCP commands working (returns Figma data)
    - ✅ No error messages in any terminals
 
-**CHECKPOINT C.4**: All tests must pass and terminals should show healthy connections for successful setup.
+**CHECKPOINT C.4**: All tests must pass and `@Terminals` should show healthy connections for successful setup.
 
 **AI AGENTS**: Update progress after successful integration test:
 
@@ -882,21 +920,21 @@ CHECKPOINT 6: SETUP COMPLETE - INTEGRATION SUCCESSFUL
 ```mermaid
 graph TD
     A[🔍 Environment Detection] --> B[📦 Method Selection]
-    B --> C[⚡ Dependency Installation]
+    B --> C[⚡ Dependency Installation] 
     C --> D[⚙️ MCP setup and configuration]
     D --> E[🌐 WebSocket Server]
     E --> F[🔌 Figma Plugin]
     F --> G[🧪 Integration Test]
     G --> H[✅ Setup Complete]
-
+    
     class A,B,C,D,E,F,G,H completed
-
+    
     classDef completed fill:#22c55e,stroke:#16a34a,stroke-width:2px,color:#fff
 ```
 
 🎯 **FINAL RESULT**: 100% Complete ✅
 - ✅ Environment Detection Complete
-- ✅ Method Successfully Executed
+- ✅ Method Successfully Executed  
 - ✅ Dependencies Installed
 - ✅ Project Cloned & Configured
 - ✅ MCP Connected
@@ -905,7 +943,7 @@ graph TD
 - ✅ Integration Tests Passed
 - ✅ **READY TO USE!**
 
-**🚀 AI Agent can now assist with Figma design tasks!**
+**🚀 AI Agent can now assist with Figma design tasks through Cursor!**
 ```
 
 ---
@@ -915,7 +953,10 @@ graph TD
 ### Issue: Prerequisites Failed
 ```bash
 # Decision tree for prerequisite failures
-if [ "$GIT_AVAILABLE" = "NO" ]; then
+if [ "$CURSOR_AVAILABLE" = "NO" ]; then
+    echo "❌ CRITICAL: Install Cursor IDE first - https://cursor.sh/"
+    exit 1
+elif [ "$GIT_AVAILABLE" = "NO" ]; then
     echo "❌ CRITICAL: Install Git first"
     exit 1
 else
@@ -931,28 +972,31 @@ echo "🔍 Debugging MCP connection..."
 # Check if in correct project directory
 if [ ! -f "package.json" ] || [ ! -d "src" ]; then
     echo "❌ Not in project directory"
-    echo "💡 Please ensure you're in the figma-edit-mcp directory"
+    echo "💡 Please ensure you're in the cloned cursor-talk-to-figma-mcp directory"
+    echo "💡 Use Cursor's File > Open Folder to open the cloned project"
     exit 1
 fi
 
-# Check if dist/server.js was built
-if [ ! -f "dist/server.js" ]; then
-    echo "⚠️ MCP server not built — running build..."
-    bun run build
+# Check if MCP config exists
+if [ ! -f ".cursor/mcp.json" ]; then
+    echo "⚠️ MCP config missing - running setup..."
+    bun setup
 fi
 
-# Check if integrate was run
-echo "💡 Run 'bun integrate' and select your AI assistant integration."
-echo "💡 After configuring, restart your AI coding assistant to reload MCP."
+# Restart Cursor if needed
+echo "💡 Restarting Cursor to reload MCP configuration..."
+cursor .
+sleep 5
 ```
 
-### Issue: WebSocket Connection Failed
+### Issue: WebSocket Connection Failed  
 ```bash
 # AI Agent network debugging
 echo "🔍 Debugging WebSocket connection..."
 
-# Step 1: Check current terminal state for WebSocket server
-echo "💡 Verify WebSocket server is running in a terminal"
+# Step 1: Use @Terminals to check current state
+echo "💡 First, type '@Terminals' in Cursor chat to see all running processes"
+echo "💡 Look for WebSocket server terminal and check its status"
 
 # Check if port is in use
 if lsof -i :3055 >/dev/null 2>&1; then
@@ -973,20 +1017,22 @@ else
     exit 1
 fi
 
-echo "💡 After starting server, verify it shows 'WebSocket server running on port 3055'"
+echo "💡 After starting server, use '@Terminals' again to verify it's running"
+echo "💡 Look for 'WebSocket server running on port 3055' message"
 ```
 
 ### Issue: Figma Plugin Not Connecting
 ```bash
-# AI Agent plugin debugging
+# AI Agent plugin debugging  
 echo "🔍 Debugging Figma plugin connection..."
 
-echo "💡 Check WebSocket server logs for connection attempts from Figma plugin"
+echo "💡 Use '@Terminals' in Cursor to check WebSocket server logs"
+echo "💡 You should see connection attempts from Figma plugin"
 
 # Common plugin connection issues:
 echo "🔧 Plugin Connection Checklist:"
 echo "1. Plugin WebSocket URL set to 'ws://localhost:3055'"
-echo "2. WebSocket server running (check terminal)"
+echo "2. WebSocket server running (check '@Terminals')" 
 echo "3. Figma plugin installed and activated"
 echo "4. No firewall blocking localhost:3055"
 
@@ -994,6 +1040,8 @@ echo "💡 In Figma plugin panel:"
 echo "- Verify connection URL is 'ws://localhost:3055'"
 echo "- Click disconnect/reconnect if needed"
 echo "- Check for error messages in plugin"
+
+echo "💡 Monitor '@Terminals' for real-time connection logs"
 ```
 
 ### Issue: Runtime Not Found
@@ -1010,7 +1058,7 @@ elif [ "$SUDO_AVAILABLE" = "YES" ]; then
     source ~/.zshrc 2>/dev/null || source ~/.bashrc 2>/dev/null || true
 else
     echo "❌ Cannot install runtime in restricted environment"
-    echo "💡 Bun must be available to run this project"
+    echo "💡 Try Method B: Cursor-Only Setup"
     exit 1
 fi
 ```
@@ -1028,20 +1076,21 @@ echo "=== FINAL VERIFICATION MATRIX ==="
 # System Environment
 [ "$OS_TYPE" != "" ] && echo "✅ OS Detection: $OS_TYPE" || echo "❌ OS Detection Failed"
 
-# Required Tools
+# Required Tools  
+[ "$CURSOR_AVAILABLE" = "YES" ] && echo "✅ Cursor IDE Available" || echo "❌ Cursor Missing"
 [ "$GIT_AVAILABLE" = "YES" ] && echo "✅ Git Available" || echo "❌ Git Missing"
 
 # Runtime Environment
 if [ "$BUN_AVAILABLE" = "YES" ]; then
     echo "✅ Bun Runtime: $BUN_VERSION"
-elif [ "$NODE_AVAILABLE" = "YES" ]; then
+elif [ "$NODE_AVAILABLE" = "YES" ]; then  
     echo "✅ Node.js Runtime: $NODE_VERSION"
 else
     echo "❌ No Suitable Runtime Found"
 fi
 
 # Project Setup
-[ -f "dist/server.js" ] && echo "✅ MCP Server Built" || echo "❌ MCP Server Not Built"
+[ -f ".cursor/mcp.json" ] && echo "✅ MCP Config Present" || echo "❌ MCP Config Missing"
 [ -f "package.json" ] && echo "✅ Project Structure Valid" || echo "❌ Invalid Project"
 
 # Process Status
@@ -1053,7 +1102,7 @@ fi
 ```
 
 ### Functional Verification
-**Execute in your AI assistant with MCP connected:**
+**Execute in Cursor with MCP connected:**
 
 1. **MCP Connection Test**: `join_channel` → Should return success message
 2. **Figma Communication Test**: `get_document_info` → Should return JSON data
@@ -1062,17 +1111,17 @@ fi
 ### 🎉 Success Criteria
 **ALL of the following must be true:**
 - ✅ Environment detection completed without errors
-- ✅ Appropriate method selected and executed based on system capabilities
+- ✅ Appropriate method selected and executed based on system capabilities  
 - ✅ Project successfully cloned and configured
-- ✅ MCP server built (`dist/server.js` exists)
-- ✅ MCP integration configured via `bun integrate`
-- ✅ MCP shows "FigmaEdit" as connected in your AI assistant
-- ✅ WebSocket server running on port 3055
+- ✅ MCP configuration file present and valid
+- ✅ Cursor IDE launched from project directory
+- ✅ MCP shows "TalkToFigma" as "Connected" in settings
+- ✅ WebSocket server running on port 3055 (verified via `@Terminals`)
 - ✅ Figma plugin installed, configured with `ws://localhost:3055`, and connected
-- ✅ Plugin connection visible in WebSocket server logs
-- ✅ `join_channel` command works
+- ✅ Plugin connection visible in WebSocket server logs (check `@Terminals`)
+- ✅ `join_channel` command works in Cursor
 - ✅ `get_document_info` returns Figma document data
-- ✅ All processes healthy and running
+- ✅ All processes healthy and running (verified via `@Terminals`)
 
 **If any criterion fails, AI agents should follow the troubleshooting decision tree above.**
 
@@ -1080,47 +1129,57 @@ fi
 
 ## 🚀 AI Agent Quick Commands
 
-### Clone and Setup
-```bash
-# Clone the repository
-git clone https://github.com/neozhehan/figma-edit-mcp.git
-cd figma-edit-mcp
+### Recommended Setup (Use Cursor's Built-in Git Clone)
+**AI AGENTS**: Instead of terminal commands, guide users to:
 
-# Install and build everything
-bun setup
-
-# Configure your AI assistant integration
-bun integrate
-```
+1. **Open Cursor IDE**
+2. **Clone Repository**: Use `Cmd+Shift+P` → "Git: Clone"
+3. **Enter URL**: `https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp.git`
+4. **Select location and clone**
+5. **Open cloned project in Cursor**
+6. **Run setup**: `bun setup`
 
 ### Alternative One-Line Commands (For Advanced Users)
 ```bash
-# Method A1 (Homebrew)
-[ "$HOMEBREW_AVAILABLE" = "YES" ] && cd ~/Desktop && git clone https://github.com/neozhehan/figma-edit-mcp.git && cd figma-edit-mcp && brew install bun && bun setup
+# Method A1 (Homebrew) - Clone and auto-open in Cursor
+[ "$HOMEBREW_AVAILABLE" = "YES" ] && cd ~/Desktop && git clone https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp.git && cd cursor-talk-to-figma-mcp && brew install bun && bun setup && cursor .
 
-# Method A2 (Direct)
-[ "$SUDO_AVAILABLE" = "YES" ] && cd ~/Desktop && git clone https://github.com/neozhehan/figma-edit-mcp.git && cd figma-edit-mcp && curl -fsSL https://bun.sh/install | bash && source ~/.zshrc && bun setup
+# Method A2 (Direct) - Clone and auto-open in Cursor
+[ "$SUDO_AVAILABLE" = "YES" ] && cd ~/Desktop && git clone https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp.git && cd cursor-talk-to-figma-mcp && curl -fsSL https://bun.sh/install | bash && source ~/.zshrc && bun setup && cursor .
 
-# Method B (Minimal)
-[ "$GIT_AVAILABLE" = "YES" ] && cd ~/Desktop && git clone https://github.com/neozhehan/figma-edit-mcp.git && echo "✅ Project cloned to ~/Desktop/figma-edit-mcp" && echo "💡 Open this folder in your IDE and run 'bun setup' followed by 'bun integrate'"
+# Method B (Cursor-only) - Clone and open manually
+[ "$CURSOR_AVAILABLE" = "YES" ] && cd ~/Desktop && git clone https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp.git && echo "✅ Project cloned to ~/Desktop/cursor-talk-to-figma-mcp" && echo "💡 Open this folder in Cursor and run 'bun setup'"
 ```
 
 ### Service Management
 ```bash
-# Start WebSocket Server (foreground, recommended)
-bun socket
-
-# Start WebSocket Server (background, with log file)
+# Start WebSocket Server (background)
 nohup bun socket > websocket.log 2>&1 & echo $! > websocket.pid
 
-# Stop WebSocket Server (if running in background)
+# Stop WebSocket Server  
 [ -f websocket.pid ] && kill $(cat websocket.pid) && rm websocket.pid
 
 # Check Service Status
 ps aux | grep -E "(bun socket|node.*socket)" || echo "WebSocket server not running"
-
-# Monitor logs (when running with log redirect)
-tail -f websocket.log
 ```
 
-**Remember**: Always keep the WebSocket server running for the Figma plugin to communicate with your AI assistant.
+### 📊 Monitor Services Using @Terminals
+
+**🔍 RECOMMENDED FOR AI AGENTS**: Use Cursor's `@Terminals` for real-time monitoring:
+
+1. **Check Active Services**:
+   - Type `@Terminals` in Cursor chat anytime
+   - Instantly see all running terminal processes
+   - Verify WebSocket server status without additional commands
+
+2. **Real-time Connection Monitoring**:
+   - Watch WebSocket server logs for Figma plugin connections
+   - See MCP command activity in real-time
+   - Monitor for errors or disconnections
+
+3. **Quick Health Check**:
+   - `@Terminals` shows if WebSocket server is still running
+   - Displays connection status and recent activity
+   - No need for additional terminal commands
+
+**Remember**: Always keep the WebSocket server running for the Figma plugin to communicate with Cursor! Use `@Terminals` to monitor its health. 
