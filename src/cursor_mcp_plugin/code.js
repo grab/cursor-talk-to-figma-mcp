@@ -814,6 +814,9 @@ async function createText(params) {
     fontSize = 14,
     fontWeight = 400,
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
+    fontFamily = "Inter",
+    letterSpacing,
+    lineHeight,
     name = "",
     parentId,
   } = params || {};
@@ -848,16 +851,32 @@ async function createText(params) {
   textNode.x = x;
   textNode.y = y;
   textNode.name = name || text;
+  const fontStyle = getFontStyle(fontWeight);
   try {
-    await figma.loadFontAsync({
-      family: "Inter",
-      style: getFontStyle(fontWeight),
-    });
-    textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
+    // Try loading the requested font family first
+    await figma.loadFontAsync({ family: fontFamily, style: fontStyle });
+    textNode.fontName = { family: fontFamily, style: fontStyle };
     textNode.fontSize = parseInt(fontSize);
   } catch (error) {
-    console.error("Error setting font size", error);
+    console.warn(`Font "${fontFamily}" with style "${fontStyle}" not available, falling back to Inter`);
+    try {
+      await figma.loadFontAsync({ family: "Inter", style: fontStyle });
+      textNode.fontName = { family: "Inter", style: fontStyle };
+      textNode.fontSize = parseInt(fontSize);
+    } catch (fallbackError) {
+      console.error("Error loading fallback font", fallbackError);
+    }
   }
+  // Set letter spacing if provided
+  if (letterSpacing !== undefined && letterSpacing !== null) {
+    textNode.letterSpacing = { value: parseFloat(letterSpacing), unit: "PIXELS" };
+  }
+
+  // Set line height if provided
+  if (lineHeight !== undefined && lineHeight !== null) {
+    textNode.lineHeight = { value: parseFloat(lineHeight), unit: "PIXELS" };
+  }
+
   setCharacters(textNode, text);
 
   // Set text color
@@ -896,6 +915,7 @@ async function createText(params) {
     characters: textNode.characters,
     fontSize: textNode.fontSize,
     fontWeight: fontWeight,
+    fontFamily: textNode.fontName ? textNode.fontName.family : fontFamily,
     fontColor: fontColor,
     fontName: textNode.fontName,
     fills: textNode.fills,
@@ -1356,7 +1376,7 @@ async function setCornerRadius(params) {
 }
 
 async function setTextContent(params) {
-  const { nodeId, text } = params || {};
+  const { nodeId, text, fontFamily, fontWeight, letterSpacing, lineHeight } = params || {};
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -1375,8 +1395,46 @@ async function setTextContent(params) {
     throw new Error(`Node is not a text node: ${nodeId}`);
   }
 
+  // Map common font weights to Figma font styles
+  const getFontStyleForWeight = (weight) => {
+    switch (weight) {
+      case 100: return "Thin";
+      case 200: return "Extra Light";
+      case 300: return "Light";
+      case 400: return "Regular";
+      case 500: return "Medium";
+      case 600: return "Semi Bold";
+      case 700: return "Bold";
+      case 800: return "Extra Bold";
+      case 900: return "Black";
+      default: return "Regular";
+    }
+  };
+
   try {
-    await figma.loadFontAsync(node.fontName);
+    if (fontFamily || fontWeight) {
+      const targetFamily = fontFamily || (node.fontName ? node.fontName.family : "Inter");
+      const targetStyle = fontWeight ? getFontStyleForWeight(fontWeight) : (node.fontName ? node.fontName.style : "Regular");
+      try {
+        await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
+        node.fontName = { family: targetFamily, style: targetStyle };
+      } catch (fontError) {
+        console.warn(`Font "${targetFamily}" with style "${targetStyle}" not available, keeping existing font`);
+        await figma.loadFontAsync(node.fontName);
+      }
+    } else {
+      await figma.loadFontAsync(node.fontName);
+    }
+
+    // Set letter spacing if provided
+    if (letterSpacing !== undefined && letterSpacing !== null) {
+      node.letterSpacing = { value: parseFloat(letterSpacing), unit: "PIXELS" };
+    }
+
+    // Set line height if provided
+    if (lineHeight !== undefined && lineHeight !== null) {
+      node.lineHeight = { value: parseFloat(lineHeight), unit: "PIXELS" };
+    }
 
     await setCharacters(node, text);
 
@@ -1385,6 +1443,8 @@ async function setTextContent(params) {
       name: node.name,
       characters: node.characters,
       fontName: node.fontName,
+      letterSpacing: node.letterSpacing,
+      lineHeight: node.lineHeight,
     };
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
