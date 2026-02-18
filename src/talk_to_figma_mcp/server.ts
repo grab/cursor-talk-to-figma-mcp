@@ -1879,6 +1879,76 @@ server.tool(
   }
 );
 
+// Set Table Cell Contents Tool (FigJam / Figma tables)
+server.tool(
+  "set_table_cell_contents",
+  "Set text content of table cells by row and column index. Works with FigJam and Figma TABLE nodes. Use get_document_info or get_node_info to get the table node ID. Row and column indices are 0-based (row 0 = first row, e.g. header).",
+  {
+    tableNodeId: z.string().describe("Node ID of the table (e.g. '0:20')"),
+    updates: z
+      .array(
+        z.object({
+          rowIndex: z.number().describe("0-based row index"),
+          columnIndex: z.number().describe("0-based column index"),
+          text: z.string().describe("New cell text"),
+        })
+      )
+      .describe("Array of { rowIndex, columnIndex, text } for each cell to update"),
+  },
+  async ({ tableNodeId, updates }: any) => {
+    try {
+      if (!updates || updates.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "No updates provided",
+            },
+          ],
+        };
+      }
+
+      const result = await sendCommandToFigma("set_table_cell_contents", {
+        tableNodeId,
+        updates,
+      });
+
+      const typedResult = result as {
+        success: boolean;
+        updated: number;
+        failed: number;
+        results: Array<{ row: number; col: number; ok: boolean; error?: string }>;
+      };
+
+      const failedResults = typedResult.results?.filter((r) => !r.ok) || [];
+      let detailedResponse = "";
+      if (failedResults.length > 0) {
+        detailedResponse = `\n\nCells that failed:\n${failedResults
+          .map((r) => `- row ${r.row}, col ${r.col}: ${r.error || "Unknown error"}`)
+          .join("\n")}`;
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Table cell update completed: ${typedResult.updated} updated, ${typedResult.failed} failed.${detailedResponse}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting table cell contents: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Annotation Conversion Strategy Prompt
 server.prompt(
   "annotation_conversion_strategy",
@@ -2635,6 +2705,7 @@ type FigmaCommand =
   | "set_text_content"
   | "scan_text_nodes"
   | "set_multiple_text_contents"
+  | "set_table_cell_contents"
   | "get_annotations"
   | "set_annotation"
   | "set_multiple_annotations"
@@ -2763,6 +2834,10 @@ type CommandParams = {
   set_multiple_text_contents: {
     nodeId: string;
     text: Array<{ nodeId: string; text: string }>;
+  };
+  set_table_cell_contents: {
+    tableNodeId: string;
+    updates: Array<{ rowIndex: number; columnIndex: number; text: string }>;
   };
   get_annotations: {
     nodeId?: string;
