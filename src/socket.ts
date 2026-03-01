@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { Server, ServerWebSocket } from "bun";
 
 // Store clients by channel
@@ -37,13 +39,9 @@ function handleConnection(ws: ServerWebSocket<any>) {
 }
 
 const server = Bun.serve({
+  port: 3055,
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
-  port: process.env.PORT ? parseInt(process.env.PORT) : 3055,
-  tls: {
-    key: Bun.file(process.env.SSL_KEY_PATH!),
-    cert: Bun.file(process.env.SSL_CERT_PATH!),
-  },
   fetch(req: Request, server: Server) {
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
@@ -78,8 +76,15 @@ const server = Bun.serve({
     open: handleConnection,
     message(ws: ServerWebSocket<any>, message: string | Buffer) {
       try {
-        console.log("Received message from client:", message);
         const data = JSON.parse(message as string);
+        console.log(`\n=== Received message from client ===`);
+        console.log(`Type: ${data.type}, Channel: ${data.channel || 'N/A'}`);
+        if (data.message?.command) {
+          console.log(`Command: ${data.message.command}, ID: ${data.id}`);
+        } else if (data.message?.result) {
+          console.log(`Response: ID: ${data.id}, Has Result: ${!!data.message.result}`);
+        }
+        console.log(`Full message:`, JSON.stringify(data, null, 2));
 
         if (data.type === "join") {
           const channelName = data.channel;
@@ -100,14 +105,14 @@ const server = Bun.serve({
           const channelClients = channels.get(channelName)!;
           channelClients.add(ws);
 
+          console.log(`\n✓ Client joined channel "${channelName}" (${channelClients.size} total clients)`);
+
           // Notify client they joined successfully
           ws.send(JSON.stringify({
             type: "system",
             message: `Joined channel: ${channelName}`,
             channel: channelName
           }));
-
-          console.log("Sending message to client:", data.id);
 
           ws.send(JSON.stringify({
             type: "system",
@@ -151,18 +156,29 @@ const server = Bun.serve({
             return;
           }
 
-          // Broadcast to all clients in the channel
+          // Broadcast to all OTHER clients in the channel (not the sender)
+          // This prevents echo and ensures proper request-response flow
+          let broadcastCount = 0;
           channelClients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              console.log("Broadcasting message to client:", data.message);
-              client.send(JSON.stringify({
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              broadcastCount++;
+              const broadcastMessage = {
                 type: "broadcast",
                 message: data.message,
-                sender: client === ws ? "You" : "User",
+                sender: "peer",
                 channel: channelName
-              }));
+              };
+              console.log(`\n=== Broadcasting to peer #${broadcastCount} ===`);
+              console.log(JSON.stringify(broadcastMessage, null, 2));
+              client.send(JSON.stringify(broadcastMessage));
             }
           });
+          
+          if (broadcastCount === 0) {
+            console.log(`⚠️  No other clients in channel "${channelName}" to receive message!`);
+          } else {
+            console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
+          }
         }
       } catch (err) {
         console.error("Error handling message:", err);
