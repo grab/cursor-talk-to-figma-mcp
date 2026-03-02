@@ -551,6 +551,18 @@ server.tool(
       })
       .optional()
       .describe("Font color in RGBA format"),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe("Font family name (e.g., 'Inter', 'Roboto'). Must be installed locally or available in Figma. Defaults to 'Inter'."),
+    letterSpacing: z
+      .number()
+      .optional()
+      .describe("Letter spacing in pixels (e.g., -1.08 for tight, 1.2 for loose). Defaults to 0."),
+    lineHeight: z
+      .number()
+      .optional()
+      .describe("Line height in pixels (e.g., 28). If not provided, uses 'AUTO' line height."),
     name: z
       .string()
       .optional()
@@ -560,7 +572,7 @@ server.tool(
       .optional()
       .describe("Optional parent node ID to append the text to"),
   },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
+  async ({ x, y, text, fontSize, fontWeight, fontColor, fontFamily, letterSpacing, lineHeight, name, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -569,6 +581,9 @@ server.tool(
         fontSize: fontSize || 14,
         fontWeight: fontWeight || 400,
         fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
+        fontFamily: fontFamily || "Inter",
+        letterSpacing,
+        lineHeight,
         name: name || "Text",
         parentId,
       });
@@ -902,12 +917,32 @@ server.tool(
   {
     nodeId: z.string().describe("The ID of the text node to modify"),
     text: z.string().describe("New text content"),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe("Optional font family to change to (e.g., 'Inter', 'Roboto'). If not provided, keeps existing font."),
+    fontWeight: z
+      .number()
+      .optional()
+      .describe("Optional font weight to change to (e.g., 400, 700). If not provided, keeps existing weight."),
+    letterSpacing: z
+      .number()
+      .optional()
+      .describe("Optional letter spacing in pixels (e.g., -1.08 for tight, 1.2 for loose). If not provided, keeps existing value."),
+    lineHeight: z
+      .number()
+      .optional()
+      .describe("Optional line height in pixels (e.g., 28). If not provided, keeps existing value."),
   },
-  async ({ nodeId, text }: any) => {
+  async ({ nodeId, text, fontFamily, fontWeight, letterSpacing, lineHeight }: any) => {
     try {
       const result = await sendCommandToFigma("set_text_content", {
         nodeId,
         text,
+        fontFamily,
+        fontWeight,
+        letterSpacing,
+        lineHeight,
       });
       const typedResult = result as { name: string };
       return {
@@ -2680,6 +2715,9 @@ type CommandParams = {
     text: string;
     fontSize?: number;
     fontWeight?: number;
+    fontFamily?: string;
+    letterSpacing?: number;
+    lineHeight?: number;
     fontColor?: { r: number; g: number; b: number; a?: number };
     name?: string;
     parentId?: string;
@@ -2754,6 +2792,10 @@ type CommandParams = {
   set_text_content: {
     nodeId: string;
     text: string;
+    fontFamily?: string;
+    fontWeight?: number;
+    letterSpacing?: number;
+    lineHeight?: number;
   };
   scan_text_nodes: {
     nodeId: string;
