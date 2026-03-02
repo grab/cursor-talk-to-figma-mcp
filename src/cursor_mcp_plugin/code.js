@@ -1196,7 +1196,7 @@ async function createComponentInstance(params) {
 async function exportNodeAsImage(params) {
   const { nodeId, scale = 1 } = params || {};
 
-  const format = (params?.format || "PNG").toUpperCase();
+  const format = (params && params.format || "PNG").toUpperCase();
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
