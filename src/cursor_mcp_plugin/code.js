@@ -4055,8 +4055,8 @@ async function getComponentProperties(params) {
   return {
     nodeId,
     nodeName: node.name,
-    componentName: mainComponent?.name || null,
-    componentKey: mainComponent?.key || null,
+    componentName: mainComponent ? mainComponent.name : null,
+    componentKey: mainComponent ? mainComponent.key : null,
     properties: result,
   };
 }
