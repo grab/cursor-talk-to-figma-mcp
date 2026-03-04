@@ -277,6 +277,17 @@ function filterFigmaNode(node: any) {
     });
   }
 
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect: any) => {
+      const processedEffect = { ...effect };
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
+    });
+  }
+
   if (node.cornerRadius !== undefined) {
     filtered.cornerRadius = node.cornerRadius;
   }
