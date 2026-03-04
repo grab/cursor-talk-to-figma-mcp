@@ -664,9 +664,9 @@ async function createRectangle(params) {
   } = params || {};
 
   const rect = figma.createRectangle();
-  rect.x = x;
-  rect.y = y;
-  rect.resize(width, height);
+  rect.x = Number(x);
+  rect.y = Number(y);
+  rect.resize(Number(width), Number(height));
   rect.name = name;
 
   // If parentId is provided, append to that node, otherwise append to current page
@@ -719,9 +719,9 @@ async function createFrame(params) {
   } = params || {};
 
   const frame = figma.createFrame();
-  frame.x = x;
-  frame.y = y;
-  frame.resize(width, height);
+  frame.x = Number(x);
+  frame.y = Number(y);
+  frame.resize(Number(width), Number(height));
   frame.name = name;
 
   // Set layout mode if provided
@@ -730,10 +730,10 @@ async function createFrame(params) {
     frame.layoutWrap = layoutWrap;
 
     // Set padding values only when layoutMode is not NONE
-    frame.paddingTop = paddingTop;
-    frame.paddingRight = paddingRight;
-    frame.paddingBottom = paddingBottom;
-    frame.paddingLeft = paddingLeft;
+    frame.paddingTop = Number(paddingTop);
+    frame.paddingRight = Number(paddingRight);
+    frame.paddingBottom = Number(paddingBottom);
+    frame.paddingLeft = Number(paddingLeft);
 
     // Set axis alignment only when layoutMode is not NONE
     frame.primaryAxisAlignItems = primaryAxisAlignItems;
@@ -744,7 +744,7 @@ async function createFrame(params) {
     frame.layoutSizingVertical = layoutSizingVertical;
 
     // Set item spacing only when layoutMode is not NONE
-    frame.itemSpacing = itemSpacing;
+    frame.itemSpacing = Number(itemSpacing);
   }
 
   // Set fill color if provided
@@ -849,8 +849,8 @@ async function createText(params) {
   };
 
   const textNode = figma.createText();
-  textNode.x = x;
-  textNode.y = y;
+  textNode.x = Number(x);
+  textNode.y = Number(y);
   textNode.name = name || text;
   try {
     await figma.loadFontAsync({
@@ -1031,8 +1031,8 @@ async function moveNode(params) {
     throw new Error(`Node does not support position: ${nodeId}`);
   }
 
-  node.x = x;
-  node.y = y;
+  node.x = Number(x);
+  node.y = Number(y);
 
   return {
     id: node.id,
@@ -1062,7 +1062,7 @@ async function resizeNode(params) {
     throw new Error(`Node does not support resizing: ${nodeId}`);
   }
 
-  node.resize(width, height);
+  node.resize(Number(width), Number(height));
 
   return {
     id: node.id,
@@ -1178,8 +1178,8 @@ async function createComponentInstance(params) {
     const component = await figma.importComponentByKeyAsync(componentKey);
     const instance = component.createInstance();
 
-    instance.x = x;
-    instance.y = y;
+    instance.x = Number(x);
+    instance.y = Number(y);
 
     figma.currentPage.appendChild(instance);
 
@@ -1654,8 +1654,8 @@ async function cloneNode(params) {
     if (!("x" in clone) || !("y" in clone)) {
       throw new Error(`Cloned node does not support position: ${nodeId}`);
     }
-    clone.x = x;
-    clone.y = y;
+    clone.x = Number(x);
+    clone.y = Number(y);
   }
 
   // Add the clone to the same parent as the original node
@@ -3335,10 +3335,10 @@ async function setPadding(params) {
   }
 
   // Set padding values if provided
-  if (paddingTop !== undefined) node.paddingTop = paddingTop;
-  if (paddingRight !== undefined) node.paddingRight = paddingRight;
-  if (paddingBottom !== undefined) node.paddingBottom = paddingBottom;
-  if (paddingLeft !== undefined) node.paddingLeft = paddingLeft;
+  if (paddingTop !== undefined) node.paddingTop = Number(paddingTop);
+  if (paddingRight !== undefined) node.paddingRight = Number(paddingRight);
+  if (paddingBottom !== undefined) node.paddingBottom = Number(paddingBottom);
+  if (paddingLeft !== undefined) node.paddingLeft = Number(paddingLeft);
 
   return {
     id: node.id,
@@ -3536,15 +3536,13 @@ async function setItemSpacing(params) {
 
   // Set item spacing if provided
   if (itemSpacing !== undefined) {
-    if (typeof itemSpacing !== "number") {
-      throw new Error("Item spacing must be a number");
-    }
-    node.itemSpacing = itemSpacing;
+    node.itemSpacing = Number(itemSpacing);
   }
 
   // Set counter axis spacing if provided
   if (counterAxisSpacing !== undefined) {
-    if (typeof counterAxisSpacing !== "number") {
+    var counterAxisNum = Number(counterAxisSpacing);
+    if (isNaN(counterAxisNum)) {
       throw new Error("Counter axis spacing must be a number");
     }
     // counterAxisSpacing only applies when layoutWrap is WRAP
@@ -3553,7 +3551,7 @@ async function setItemSpacing(params) {
         "Counter axis spacing can only be set on frames with layoutWrap set to WRAP"
       );
     }
-    node.counterAxisSpacing = counterAxisSpacing;
+    node.counterAxisSpacing = counterAxisNum;
   }
 
   return {
