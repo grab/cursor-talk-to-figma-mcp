@@ -159,6 +159,8 @@ async function handleCommand(command, params) {
       return await scanTextNodes(params);
     case "set_multiple_text_contents":
       return await setMultipleTextContents(params);
+    case "set_table_cell_contents":
+      return await setTableCellContents(params);
     case "get_annotations":
       return await getAnnotations(params);
     case "set_annotation":
@@ -1389,6 +1391,55 @@ async function setTextContent(params) {
   } catch (error) {
     throw new Error(`Error setting text content: ${error.message}`);
   }
+}
+
+async function setTableCellContents(params) {
+  const { tableNodeId, updates } = params || {};
+
+  if (!tableNodeId) {
+    throw new Error("Missing tableNodeId parameter");
+  }
+
+  if (!updates || !Array.isArray(updates)) {
+    throw new Error("Missing or invalid updates parameter (expected array of { rowIndex, columnIndex, text })");
+  }
+
+  const node = figma.getNodeById(tableNodeId);
+  if (!node) {
+    throw new Error(`Table not found with ID: ${tableNodeId}`);
+  }
+
+  if (node.type !== "TABLE") {
+    throw new Error(`Node is not a table: ${tableNodeId} (type: ${node.type})`);
+  }
+
+  const table = node;
+  const results = [];
+
+  for (const { rowIndex, columnIndex, text } of updates) {
+    try {
+      const cell = table.cellAt(rowIndex, columnIndex);
+      const textNode = cell.text;
+      if (!textNode) {
+        results.push({ row: rowIndex, col: columnIndex, ok: false, error: "No text sublayer" });
+        continue;
+      }
+      await figma.loadFontAsync(textNode.fontName);
+      textNode.characters = text;
+      results.push({ row: rowIndex, col: columnIndex, ok: true });
+    } catch (e) {
+      results.push({ row: rowIndex, col: columnIndex, ok: false, error: String(e) });
+    }
+  }
+
+  const successCount = results.filter((r) => r.ok).length;
+  const failCount = results.filter((r) => !r.ok).length;
+  return {
+    success: failCount === 0,
+    updated: successCount,
+    failed: failCount,
+    results,
+  };
 }
 
 // Initialize settings on load
