@@ -233,6 +233,10 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    case "get_component_properties":
+      return await getComponentProperties(params);
+    case "set_component_properties":
+      return await setComponentProperties(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -4024,5 +4028,87 @@ async function setSelections(params) {
     selectedNodes: selectedNodes,
     notFoundIds: notFoundIds,
     message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
+  };
+}
+
+async function getComponentProperties(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node is not a component instance (type: ${node.type})`);
+  }
+
+  const props = node.componentProperties;
+  const result = {};
+  for (const [name, def] of Object.entries(props)) {
+    result[name] = {
+      type: def.type,
+      value: def.value,
+      ...(def.preferredValues ? { preferredValues: def.preferredValues } : {}),
+    };
+  }
+
+  const mainComponent = await node.getMainComponentAsync();
+  return {
+    nodeId,
+    nodeName: node.name,
+    componentName: mainComponent?.name || null,
+    componentKey: mainComponent?.key || null,
+    properties: result,
+  };
+}
+
+async function setComponentProperties(params) {
+  const { nodeId, properties } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!properties || typeof properties !== "object") {
+    throw new Error("Missing or invalid properties parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node is not a component instance (type: ${node.type})`);
+  }
+
+  // Validate property names exist
+  const currentProps = node.componentProperties;
+  const invalidNames = Object.keys(properties).filter(k => !(k in currentProps));
+  if (invalidNames.length > 0) {
+    throw new Error(
+      `Invalid property names: ${invalidNames.join(", ")}. ` +
+      `Available: ${Object.keys(currentProps).join(", ")}`
+    );
+  }
+
+  // Boolean coercion (MCP may send "true"/"false" strings)
+  const coerced = {};
+  for (const [key, value] of Object.entries(properties)) {
+    if (currentProps[key].type === "BOOLEAN" && typeof value === "string") {
+      coerced[key] = value === "true";
+    } else {
+      coerced[key] = value;
+    }
+  }
+
+  node.setProperties(coerced);
+
+  // Read back updated state
+  const updated = {};
+  for (const [name, def] of Object.entries(node.componentProperties)) {
+    updated[name] = { type: def.type, value: def.value };
+  }
+
+  figma.notify(`Set ${Object.keys(properties).length} properties on "${node.name}"`);
+
+  return {
+    success: true,
+    nodeId,
+    nodeName: node.name,
+    propertiesSet: Object.keys(properties),
+    updatedProperties: updated,
   };
 }
