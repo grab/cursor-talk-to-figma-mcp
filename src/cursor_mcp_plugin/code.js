@@ -4044,11 +4044,11 @@ async function getComponentProperties(params) {
   const props = node.componentProperties;
   const result = {};
   for (const [name, def] of Object.entries(props)) {
-    result[name] = {
-      type: def.type,
-      value: def.value,
-      ...(def.preferredValues ? { preferredValues: def.preferredValues } : {}),
-    };
+    var prop = { type: def.type, value: def.value };
+    if (def.preferredValues) {
+      prop.preferredValues = def.preferredValues;
+    }
+    result[name] = prop;
   }
 
   const mainComponent = await node.getMainComponentAsync();
