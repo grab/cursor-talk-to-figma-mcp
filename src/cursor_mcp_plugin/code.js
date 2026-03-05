@@ -233,6 +233,10 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    case "get_component_properties":
+      return await getComponentProperties(params);
+    case "set_component_properties":
+      return await setComponentProperties(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -660,9 +664,9 @@ async function createRectangle(params) {
   } = params || {};
 
   const rect = figma.createRectangle();
-  rect.x = x;
-  rect.y = y;
-  rect.resize(width, height);
+  rect.x = Number(x);
+  rect.y = Number(y);
+  rect.resize(Number(width), Number(height));
   rect.name = name;
 
   // If parentId is provided, append to that node, otherwise append to current page
@@ -715,9 +719,9 @@ async function createFrame(params) {
   } = params || {};
 
   const frame = figma.createFrame();
-  frame.x = x;
-  frame.y = y;
-  frame.resize(width, height);
+  frame.x = Number(x);
+  frame.y = Number(y);
+  frame.resize(Number(width), Number(height));
   frame.name = name;
 
   // Set layout mode if provided
@@ -726,10 +730,10 @@ async function createFrame(params) {
     frame.layoutWrap = layoutWrap;
 
     // Set padding values only when layoutMode is not NONE
-    frame.paddingTop = paddingTop;
-    frame.paddingRight = paddingRight;
-    frame.paddingBottom = paddingBottom;
-    frame.paddingLeft = paddingLeft;
+    frame.paddingTop = Number(paddingTop);
+    frame.paddingRight = Number(paddingRight);
+    frame.paddingBottom = Number(paddingBottom);
+    frame.paddingLeft = Number(paddingLeft);
 
     // Set axis alignment only when layoutMode is not NONE
     frame.primaryAxisAlignItems = primaryAxisAlignItems;
@@ -740,7 +744,7 @@ async function createFrame(params) {
     frame.layoutSizingVertical = layoutSizingVertical;
 
     // Set item spacing only when layoutMode is not NONE
-    frame.itemSpacing = itemSpacing;
+    frame.itemSpacing = Number(itemSpacing);
   }
 
   // Set fill color if provided
@@ -845,8 +849,8 @@ async function createText(params) {
   };
 
   const textNode = figma.createText();
-  textNode.x = x;
-  textNode.y = y;
+  textNode.x = Number(x);
+  textNode.y = Number(y);
   textNode.name = name || text;
   try {
     await figma.loadFontAsync({
@@ -1027,8 +1031,8 @@ async function moveNode(params) {
     throw new Error(`Node does not support position: ${nodeId}`);
   }
 
-  node.x = x;
-  node.y = y;
+  node.x = Number(x);
+  node.y = Number(y);
 
   return {
     id: node.id,
@@ -1058,7 +1062,7 @@ async function resizeNode(params) {
     throw new Error(`Node does not support resizing: ${nodeId}`);
   }
 
-  node.resize(width, height);
+  node.resize(Number(width), Number(height));
 
   return {
     id: node.id,
@@ -1174,8 +1178,8 @@ async function createComponentInstance(params) {
     const component = await figma.importComponentByKeyAsync(componentKey);
     const instance = component.createInstance();
 
-    instance.x = x;
-    instance.y = y;
+    instance.x = Number(x);
+    instance.y = Number(y);
 
     figma.currentPage.appendChild(instance);
 
@@ -1650,8 +1654,8 @@ async function cloneNode(params) {
     if (!("x" in clone) || !("y" in clone)) {
       throw new Error(`Cloned node does not support position: ${nodeId}`);
     }
-    clone.x = x;
-    clone.y = y;
+    clone.x = Number(x);
+    clone.y = Number(y);
   }
 
   // Add the clone to the same parent as the original node
@@ -3331,10 +3335,10 @@ async function setPadding(params) {
   }
 
   // Set padding values if provided
-  if (paddingTop !== undefined) node.paddingTop = paddingTop;
-  if (paddingRight !== undefined) node.paddingRight = paddingRight;
-  if (paddingBottom !== undefined) node.paddingBottom = paddingBottom;
-  if (paddingLeft !== undefined) node.paddingLeft = paddingLeft;
+  if (paddingTop !== undefined) node.paddingTop = Number(paddingTop);
+  if (paddingRight !== undefined) node.paddingRight = Number(paddingRight);
+  if (paddingBottom !== undefined) node.paddingBottom = Number(paddingBottom);
+  if (paddingLeft !== undefined) node.paddingLeft = Number(paddingLeft);
 
   return {
     id: node.id,
@@ -3532,15 +3536,13 @@ async function setItemSpacing(params) {
 
   // Set item spacing if provided
   if (itemSpacing !== undefined) {
-    if (typeof itemSpacing !== "number") {
-      throw new Error("Item spacing must be a number");
-    }
-    node.itemSpacing = itemSpacing;
+    node.itemSpacing = Number(itemSpacing);
   }
 
   // Set counter axis spacing if provided
   if (counterAxisSpacing !== undefined) {
-    if (typeof counterAxisSpacing !== "number") {
+    var counterAxisNum = Number(counterAxisSpacing);
+    if (isNaN(counterAxisNum)) {
       throw new Error("Counter axis spacing must be a number");
     }
     // counterAxisSpacing only applies when layoutWrap is WRAP
@@ -3549,7 +3551,7 @@ async function setItemSpacing(params) {
         "Counter axis spacing can only be set on frames with layoutWrap set to WRAP"
       );
     }
-    node.counterAxisSpacing = counterAxisSpacing;
+    node.counterAxisSpacing = counterAxisNum;
   }
 
   return {
@@ -4024,5 +4026,87 @@ async function setSelections(params) {
     selectedNodes: selectedNodes,
     notFoundIds: notFoundIds,
     message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
+  };
+}
+
+async function getComponentProperties(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node is not a component instance (type: ${node.type})`);
+  }
+
+  const props = node.componentProperties;
+  const result = {};
+  for (const [name, def] of Object.entries(props)) {
+    var prop = { type: def.type, value: def.value };
+    if (def.preferredValues) {
+      prop.preferredValues = def.preferredValues;
+    }
+    result[name] = prop;
+  }
+
+  const mainComponent = await node.getMainComponentAsync();
+  return {
+    nodeId,
+    nodeName: node.name,
+    componentName: mainComponent ? mainComponent.name : null,
+    componentKey: mainComponent ? mainComponent.key : null,
+    properties: result,
+  };
+}
+
+async function setComponentProperties(params) {
+  const { nodeId, properties } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (!properties || typeof properties !== "object") {
+    throw new Error("Missing or invalid properties parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (node.type !== "INSTANCE") {
+    throw new Error(`Node is not a component instance (type: ${node.type})`);
+  }
+
+  // Validate property names exist
+  const currentProps = node.componentProperties;
+  const invalidNames = Object.keys(properties).filter(k => !(k in currentProps));
+  if (invalidNames.length > 0) {
+    throw new Error(
+      `Invalid property names: ${invalidNames.join(", ")}. ` +
+      `Available: ${Object.keys(currentProps).join(", ")}`
+    );
+  }
+
+  // Boolean coercion (MCP may send "true"/"false" strings)
+  const coerced = {};
+  for (const [key, value] of Object.entries(properties)) {
+    if (currentProps[key].type === "BOOLEAN" && typeof value === "string") {
+      coerced[key] = value === "true";
+    } else {
+      coerced[key] = value;
+    }
+  }
+
+  node.setProperties(coerced);
+
+  // Read back updated state
+  const updated = {};
+  for (const [name, def] of Object.entries(node.componentProperties)) {
+    updated[name] = { type: def.type, value: def.value };
+  }
+
+  figma.notify(`Set ${Object.keys(properties).length} properties on "${node.name}"`);
+
+  return {
+    success: true,
+    nodeId,
+    nodeName: node.name,
+    propertiesSet: Object.keys(properties),
+    updatedProperties: updated,
   };
 }
