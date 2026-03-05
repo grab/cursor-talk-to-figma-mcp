@@ -998,13 +998,13 @@ server.tool(
   "Get all annotations in the current document or specific node",
   {
     nodeId: z.string().describe("node ID to get annotations for specific node"),
-    includeCategories: z.boolean().optional().default(true).describe("Whether to include category information")
+    includeCategories: z.boolean().optional().describe("Whether to include category information (defaults to true)")
   },
   async ({ nodeId, includeCategories }: any) => {
     try {
       const result = await sendCommandToFigma("get_annotations", {
         nodeId,
-        includeCategories
+        includeCategories: includeCategories !== undefined ? includeCategories : true
       });
       return {
         content: [
@@ -3034,7 +3034,7 @@ server.tool(
   "join_channel",
   "Join a specific channel to communicate with Figma",
   {
-    channel: z.string().describe("The name of the channel to join").default(""),
+    channel: z.string().optional().describe("The name of the channel to join"),
   },
   async ({ channel }: any) => {
     try {
