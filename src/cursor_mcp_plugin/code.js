@@ -1164,20 +1164,46 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
 
-  if (!componentKey) {
-    throw new Error("Missing componentKey parameter");
+  if (!componentKey && !componentId) {
+    throw new Error("Missing componentKey or componentId parameter. Use componentId for local components (from get_local_components), or componentKey for published library components.");
   }
 
   try {
-    const component = await figma.importComponentByKeyAsync(componentKey);
-    const instance = component.createInstance();
+    let component;
 
+    if (componentId) {
+      // Local component: get node directly by ID
+      const node = await figma.getNodeByIdAsync(componentId);
+      if (!node) {
+        throw new Error(`Component node not found with id: ${componentId}`);
+      }
+      if (node.type !== "COMPONENT") {
+        throw new Error(`Node ${componentId} is not a COMPONENT (got type: ${node.type}). Use get_local_components to find valid component IDs.`);
+      }
+      component = node;
+    } else {
+      // Published library component: import by key
+      component = await figma.importComponentByKeyAsync(componentKey);
+    }
+
+    const instance = component.createInstance();
     instance.x = x;
     instance.y = y;
 
-    figma.currentPage.appendChild(instance);
+    if (parentId) {
+      const parent = await figma.getNodeByIdAsync(parentId);
+      if (parent && "appendChild" in parent) {
+        parent.appendChild(instance);
+      } else {
+        figma.currentPage.appendChild(instance);
+      }
+    } else {
+      figma.currentPage.appendChild(instance);
+    }
+
+    const mainComponent = await instance.getMainComponentAsync();
 
     return {
       id: instance.id,
@@ -1186,7 +1212,7 @@ async function createComponentInstance(params) {
       y: instance.y,
       width: instance.width,
       height: instance.height,
-      componentId: instance.componentId,
+      mainComponentId: mainComponent?.id,
     };
   } catch (error) {
     throw new Error(`Error creating component instance: ${error.message}`);
