@@ -233,6 +233,41 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    // Phase 1: Design Tokens / Variables
+    case "get_variable_collections":
+      return await getVariableCollections();
+    case "get_local_variables":
+      return await getLocalVariables(params);
+    case "create_variable":
+      return await createVariable(params);
+    case "set_variable_value":
+      return await setVariableValue(params);
+    case "bind_variable_to_node":
+      return await bindVariableToNode(params);
+    case "get_node_variable_bindings":
+      return await getNodeVariableBindings(params);
+    // Phase 2: Typography & Text Styling
+    case "get_text_styles":
+      return await getTextStyles();
+    case "set_font_properties":
+      return await setFontProperties(params);
+    case "apply_text_style_to_node":
+      return await applyTextStyleToNode(params);
+    case "create_text_style":
+      return await createTextStyle(params);
+    case "get_font_list":
+      return await getFontList();
+    // Phase 3: Component & Variant Management
+    case "get_component_variants":
+      return await getComponentVariants(params);
+    case "set_variant_property":
+      return await setVariantProperty(params);
+    case "get_component_properties":
+      return await getComponentProperties(params);
+    case "set_component_property":
+      return await setComponentProperty(params);
+    case "create_component_set":
+      return await createComponentSet(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -3977,6 +4012,293 @@ async function setFocus(params) {
     name: node.name,
     id: node.id,
     message: `Focused on node "${node.name}"`
+  };
+}
+
+// ─── Phase 1: Design Tokens / Variables ──────────────────────────────────────
+
+async function getVariableCollections() {
+  const collections = figma.variables.getLocalVariableCollections();
+  return collections.map(col => ({
+    id: col.id,
+    name: col.name,
+    modes: col.modes,
+    defaultModeId: col.defaultModeId,
+    variableIds: col.variableIds,
+    remote: col.remote,
+    hiddenFromPublishing: col.hiddenFromPublishing,
+  }));
+}
+
+async function getLocalVariables(params) {
+  const { collectionId } = params || {};
+  let variables;
+  if (collectionId) {
+    const collection = figma.variables.getVariableCollectionById(collectionId);
+    if (!collection) throw new Error(`Variable collection not found: ${collectionId}`);
+    variables = collection.variableIds
+      .map(id => figma.variables.getVariableById(id))
+      .filter(Boolean);
+  } else {
+    variables = figma.variables.getLocalVariables();
+  }
+  return variables.map(v => ({
+    id: v.id,
+    name: v.name,
+    resolvedType: v.resolvedType,
+    valuesByMode: v.valuesByMode,
+    collectionId: v.variableCollectionId,
+    remote: v.remote,
+    hiddenFromPublishing: v.hiddenFromPublishing,
+    scopes: v.scopes,
+  }));
+}
+
+async function createVariable(params) {
+  const { name, collectionId, type } = params || {};
+  if (!name || !collectionId || !type) {
+    throw new Error("Missing required parameters: name, collectionId, type");
+  }
+  const collection = figma.variables.getVariableCollectionById(collectionId);
+  if (!collection) throw new Error(`Variable collection not found: ${collectionId}`);
+  const variable = figma.variables.createVariable(name, collectionId, type);
+  return {
+    id: variable.id,
+    name: variable.name,
+    resolvedType: variable.resolvedType,
+    collectionId: variable.variableCollectionId,
+  };
+}
+
+async function setVariableValue(params) {
+  const { variableId, modeId, value } = params || {};
+  if (!variableId || !modeId || value === undefined) {
+    throw new Error("Missing required parameters: variableId, modeId, value");
+  }
+  const variable = figma.variables.getVariableById(variableId);
+  if (!variable) throw new Error(`Variable not found: ${variableId}`);
+  variable.setValueForMode(modeId, value);
+  return { success: true, id: variable.id, name: variable.name };
+}
+
+async function bindVariableToNode(params) {
+  const { nodeId, variableId, property } = params || {};
+  if (!nodeId || !variableId || !property) {
+    throw new Error("Missing required parameters: nodeId, variableId, property");
+  }
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  const variable = figma.variables.getVariableById(variableId);
+  if (!variable) throw new Error(`Variable not found: ${variableId}`);
+
+  if (property === "fills" || property === "fill") {
+    const current = node.fills && node.fills !== figma.mixed ? node.fills : [];
+    const base = current.length > 0 ? current[0] : { type: "SOLID", color: { r: 0, g: 0, b: 0 } };
+    const boundPaint = figma.variables.setBoundVariableForPaint(base, "color", variable);
+    node.fills = [boundPaint, ...current.slice(1)];
+  } else if (property === "strokes" || property === "stroke") {
+    const current = node.strokes && node.strokes.length > 0 ? node.strokes : [];
+    const base = current.length > 0 ? current[0] : { type: "SOLID", color: { r: 0, g: 0, b: 0 } };
+    const boundPaint = figma.variables.setBoundVariableForPaint(base, "color", variable);
+    node.strokes = [boundPaint, ...current.slice(1)];
+  } else {
+    node.setBoundVariable(property, variable);
+  }
+
+  return { success: true, nodeId, variableId, property };
+}
+
+async function getNodeVariableBindings(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing required parameter: nodeId");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+  const bindings = {};
+  if (node.boundVariables) {
+    for (const [prop, binding] of Object.entries(node.boundVariables)) {
+      if (Array.isArray(binding)) {
+        bindings[prop] = binding.map(b => {
+          const v = figma.variables.getVariableById(b.id);
+          return { variableId: b.id, variableName: v ? v.name : null, type: b.type };
+        });
+      } else if (binding) {
+        const v = figma.variables.getVariableById(binding.id);
+        bindings[prop] = { variableId: binding.id, variableName: v ? v.name : null, type: binding.type };
+      }
+    }
+  }
+  return { nodeId, bindings };
+}
+
+// ─── Phase 2: Typography & Text Styling ──────────────────────────────────────
+
+async function getTextStyles() {
+  const styles = figma.getLocalTextStyles();
+  return styles.map(style => ({
+    id: style.id,
+    name: style.name,
+    fontFamily: style.fontName.family,
+    fontStyle: style.fontName.style,
+    fontSize: style.fontSize,
+    lineHeight: style.lineHeight,
+    letterSpacing: style.letterSpacing,
+    paragraphSpacing: style.paragraphSpacing,
+    textDecoration: style.textDecoration,
+    textCase: style.textCase,
+  }));
+}
+
+async function setFontProperties(params) {
+  const { nodeId, fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, paragraphSpacing } = params || {};
+  if (!nodeId) throw new Error("Missing required parameter: nodeId");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node || node.type !== "TEXT") throw new Error(`Text node not found: ${nodeId}`);
+
+  if (fontFamily || fontStyle) {
+    const family = fontFamily || (node.fontName !== figma.mixed ? node.fontName.family : "Inter");
+    const style = fontStyle || (node.fontName !== figma.mixed ? node.fontName.style : "Regular");
+    await figma.loadFontAsync({ family, style });
+    node.fontName = { family, style };
+  }
+  if (fontSize !== undefined) node.fontSize = fontSize;
+  if (lineHeight !== undefined) node.lineHeight = lineHeight;
+  if (letterSpacing !== undefined) node.letterSpacing = letterSpacing;
+  if (paragraphSpacing !== undefined) node.paragraphSpacing = paragraphSpacing;
+
+  return { success: true, nodeId };
+}
+
+async function applyTextStyleToNode(params) {
+  const { nodeId, styleId } = params || {};
+  if (!nodeId || !styleId) throw new Error("Missing required parameters: nodeId, styleId");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node || node.type !== "TEXT") throw new Error(`Text node not found: ${nodeId}`);
+  const style = figma.getStyleById(styleId);
+  if (!style || style.type !== "TEXT") throw new Error(`Text style not found: ${styleId}`);
+  await figma.loadFontAsync(style.fontName);
+  node.textStyleId = styleId;
+  return { success: true, nodeId, styleId, styleName: style.name };
+}
+
+async function createTextStyle(params) {
+  const { name, fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, paragraphSpacing } = params || {};
+  if (!name) throw new Error("Missing required parameter: name");
+  const family = fontFamily || "Inter";
+  const style = fontStyle || "Regular";
+  await figma.loadFontAsync({ family, style });
+  const textStyle = figma.createTextStyle();
+  textStyle.name = name;
+  textStyle.fontName = { family, style };
+  if (fontSize !== undefined) textStyle.fontSize = fontSize;
+  if (lineHeight !== undefined) textStyle.lineHeight = lineHeight;
+  if (letterSpacing !== undefined) textStyle.letterSpacing = letterSpacing;
+  if (paragraphSpacing !== undefined) textStyle.paragraphSpacing = paragraphSpacing;
+  return { id: textStyle.id, name: textStyle.name };
+}
+
+async function getFontList() {
+  const fonts = await figma.listAvailableFontsAsync();
+  const familyMap = {};
+  for (const font of fonts) {
+    const { family, style } = font.fontName;
+    if (!familyMap[family]) familyMap[family] = [];
+    familyMap[family].push(style);
+  }
+  return Object.entries(familyMap).map(([family, styles]) => ({ family, styles }));
+}
+
+// ─── Phase 3: Component & Variant Management ──────────────────────────────────
+
+async function getComponentVariants(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing required parameter: nodeId");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+  let componentSet = null;
+  if (node.type === "COMPONENT_SET") {
+    componentSet = node;
+  } else if (node.type === "COMPONENT") {
+    componentSet = node.parent && node.parent.type === "COMPONENT_SET" ? node.parent : null;
+  } else if (node.type === "INSTANCE") {
+    const main = await node.getMainComponentAsync();
+    componentSet = main && main.parent && main.parent.type === "COMPONENT_SET" ? main.parent : null;
+  }
+
+  if (!componentSet) {
+    throw new Error(`No component set found for node ${nodeId}. The node must be a COMPONENT_SET, a variant COMPONENT, or an INSTANCE of a variant.`);
+  }
+
+  return {
+    componentSetId: componentSet.id,
+    componentSetName: componentSet.name,
+    variantGroupProperties: componentSet.variantGroupProperties,
+    componentCount: componentSet.children ? componentSet.children.length : 0,
+  };
+}
+
+async function setVariantProperty(params) {
+  const { nodeId, variantProperties } = params || {};
+  if (!nodeId || !variantProperties) throw new Error("Missing required parameters: nodeId, variantProperties");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node || node.type !== "INSTANCE") throw new Error(`Instance node not found: ${nodeId}`);
+  node.setProperties(variantProperties);
+  return { success: true, nodeId, appliedProperties: variantProperties };
+}
+
+async function getComponentProperties(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing required parameter: nodeId");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+
+  let componentNode = null;
+  if (node.type === "COMPONENT") {
+    componentNode = node;
+  } else if (node.type === "INSTANCE") {
+    componentNode = await node.getMainComponentAsync();
+  }
+
+  if (!componentNode) throw new Error(`No component found for node ${nodeId}`);
+
+  return {
+    nodeId: componentNode.id,
+    name: componentNode.name,
+    componentPropertyDefinitions: componentNode.componentPropertyDefinitions,
+  };
+}
+
+async function setComponentProperty(params) {
+  const { nodeId, properties } = params || {};
+  if (!nodeId || !properties) throw new Error("Missing required parameters: nodeId, properties");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node || node.type !== "INSTANCE") throw new Error(`Instance node not found: ${nodeId}`);
+  node.setProperties(properties);
+  return { success: true, nodeId, appliedProperties: properties };
+}
+
+async function createComponentSet(params) {
+  const { nodeIds, name } = params || {};
+  if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    throw new Error("Missing required parameter: nodeIds (non-empty array of COMPONENT node IDs)");
+  }
+  const nodes = [];
+  for (const nodeId of nodeIds) {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) throw new Error(`Node not found: ${nodeId}`);
+    if (node.type !== "COMPONENT") {
+      throw new Error(`Node ${nodeId} is type '${node.type}' — all nodes must be COMPONENT type to create a component set`);
+    }
+    nodes.push(node);
+  }
+  const componentSet = figma.combineAsVariants(nodes, figma.currentPage);
+  if (name) componentSet.name = name;
+  return {
+    id: componentSet.id,
+    name: componentSet.name,
+    variantGroupProperties: componentSet.variantGroupProperties,
+    componentCount: componentSet.children ? componentSet.children.length : 0,
   };
 }
 

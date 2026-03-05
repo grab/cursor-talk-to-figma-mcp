@@ -2648,7 +2648,26 @@ type FigmaCommand =
   | "set_default_connector"
   | "create_connections"
   | "set_focus"
-  | "set_selections";
+  | "set_selections"
+  // Phase 1: Design Tokens / Variables
+  | "get_variable_collections"
+  | "get_local_variables"
+  | "create_variable"
+  | "set_variable_value"
+  | "bind_variable_to_node"
+  | "get_node_variable_bindings"
+  // Phase 2: Typography & Text Styling
+  | "get_text_styles"
+  | "set_font_properties"
+  | "apply_text_style_to_node"
+  | "create_text_style"
+  | "get_font_list"
+  // Phase 3: Component & Variant Management
+  | "get_component_variants"
+  | "set_variant_property"
+  | "get_component_properties"
+  | "set_component_property"
+  | "create_component_set";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -3028,6 +3047,290 @@ function sendCommandToFigma(
     ws.send(JSON.stringify(request));
   });
 }
+
+// ─── Phase 1: Design Tokens / Variables ───────────────────────────────────────
+
+server.tool(
+  "get_variable_collections",
+  "Get all local variable collections and their modes. Call this first to understand the design token system before reading or writing variables.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_variable_collections");
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "get_local_variables",
+  "List all variables in a collection (or all local variables if no collection specified). Returns name, type, and values per mode. Call after get_variable_collections.",
+  {
+    collectionId: z.string().optional().describe("Filter to a specific collection ID. Omit to get all local variables."),
+  },
+  async ({ collectionId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_local_variables", { collectionId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_variable",
+  "Create a new variable in a variable collection. Supported types: COLOR, FLOAT, STRING, BOOLEAN.",
+  {
+    name: z.string().describe("Name of the variable (e.g. 'color/primary/500')"),
+    collectionId: z.string().describe("ID of the variable collection to add this variable to"),
+    type: z.enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"]).describe("The variable type"),
+  },
+  async ({ name, collectionId, type }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_variable", { name, collectionId, type });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_variable_value",
+  "Set the value of a variable for a specific mode. For COLOR variables, value must be {r,g,b,a} with 0-1 floats. For FLOAT, a number. For STRING, a string. For BOOLEAN, true/false.",
+  {
+    variableId: z.string().describe("ID of the variable to update"),
+    modeId: z.string().describe("ID of the mode to set the value for"),
+    value: z.any().describe("The value to set. COLOR: {r,g,b,a} (0-1 floats). FLOAT: number. STRING: string. BOOLEAN: boolean."),
+  },
+  async ({ variableId, modeId, value }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_variable_value", { variableId, modeId, value });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "bind_variable_to_node",
+  "Bind a variable to a node property. Supported properties: 'fills' (COLOR variable), 'strokes' (COLOR), 'opacity' (FLOAT), 'cornerRadius' (FLOAT), 'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom' (FLOAT), 'itemSpacing' (FLOAT), 'width' (FLOAT), 'height' (FLOAT).",
+  {
+    nodeId: z.string().describe("The ID of the node to bind to"),
+    variableId: z.string().describe("The ID of the variable to bind"),
+    property: z.string().describe("The node property to bind (e.g. 'fills', 'opacity', 'cornerRadius', 'paddingLeft')"),
+  },
+  async ({ nodeId, variableId, property }: any) => {
+    try {
+      const result = await sendCommandToFigma("bind_variable_to_node", { nodeId, variableId, property });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "get_node_variable_bindings",
+  "Read which variables are currently driving a node's properties. Use this to audit design system compliance before making changes.",
+  {
+    nodeId: z.string().describe("The ID of the node to inspect"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_node_variable_bindings", { nodeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// ─── Phase 2: Typography & Text Styling ───────────────────────────────────────
+
+server.tool(
+  "get_text_styles",
+  "Return all named text styles in the file (H1, Body-Large, Caption, etc.) with their full typographic properties. Call this first to understand the type system before applying or creating styles.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_text_styles");
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_font_properties",
+  "Set typographic properties directly on a text node without using a named style. Use for fine-grained control or when no matching style exists.",
+  {
+    nodeId: z.string().describe("The ID of the text node"),
+    fontFamily: z.string().optional().describe("Font family name (e.g. 'Inter')"),
+    fontStyle: z.string().optional().describe("Font style/weight name (e.g. 'Regular', 'Bold', 'SemiBold')"),
+    fontSize: z.number().optional().describe("Font size in pixels"),
+    lineHeight: z.union([
+      z.object({ value: z.number(), unit: z.enum(["PIXELS", "PERCENT"]) }),
+      z.object({ unit: z.literal("AUTO") }),
+    ]).optional().describe("Line height: {value, unit: 'PIXELS'|'PERCENT'} or {unit: 'AUTO'}"),
+    letterSpacing: z.object({ value: z.number(), unit: z.enum(["PIXELS", "PERCENT"]) }).optional().describe("Letter spacing: {value, unit: 'PIXELS'|'PERCENT'}"),
+    paragraphSpacing: z.number().optional().describe("Paragraph spacing in pixels"),
+  },
+  async ({ nodeId, fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, paragraphSpacing }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_font_properties", { nodeId, fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, paragraphSpacing });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "apply_text_style_to_node",
+  "Bind a text node to a named text style by style ID. Changes to the style then cascade automatically. Get style IDs from get_text_styles first.",
+  {
+    nodeId: z.string().describe("The ID of the text node to apply the style to"),
+    styleId: z.string().describe("The ID of the text style to apply (from get_text_styles)"),
+  },
+  async ({ nodeId, styleId }: any) => {
+    try {
+      const result = await sendCommandToFigma("apply_text_style_to_node", { nodeId, styleId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_text_style",
+  "Create a new named text style with full typographic properties. Use get_font_list first to pick valid font names.",
+  {
+    name: z.string().describe("Name for the style (e.g. 'Heading/H1', 'Body/Large')"),
+    fontFamily: z.string().optional().describe("Font family (e.g. 'Inter'). Defaults to 'Inter'."),
+    fontStyle: z.string().optional().describe("Font style (e.g. 'Regular', 'Bold'). Defaults to 'Regular'."),
+    fontSize: z.number().optional().describe("Font size in pixels"),
+    lineHeight: z.union([
+      z.object({ value: z.number(), unit: z.enum(["PIXELS", "PERCENT"]) }),
+      z.object({ unit: z.literal("AUTO") }),
+    ]).optional().describe("Line height"),
+    letterSpacing: z.object({ value: z.number(), unit: z.enum(["PIXELS", "PERCENT"]) }).optional().describe("Letter spacing"),
+    paragraphSpacing: z.number().optional().describe("Paragraph spacing in pixels"),
+  },
+  async ({ name, fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, paragraphSpacing }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_text_style", { name, fontFamily, fontStyle, fontSize, lineHeight, letterSpacing, paragraphSpacing });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "get_font_list",
+  "Return available fonts grouped by family with their available styles. Call this before set_font_properties or create_text_style to ensure font names are valid.",
+  {},
+  async () => {
+    try {
+      const result = await sendCommandToFigma("get_font_list");
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+// ─── Phase 3: Component & Variant Management ──────────────────────────────────
+
+server.tool(
+  "get_component_variants",
+  "Return all variant properties and their possible values for a component set (e.g. State: [default, hover, pressed], Size: [sm, md, lg]). Pass any node ID inside the component set or an instance of it.",
+  {
+    nodeId: z.string().describe("ID of a COMPONENT_SET, COMPONENT inside a set, or an INSTANCE of a variant component"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_component_variants", { nodeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_variant_property",
+  "Swap a component instance to a specific variant combination. Get valid property names and values from get_component_variants first.",
+  {
+    nodeId: z.string().describe("ID of the INSTANCE node to update"),
+    variantProperties: z.record(z.string()).describe("Object of variant property name -> value (e.g. {\"State\": \"hover\", \"Size\": \"lg\"})"),
+  },
+  async ({ nodeId, variantProperties }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_variant_property", { nodeId, variantProperties });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "get_component_properties",
+  "Read the exposed component properties (text content, boolean toggles, nested instance swaps) that a designer has intentionally surfaced for override.",
+  {
+    nodeId: z.string().describe("ID of a COMPONENT or INSTANCE node"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_component_properties", { nodeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "set_component_property",
+  "Drive component properties directly on an instance — e.g. toggle hasIcon=true or set label='Submit' via the exposed property API rather than drilling into child nodes.",
+  {
+    nodeId: z.string().describe("ID of the INSTANCE node to update"),
+    properties: z.record(z.union([z.string(), z.boolean(), z.number()])).describe("Object of property name -> value (e.g. {\"Label\": \"Submit\", \"hasIcon\": true})"),
+  },
+  async ({ nodeId, properties }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_component_property", { nodeId, properties });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
+
+server.tool(
+  "create_component_set",
+  "Group multiple COMPONENT nodes into a component set and define variant properties. All nodes must already be COMPONENT type.",
+  {
+    nodeIds: z.array(z.string()).describe("Array of COMPONENT node IDs to combine into a variant set"),
+    name: z.string().optional().describe("Name for the resulting component set"),
+  },
+  async ({ nodeIds, name }: any) => {
+    try {
+      const result = await sendCommandToFigma("create_component_set", { nodeIds, name });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  }
+);
 
 // Update the join_channel tool
 server.tool(
