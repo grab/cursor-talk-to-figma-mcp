@@ -127,6 +127,31 @@ const server = Bun.serve({
           return;
         }
 
+        // Forward progress updates to all clients in the channel (including sender's MCP client)
+        // This is critical for long-running commands: MCP clients use these to reset their timeout.
+        if (data.type === "progress_update") {
+          const channelName = data.channel;
+          if (!channelName) return;
+
+          const channelClients = channels.get(channelName);
+          if (!channelClients) return;
+
+          const payload = JSON.stringify({
+            type: "progress_update",
+            id: data.id,
+            progress: data.progress,
+            message: data.message,
+            channel: channelName,
+          });
+
+          channelClients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(payload);
+            }
+          });
+          return;
+        }
+
         // Handle regular messages
         if (data.type === "message") {
           const channelName = data.channel;

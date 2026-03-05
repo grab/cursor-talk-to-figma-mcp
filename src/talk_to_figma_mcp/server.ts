@@ -965,7 +965,12 @@ server.tool(
 // Get Local Components Tool
 server.tool(
   "get_local_components",
-  "Get all local components from the Figma document",
+  "Get all master components defined locally in this Figma file (not from team libraries). " +
+  "Scans all pages in the document. " +
+  "Returns id, name, description, pageName, componentSetName, and publishedKey for each component. " +
+  "IMPORTANT: Always use the 'id' field with the 'componentId' parameter of create_component_instance for local components. " +
+  "Do NOT use 'publishedKey' as componentKey unless the component has been explicitly published to a team library — " +
+  "doing so will cause a timeout error (see: importComponentByKeyAsync only works for published library components).",
   {},
   async () => {
     try {
@@ -1197,18 +1202,22 @@ server.tool(
 // Create Component Instance Tool
 server.tool(
   "create_component_instance",
-  "Create an instance of a component in Figma",
+  "Create an instance of a component in Figma. For LOCAL components (from get_local_components), use componentId with the id field. For published LIBRARY components, use componentKey.",
   {
-    componentKey: z.string().describe("Key of the component to instantiate"),
+    componentId: z.string().optional().describe("ID of a local component (use the id field from get_local_components result)"),
+    componentKey: z.string().optional().describe("Key of a published library component to instantiate"),
     x: z.number().describe("X position"),
     y: z.number().describe("Y position"),
+    parentId: z.string().optional().describe("Optional parent node ID to place the instance into"),
   },
-  async ({ componentKey, x, y }: any) => {
+  async ({ componentId, componentKey, x, y, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_component_instance", {
+        componentId,
         componentKey,
         x,
         y,
+        parentId,
       });
       const typedResult = result as any;
       return {
@@ -2544,9 +2553,11 @@ type CommandParams = {
   get_local_components: Record<string, never>;
   get_team_components: Record<string, never>;
   create_component_instance: {
-    componentKey: string;
+    componentId?: string;
+    componentKey?: string;
     x: number;
     y: number;
+    parentId?: string;
   };
   get_instance_overrides: {
     instanceNodeId: string | null;
@@ -2673,41 +2684,34 @@ function connectToFigma(port: number = 3055) {
 
       const json = JSON.parse(data) as ProgressMessage;
 
-      // Handle progress updates
+      // Handle progress updates — reset inactivity timeout for long-running commands
       if (json.type === 'progress_update') {
-        const progressData = json.message.data as CommandProgressUpdate;
-        const requestId = json.id || '';
+        // Accept id from top-level or nested message (for compatibility with both relay formats)
+        const requestId = json.id || json.message?.id || '';
 
         if (requestId && pendingRequests.has(requestId)) {
           const request = pendingRequests.get(requestId)!;
-
-          // Update last activity timestamp
           request.lastActivity = Date.now();
 
-          // Reset the timeout to prevent timeouts during long-running operations
           clearTimeout(request.timeout);
-
-          // Create a new timeout
           request.timeout = setTimeout(() => {
             if (pendingRequests.has(requestId)) {
-              logger.error(`Request ${requestId} timed out after extended period of inactivity`);
+              logger.error(`Request ${requestId} timed out after inactivity`);
               pendingRequests.delete(requestId);
               request.reject(new Error('Request to Figma timed out'));
             }
-          }, 60000); // 60 second timeout for inactivity
+          }, 60000);
 
-          // Log progress
-          logger.info(`Progress update for ${progressData.commandType}: ${progressData.progress}% - ${progressData.message}`);
-
-          // For completed updates, we could resolve the request early if desired
-          if (progressData.status === 'completed' && progressData.progress === 100) {
-            // Optionally resolve early with partial data
-            // request.resolve(progressData.payload);
-            // pendingRequests.delete(requestId);
-
-            // Instead, just log the completion, wait for final result from Figma
-            logger.info(`Operation ${progressData.commandType} completed, waiting for final result`);
+          const progressData = json.message?.data as CommandProgressUpdate | undefined;
+          if (progressData) {
+            logger.info(`Progress: ${progressData.commandType} ${progressData.progress}% - ${progressData.message}`);
+          } else {
+            logger.info(`Progress update received, timeout reset for request ${requestId.substring(0, 8)}...`);
           }
+        } else if (requestId) {
+          logger.warn(`Progress update for unknown request: ${requestId.substring(0, 8)}... (pending: ${pendingRequests.size})`);
+        } else {
+          logger.warn(`Progress update without request ID, cannot reset timeout`);
         }
         return;
       }

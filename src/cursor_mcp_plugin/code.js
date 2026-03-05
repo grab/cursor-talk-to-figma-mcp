@@ -1124,19 +1124,66 @@ async function getStyles() {
 }
 
 async function getLocalComponents() {
-  await figma.loadAllPagesAsync();
+  const commandId = generateCommandId();
 
-  const components = figma.root.findAllWithCriteria({
-    types: ["COMPONENT"],
-  });
+  const pages = figma.root.children;
+
+  sendProgressUpdate(
+    commandId, "get_local_components", "started",
+    0, pages.length, 0,
+    `Starting component scan across ${pages.length} page(s)`,
+    { totalPages: pages.length }
+  );
+  // Yield to flush the postMessage queue so ui.html receives the message immediately
+  await new Promise(function(resolve) { setTimeout(resolve, 0); });
+
+  const allComponents = [];
+
+  for (let i = 0; i < pages.length; i++) {
+    const page = pages[i];
+
+    // Load each page individually; also serves as a yield point for loaded pages
+    if (page.id !== figma.currentPage.id) {
+      await page.loadAsync();
+    }
+
+    const pageComponents = page.findAllWithCriteria({ types: ["COMPONENT"] });
+
+    for (const component of pageComponents) {
+      const parentSet =
+        component.parent && component.parent.type === "COMPONENT_SET" ? component.parent : null;
+      allComponents.push({
+        id: component.id,
+        name: component.name,
+        description: component.description || null,
+        pageName: page.name,
+        componentSetName: parentSet ? parentSet.name : null,
+        publishedKey: component.key || null,
+      });
+    }
+
+    // Send progress update per page and yield so ui.html receives it before the next iteration
+    sendProgressUpdate(
+      commandId, "get_local_components", "in_progress",
+      Math.round(((i + 1) / pages.length) * 95),
+      pages.length, i + 1,
+      `Scanned "${page.name}": ${pageComponents.length} components (total so far: ${allComponents.length})`,
+      { currentPage: page.name, componentsFound: allComponents.length }
+    );
+    await new Promise(function(resolve) { setTimeout(resolve, 0); });
+  }
+
+  sendProgressUpdate(
+    commandId, "get_local_components", "completed",
+    100, pages.length, pages.length,
+    `Scan complete. Found ${allComponents.length} components across ${pages.length} page(s).`,
+    { components: allComponents }
+  );
 
   return {
-    count: components.length,
-    components: components.map((component) => ({
-      id: component.id,
-      name: component.name,
-      key: "key" in component ? component.key : null,
-    })),
+    count: allComponents.length,
+    components: allComponents,
+    commandId,
   };
 }
 
@@ -1160,20 +1207,47 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
 
-  if (!componentKey) {
-    throw new Error("Missing componentKey parameter");
+  if (!componentKey && !componentId) {
+    throw new Error("Missing componentKey or componentId parameter. Use componentId for local components (from get_local_components), or componentKey for published library components.");
   }
 
   try {
-    const component = await figma.importComponentByKeyAsync(componentKey);
-    const instance = component.createInstance();
+    let component;
 
+    if (componentId) {
+      // Local component: get node directly by ID
+      const node = await figma.getNodeByIdAsync(componentId);
+      if (!node) {
+        throw new Error(`Component node not found with id: ${componentId}`);
+      }
+      if (node.type !== "COMPONENT") {
+        throw new Error(`Node ${componentId} is not a COMPONENT (got type: ${node.type}). Use get_local_components to find valid component IDs.`);
+      }
+      component = node;
+    } else {
+      // Published library component: import by key
+      component = await figma.importComponentByKeyAsync(componentKey);
+    }
+
+    const instance = component.createInstance();
     instance.x = x;
     instance.y = y;
 
-    figma.currentPage.appendChild(instance);
+    if (parentId) {
+      const parent = await figma.getNodeByIdAsync(parentId);
+      if (parent && "appendChild" in parent) {
+        parent.appendChild(instance);
+      } else {
+        figma.currentPage.appendChild(instance);
+      }
+    } else {
+      figma.currentPage.appendChild(instance);
+    }
+
+    // Use getMainComponentAsync to support cross-page components
+    const mainComponent = await instance.getMainComponentAsync();
 
     return {
       id: instance.id,
@@ -1182,10 +1256,10 @@ async function createComponentInstance(params) {
       y: instance.y,
       width: instance.width,
       height: instance.height,
-      componentId: instance.componentId,
+      mainComponentId: mainComponent ? mainComponent.id : null,
     };
   } catch (error) {
-    throw new Error(`Error creating component instance: ${error.message}`);
+    throw new Error(`Error creating component instance: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

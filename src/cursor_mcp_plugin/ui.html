@@ -413,6 +413,8 @@
         // If it's a new command
         if (data.command) {
           try {
+            // Store the request ID so progress updates can reference it for timeout reset
+            state.activeRequestId = data.id;
             // Send the command to the plugin code
             parent.postMessage(
               {
@@ -427,6 +429,7 @@
             );
           } catch (error) {
             // Send error back to WebSocket
+            state.activeRequestId = null;
             sendErrorResponse(
               data.id,
               error.message || "Error executing command"
@@ -599,13 +602,16 @@
         
         console.log("Sending progress update to server:", progressData);
         
+        // Use the active request ID (from the MCP server) so the server can
+        // match this progress update to the pending request and reset its timeout.
+        const requestId = state.activeRequestId || progressData.commandId;
         state.socket.send(
           JSON.stringify({
-            id: progressData.commandId,
+            id: requestId,
             type: "progress_update",
             channel: state.channel,
             message: {
-              id: progressData.commandId,
+              id: requestId,
               type: "progress_update",
               data: progressData
             }
@@ -643,15 +649,18 @@
           case "command-result":
             // Forward the result from plugin code back to WebSocket
             sendSuccessResponse(message.id, message.result);
+            state.activeRequestId = null;
             break;
           case "command-error":
             // Forward the error from plugin code back to WebSocket
             sendErrorResponse(message.id, message.error);
+            state.activeRequestId = null;
             break;
           case "command_progress":
             // Update UI with progress information
             updateProgressUI(message);
-            // Forward progress update to server
+            // Forward progress update to server using the active request ID
+            // so the server can reset its inactivity timeout
             sendProgressUpdateToServer(message);
             break;
         }
