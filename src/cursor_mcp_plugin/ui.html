@@ -556,6 +556,8 @@
         // If it's a new command
         if (data.command) {
           try {
+            state.activeRequestId = data.id;
+
             // Send the command to the plugin code
             parent.postMessage(
               {
@@ -742,13 +744,14 @@
 
         console.log("Sending progress update to server:", progressData);
 
+        const requestId = state.activeRequestId || progressData.commandId;
         state.socket.send(
           JSON.stringify({
-            id: progressData.commandId,
+            id: requestId,
             type: "progress_update",
             channel: state.channel,
             message: {
-              id: progressData.commandId,
+              id: requestId,
               type: "progress_update",
               data: progressData,
             },
