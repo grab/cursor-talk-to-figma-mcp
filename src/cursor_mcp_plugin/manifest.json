@@ -1,6 +1,6 @@
 {
   "name": "Cursor MCP Plugin",
-  "id": "cursor-mcp-plugin",
+  "id": "1485687494525374295",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",
@@ -11,14 +11,13 @@
   "permissions": [],
   "networkAccess": {
     "allowedDomains": [
-      "https://google.com"
+      "ws://localhost:3055"
     ],
+    "reasoning": "This is a plugin for Cursor that allows you to connect to a local server",
     "devAllowedDomains": [
       "http://localhost:3055",
       "ws://localhost:3055"
     ]
   },
-  "documentAccess": "dynamic-page",
-  "enableProposedApi": true,
-  "enablePrivatePluginApi": true
+  "documentAccess": "dynamic-page"
 }

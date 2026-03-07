@@ -12,17 +12,20 @@
         color: #e0e0e0;
         background-color: #1e1e1e;
       }
+
       .container {
         display: flex;
         flex-direction: column;
         height: 100%;
       }
+
       h1 {
         font-size: 16px;
         font-weight: 600;
         margin-bottom: 10px;
         color: #ffffff;
       }
+
       h2 {
         font-size: 14px;
         font-weight: 600;
@@ -30,6 +33,7 @@
         margin-bottom: 8px;
         color: #ffffff;
       }
+
       button {
         background-color: #18a0fb;
         border: none;
@@ -42,21 +46,26 @@
         font-size: 14px;
         transition: background-color 0.2s;
       }
+
       button:hover {
         background-color: #0d8ee0;
       }
+
       button.secondary {
         background-color: #3d3d3d;
         color: #e0e0e0;
       }
+
       button.secondary:hover {
         background-color: #4d4d4d;
       }
+
       button:disabled {
         background-color: #333333;
         color: #666666;
         cursor: not-allowed;
       }
+
       input {
         border: 1px solid #444444;
         border-radius: 4px;
@@ -68,6 +77,7 @@
         background-color: #2d2d2d;
         color: #e0e0e0;
       }
+
       label {
         display: block;
         margin-bottom: 4px;
@@ -75,56 +85,122 @@
         font-weight: 500;
         color: #cccccc;
       }
+
       .status {
         margin-top: 16px;
         padding: 12px;
         border-radius: 6px;
         font-size: 14px;
       }
+
       .status.connected {
         background-color: #1a472a;
         color: #4ade80;
       }
+
       .status.disconnected {
         background-color: #471a1a;
         color: #ff9999;
       }
+
       .status.info {
         background-color: #1a3147;
         color: #66b3ff;
       }
+
+      .toggle-container {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 40px;
+        height: 20px;
+        margin-right: 8px;
+      }
+
+      .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+        margin: 0;
+      }
+
+      .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #444444;
+        transition: 0.4s;
+        border-radius: 20px;
+      }
+
+      .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 2px;
+        bottom: 2px;
+        background-color: white;
+        transition: 0.4s;
+        border-radius: 50%;
+      }
+
+      input:checked + .toggle-slider {
+        background-color: #18a0fb;
+      }
+
+      input:checked + .toggle-slider:before {
+        transform: translateX(20px);
+      }
+
       .section {
         margin-bottom: 24px;
       }
+
       .hidden {
         display: none;
       }
+
       .logo {
         width: 50px;
         height: 50px;
       }
+
       .header {
         display: flex;
         align-items: center;
         margin-bottom: 16px;
       }
+
       .header-text {
         margin-left: 12px;
       }
+
       .header-text h1 {
         margin: 0;
         font-size: 16px;
       }
+
       .header-text p {
         margin: 4px 0 0 0;
         font-size: 12px;
         color: #999999;
       }
+
       .tabs {
         display: flex;
         border-bottom: 1px solid #444444;
         margin-bottom: 16px;
       }
+
       .tab {
         padding: 8px 16px;
         cursor: pointer;
@@ -132,29 +208,36 @@
         font-weight: 500;
         color: #999999;
       }
+
       .tab.active {
         border-bottom: 2px solid #18a0fb;
         color: #18a0fb;
       }
+
       .tab-content {
         display: none;
       }
+
       .tab-content.active {
         display: block;
       }
+
       .link {
         color: #18a0fb;
         text-decoration: none;
         cursor: pointer;
       }
+
       .link:hover {
         text-decoration: underline;
       }
+
       .header-logo {
         padding: 16px;
         border-radius: 16px;
         background-color: #333;
       }
+
       .header-logo-image {
         width: 24px;
         height: 24px;
@@ -169,17 +252,12 @@
       }
     </style>
   </head>
+
   <body>
     <div class="container">
       <div class="header">
-        <div class="header-logo">
-          <img
-            class="header-logo-image"
-            src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADwAAAA8CAMAAAANIilAAAAABGdBTUEAALGPC/xhBQAAAAFzUkdCAK7OHOkAAAAJcEhZcwAAEJwAABCcASbNOjQAAAB1UExURUdwTP////////////////39/f////////////////////////////7+/v////////////39/f////////////////////////////////////////////////////39/fn5+ejo6P///+rq6uXl5f////Ly8gf4a04AAAAkdFJOUwAOdkZCfz04zIgbT0pkIagnm7C9b6C2LWqSxBMyB11W2Ovsy3D12ZYAAALtSURBVEjHndcJt6ogEADgXNAUcWlxSQVN3/3/P/EBAgJpWdM9p5ue78xANE2n05vIUduffgvn1oA0bX+hvRc1DYjTPHe+tiGIoqhx4zTNq/y72lMURQtmqasuPc4dAmgwfWuZrqquiw8uNnC5BRJT3YXhIZ7Xris0oLjlmOrArz7VHpOb6wpNee0ITVMHvvd25/qgvtFwla8dpxV7xnTi7dbed7iuTY16lZoV7iXQb3cqRgjVgoviKTZSUw2719pbD2OEVu5yjnqeOpZ75lMMobVzfUcwC6lrofGJpdb3jGtj6TkkNKRWtXMsU+ciNdfQUwe+zZ7/vo1CYYgv39G/kShMS6mHL+g8F96K2Uqi52E6j3DFnsc4uR/hMwugYd9bOLoeSTvPE1yx4/sLh9B9fKbziHVM3z/G+dKb5wdKdysxsNCc4+2l/yk7EnrOVhwGBt9auqJ0t9gR13C4cl77bdil88SPuK9jxrXksHjab48Mwo+4ha3aSbZJ52JpC4GFbY7OdsVst4Lls/mKZe1y6fXTonS3RFsIN7C5dAJsO+WiI21jbd8xesFEtoUdLLjH+qGNJ9WRuj3MOOQNycaV6khvsLc0MxsD2Uq7bhcHuBZh4rFdujjT1c6GkaXtszCx3sW3MRRfNjwiI7EjGjGfFjZwUgM9CuNggqRVXz+vOGDTBOCP5UnHE73ghjK1jYNlEIma9UnHBb/qdkvq1MSQjk4yCvGk4UneQylLbWAIio3I1t26q4sNTuM01tqQe9+My5pYv9wk8Ypv92w7JpXYulGoD8aJ3C/bUUp8tW5EuTa2oXI7ZGLzahZYE0l03QqZWI8Lfh1lw+zxEoNIrF8Dm/NQT8rzgz+WP/oQmL6Ud4pud/4DZzMWPKjXZfJufOyiVzzKV4/609yelDaWiZsDc6+DSwOLxNqxeD/6Ah3zf674+Kyf3xUeDi3WDFIKzCpOv/5phB4MD+cs/OWXVdych/GBf/xJd4pL9+1i/wOElMO5v/co4wAAAABJRU5ErkJggg=="
-          />
-        </div>
         <div class="header-text">
-          <h1>Cursor Talk To Figma Plugin</h1>
+          <h1>Talk To Figma MCP Plugin</h1>
           <p>Connect Figma to Cursor AI using MCP</p>
         </div>
       </div>
@@ -191,8 +269,14 @@
 
       <div id="content-connection" class="tab-content active">
         <div class="section">
-          <label for="port">WebSocket Server Port</label>
-          <div style="display: flex; gap: 8px">
+          <div style="margin-bottom: 16px">
+            <button id="btn-connect" class="primary" style="width: 100%">
+              Connect
+            </button>
+          </div>
+
+          <div id="port-container">
+            <label for="port">WebSocket Server Port</label>
             <input
               type="number"
               id="port"
@@ -201,7 +285,6 @@
               min="1024"
               max="65535"
             />
-            <button id="btn-connect" class="primary">Connect</button>
           </div>
         </div>
 
@@ -209,20 +292,61 @@
           Not connected to Cursor MCP server
         </div>
 
-        <div class="section">
-          <button id="btn-disconnect" class="secondary" disabled>
-            Disconnect
-          </button>
+        <div id="mcp-config" class="section hidden">
+          <h2>MCP Configuration</h2>
+          <p>
+            Copy this configuration to your <code>mcp.json</code> file in
+            Cursor:
+          </p>
+          <textarea
+            id="mcp-json"
+            rows="5"
+            readonly
+            style="
+              width: 100%;
+              background: #2d2d2d;
+              color: #e0e0e0;
+              padding: 12px;
+              border: 1px solid #444444;
+              border-radius: 4px;
+              font-family: monospace;
+              margin-bottom: 8px;
+            "
+          ></textarea>
+          <button id="btn-copy" class="secondary">Copy to Clipboard</button>
         </div>
-        
+
         <!-- Add Progress Bar Section -->
         <div id="progress-container" class="section hidden">
           <h2>Operation Progress</h2>
           <div id="progress-message">No operation in progress</div>
-          <div style="width: 100%; background-color: #444; border-radius: 4px; margin-top: 8px;">
-            <div id="progress-bar" style="width: 0%; height: 8px; background-color: #18a0fb; border-radius: 4px; transition: width 0.3s;"></div>
+          <div
+            style="
+              width: 100%;
+              background-color: #444;
+              border-radius: 4px;
+              margin-top: 8px;
+            "
+          >
+            <div
+              id="progress-bar"
+              style="
+                width: 0%;
+                height: 8px;
+                background-color: #18a0fb;
+                border-radius: 4px;
+                transition: width 0.3s;
+              "
+            ></div>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px;">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              margin-top: 4px;
+              font-size: 12px;
+            "
+          >
             <div id="progress-status">Not started</div>
             <div id="progress-percentage">0%</div>
           </div>
@@ -231,7 +355,7 @@
 
       <div id="content-about" class="tab-content">
         <div class="section">
-          <h2>About Cursor Talk To Figma Plugin</h2>
+          <h2>About Talk To Figma Plugin</h2>
           <p>
             This plugin allows Cursor AI to communicate with Figma, enabling
             AI-assisted design operations.
@@ -241,7 +365,7 @@
               >Github</a
             >
           </p>
-          <p>Version: 1.0.0</p>
+          <p>Version: 1.1.0</p>
 
           <h2>How to Use</h2>
           <ol>
@@ -266,7 +390,6 @@
       // UI Elements
       const portInput = document.getElementById("port");
       const connectButton = document.getElementById("btn-connect");
-      const disconnectButton = document.getElementById("btn-disconnect");
       const connectionStatus = document.getElementById("connection-status");
 
       // Tabs
@@ -283,18 +406,36 @@
       // Initialize UI
       function updateConnectionStatus(isConnected, message) {
         state.connected = isConnected;
-        connectionStatus.innerHTML =
+
+        let statusMessage =
           message ||
           (isConnected
             ? "Connected to Cursor MCP server"
             : "Not connected to Cursor MCP server");
+
+        // Add instructions for localhost when disconnected
+        if (!isConnected) {
+          statusMessage += `<br><br>Run this in your terminal, then connect<br><code>bunx cursor-talk-to-figma-socket</code>`;
+        }
+
+        connectionStatus.innerHTML = statusMessage;
         connectionStatus.className = `status ${
           isConnected ? "connected" : "disconnected"
         }`;
 
-        connectButton.disabled = isConnected;
-        disconnectButton.disabled = !isConnected;
+        // Update connect button text and style based on connection state
+        connectButton.textContent = isConnected ? "Disconnect" : "Connect";
+        connectButton.className = isConnected ? "secondary" : "primary";
         portInput.disabled = isConnected;
+
+        // Show/hide MCP config section
+        const mcpConfig = document.getElementById("mcp-config");
+        mcpConfig.className = `section ${isConnected ? "" : "hidden"}`;
+
+        // Update MCP config text when showing
+        if (isConnected) {
+          updateMcpConfig();
+        }
       }
 
       // Connect to WebSocket server
@@ -306,7 +447,9 @@
           }
 
           state.serverPort = port;
-          state.socket = new WebSocket(`ws://localhost:${port}`);
+          const wsUrl = `ws://localhost:${port}`;
+
+          state.socket = new WebSocket(wsUrl);
 
           state.socket.onopen = () => {
             // Generate random channel name
@@ -335,7 +478,7 @@
                   const channelName = data.channel;
                   updateConnectionStatus(
                     true,
-                    `Connected to server on port ${port} in channel: <strong>${channelName}</strong>`
+                    `Connected to server in channel: <strong>${channelName}</strong>`
                   );
 
                   // Notify the plugin code
@@ -413,6 +556,8 @@
         // If it's a new command
         if (data.command) {
           try {
+            state.activeRequestId = data.id;
+
             // Send the command to the plugin code
             parent.postMessage(
               {
@@ -504,7 +649,7 @@
             message: {
               id,
               error: errorMessage,
-              result: {}
+              result: {},
             },
           })
         );
@@ -541,50 +686,50 @@
         });
       });
 
-      // Connect to server
+      // Replace the separate connect/disconnect button listeners with a single toggle
       connectButton.addEventListener("click", () => {
-        const port = parseInt(portInput.value, 10) || 3055;
-        updateConnectionStatus(false, "Connecting...");
-        connectionStatus.className = "status info";
-        connectToServer(port);
-      });
-
-      // Disconnect from server
-      disconnectButton.addEventListener("click", () => {
-        updateConnectionStatus(false, "Disconnecting...");
-        connectionStatus.className = "status info";
-        disconnectFromServer();
+        if (state.connected) {
+          updateConnectionStatus(false, "Disconnecting...");
+          connectionStatus.className = "status info";
+          disconnectFromServer();
+        } else {
+          const port = parseInt(portInput.value, 10) || 3055;
+          updateConnectionStatus(false, "Connecting...");
+          connectionStatus.className = "status info";
+          connectToServer(port);
+        }
       });
 
       // Function to update progress UI
       function updateProgressUI(progressData) {
         // Show progress container if hidden
         progressContainer.classList.remove("hidden");
-        
+
         // Update progress bar
         const progress = progressData.progress || 0;
         progressBar.style.width = `${progress}%`;
         progressPercentage.textContent = `${progress}%`;
-        
+
         // Update message
-        progressMessage.textContent = progressData.message || "Operation in progress";
-        
+        progressMessage.textContent =
+          progressData.message || "Operation in progress";
+
         // Update status text based on operation state
-        if (progressData.status === 'started') {
+        if (progressData.status === "started") {
           progressStatus.textContent = "Started";
           progressStatus.className = "";
-        } else if (progressData.status === 'in_progress') {
+        } else if (progressData.status === "in_progress") {
           progressStatus.textContent = "In Progress";
           progressStatus.className = "";
-        } else if (progressData.status === 'completed') {
+        } else if (progressData.status === "completed") {
           progressStatus.textContent = "Completed";
           progressStatus.className = "operation-complete";
-          
+
           // Hide progress container after 5 seconds
           setTimeout(() => {
             progressContainer.classList.add("hidden");
           }, 5000);
-        } else if (progressData.status === 'error') {
+        } else if (progressData.status === "error") {
           progressStatus.textContent = "Error";
           progressStatus.className = "operation-error";
         }
@@ -596,23 +741,24 @@
           console.error("Cannot send progress update: socket not connected");
           return;
         }
-        
+
         console.log("Sending progress update to server:", progressData);
-        
+
+        const requestId = state.activeRequestId || progressData.commandId;
         state.socket.send(
           JSON.stringify({
-            id: progressData.commandId,
+            id: requestId,
             type: "progress_update",
             channel: state.channel,
             message: {
-              id: progressData.commandId,
+              id: requestId,
               type: "progress_update",
-              data: progressData
-            }
+              data: progressData,
+            },
           })
         );
       }
-      
+
       // Reset progress UI
       function resetProgressUI() {
         progressContainer.classList.add("hidden");
@@ -638,7 +784,7 @@
             connectButton.click();
             break;
           case "auto-disconnect":
-            disconnectButton.click();
+            connectButton.click();
             break;
           case "command-result":
             // Forward the result from plugin code back to WebSocket
@@ -656,6 +802,36 @@
             break;
         }
       };
+
+      // Add this to the script section, after all the other event listeners
+      document.getElementById("btn-copy").addEventListener("click", () => {
+        const textarea = document.getElementById("mcp-json");
+        textarea.select();
+        document.execCommand("copy");
+        const button = document.getElementById("btn-copy");
+        button.textContent = "Copied!";
+        setTimeout(() => {
+          button.textContent = "Copy to Clipboard";
+        }, 2000);
+      });
+
+      // Add this function to the script section
+      function updateMcpConfig() {
+        const mcpConfig = {
+          mcpServers: {
+            TalkToFigma: {
+              command: "bunx",
+              args: ["cursor-talk-to-figma-mcp@latest"],
+            },
+          },
+        };
+
+        document.getElementById("mcp-json").value = JSON.stringify(
+          mcpConfig,
+          null,
+          2
+        );
+      }
     </script>
   </body>
 </html>

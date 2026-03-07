@@ -1,6 +1,6 @@
-# Cursor Talk to Figma MCP
+# Talk to Figma MCP
 
-This project implements a Model Context Protocol (MCP) integration between Cursor AI and Figma, allowing Cursor to communicate with Figma for reading designs and modifying them programmatically.
+This project implements a Model Context Protocol (MCP) integration between AI agent (Cursor, Claude Code) and Figma, allowing AI agent to communicate with Figma for reading designs and modifying them programmatically.
 
 https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 
@@ -10,7 +10,7 @@ https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 - `src/cursor_mcp_plugin/` - Figma plugin for communicating with Cursor
 - `src/socket.ts` - WebSocket server that facilitates communication between the MCP server and Figma plugin
 
-## Get Started
+## How to use
 
 1. Install Bun if you haven't already:
 
@@ -45,21 +45,6 @@ Thanks to [@dusskapark](https://github.com/dusskapark) for contributing the bulk
 **Instance Override Propagation**
 Another contribution from [@dusskapark](https://github.com/dusskapark)
 Propagate component instance overrides from a source instance to multiple target instances with a single command. This feature dramatically reduces repetitive design work when working with component instances that need similar customizations. Check out our [demo video](https://youtu.be/uvuT8LByroI).
-
-## Development Setup
-
-To develop, update your mcp config to direct to your local directory.
-
-```json
-{
-  "mcpServers": {
-    "TalkToFigma": {
-      "command": "bun",
-      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
-    }
-  }
-}
-```
 
 ## Manual Setup and Installation
 
@@ -121,6 +106,21 @@ bun socket
 3. Open Figma and run the Cursor MCP Plugin
 4. Connect the plugin to the WebSocket server by joining a channel using `join_channel`
 5. Use Cursor to communicate with Figma using the MCP tools
+
+## Local Development Setup
+
+To develop, update your mcp config to direct to your local directory.
+
+```json
+{
+  "mcpServers": {
+    "TalkToFigma": {
+      "command": "bun",
+      "args": ["/path-to-repo/src/talk_to_figma_mcp/server.ts"]
+    }
+  }
+}
+```
 
 ## MCP Tools
 

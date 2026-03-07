@@ -1,18 +1,23 @@
 #!/bin/bash
 
-# Create .cursor directory if it doesn't exist
-mkdir -p .cursor
-
-bun install
-
-# Create mcp.json with the current directory path
-echo "{
-  \"mcpServers\": {
-    \"TalkToFigma\": {
-      \"command\": \"bunx\",
-      \"args\": [
-        \"cursor-talk-to-figma-mcp@latest\"
+MCP_CONFIG='{
+  "mcpServers": {
+    "TalkToFigma": {
+      "command": "bunx",
+      "args": [
+        "cursor-talk-to-figma-mcp@latest"
       ]
     }
   }
-}" > .cursor/mcp.json 
+}'
+
+bun install
+
+# Cursor: write .cursor/mcp.json
+mkdir -p .cursor
+echo "$MCP_CONFIG" > .cursor/mcp.json
+echo "✓ Cursor MCP config written to .cursor/mcp.json"
+
+# Claude Code: write .mcp.json in project root
+echo "$MCP_CONFIG" > .mcp.json
+echo "✓ Claude Code MCP config written to .mcp.json"
