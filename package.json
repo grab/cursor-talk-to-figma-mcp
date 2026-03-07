@@ -1,7 +1,7 @@
 {
   "name": "cursor-talk-to-figma-socket",
   "description": "Cursor Talk to Figma Socket",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "module": "dist/socket.js",
   "main": "dist/socket.js",
   "bin": {
