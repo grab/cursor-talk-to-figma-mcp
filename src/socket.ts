@@ -180,6 +180,21 @@ const server = Bun.serve({
             console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
           }
         }
+
+        // Forward progress_update messages to the MCP server so it can reset
+        if (data.type === "progress_update") {
+          const channelName = data.channel;
+          if (!channelName) return;
+
+          const channelClients = channels.get(channelName);
+          if (!channelClients || !channelClients.has(ws)) return;
+
+          channelClients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify(data));
+            }
+          });
+        }
       } catch (err) {
         console.error("Error handling message:", err);
       }

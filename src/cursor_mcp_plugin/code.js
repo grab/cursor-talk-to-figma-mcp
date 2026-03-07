@@ -8,7 +8,7 @@ const state = {
 
 
 // Helper function for progress updates
-function sendProgressUpdate(
+async function sendProgressUpdate(
   commandId,
   commandType,
   status,
@@ -46,6 +46,10 @@ function sendProgressUpdate(
   // Send to UI
   figma.ui.postMessage(update);
   console.log(`Progress update: ${status} - ${progress}% - ${message}`);
+
+  // Yield so the Figma plugin sandbox flushes postMessage to ui.html
+  // before the next iteration begins
+  await new Promise((resolve) => setTimeout(resolve, 0));
 
   return update;
 }
@@ -142,7 +146,7 @@ async function handleCommand(command, params) {
     case "get_styles":
       return await getStyles();
     case "get_local_components":
-      return await getLocalComponents();
+      return await getLocalComponents(params);
     // case "get_team_components":
     //   return await getTeamComponents();
     case "create_component_instance":
@@ -1127,20 +1131,66 @@ async function getStyles() {
   };
 }
 
-async function getLocalComponents() {
-  await figma.loadAllPagesAsync();
+async function getLocalComponents(params) {
+  const commandId = (params && params.commandId) || generateCommandId();
+  const pages = figma.root.children;
+  const totalPages = pages.length;
 
-  const components = figma.root.findAllWithCriteria({
-    types: ["COMPONENT"],
-  });
+  await sendProgressUpdate(
+    commandId,
+    "get_local_components",
+    "started",
+    0,
+    totalPages,
+    0,
+    "Starting component scan across " + totalPages + " pages...",
+    null
+  );
+
+  var allComponents = [];
+
+  for (var i = 0; i < totalPages; i++) {
+    var page = pages[i];
+    await page.loadAsync();
+
+    var pageComponents = page.findAllWithCriteria({ types: ["COMPONENT"] });
+
+    for (var j = 0; j < pageComponents.length; j++) {
+      var component = pageComponents[j];
+      allComponents.push({
+        id: component.id,
+        name: component.name,
+        key: "key" in component ? component.key : null,
+      });
+    }
+
+    var progress = Math.round(((i + 1) / totalPages) * 100);
+    await sendProgressUpdate(
+      commandId,
+      "get_local_components",
+      "in_progress",
+      progress,
+      totalPages,
+      i + 1,
+      "Scanned " + page.name + ": " + pageComponents.length + " components (total so far: " + allComponents.length + ")",
+      null
+    );
+  }
+
+  await sendProgressUpdate(
+    commandId,
+    "get_local_components",
+    "completed",
+    100,
+    totalPages,
+    totalPages,
+    "Found " + allComponents.length + " components across " + totalPages + " pages",
+    null
+  );
 
   return {
-    count: components.length,
-    components: components.map((component) => ({
-      id: component.id,
-      name: component.name,
-      key: "key" in component ? component.key : null,
-    })),
+    count: allComponents.length,
+    components: allComponents,
   };
 }
 
@@ -1164,20 +1214,46 @@ async function getLocalComponents() {
 // }
 
 async function createComponentInstance(params) {
-  const { componentKey, x = 0, y = 0 } = params || {};
+  const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
 
-  if (!componentKey) {
-    throw new Error("Missing componentKey parameter");
+  if (!componentKey && !componentId) {
+    throw new Error("Missing componentKey or componentId parameter. Use componentId for local components (from get_local_components), or componentKey for published library components.");
   }
 
   try {
-    const component = await figma.importComponentByKeyAsync(componentKey);
-    const instance = component.createInstance();
+    let component;
 
+    if (componentId) {
+      // Local component: get node directly by ID
+      const node = await figma.getNodeByIdAsync(componentId);
+      if (!node) {
+        throw new Error(`Component node not found with id: ${componentId}`);
+      }
+      if (node.type !== "COMPONENT") {
+        throw new Error(`Node ${componentId} is not a COMPONENT (got type: ${node.type}). Use get_local_components to find valid component IDs.`);
+      }
+      component = node;
+    } else {
+      // Published library component: import by key
+      component = await figma.importComponentByKeyAsync(componentKey);
+    }
+
+    const instance = component.createInstance();
     instance.x = x;
     instance.y = y;
 
-    figma.currentPage.appendChild(instance);
+    if (parentId) {
+      const parent = await figma.getNodeByIdAsync(parentId);
+      if (parent && "appendChild" in parent) {
+        parent.appendChild(instance);
+      } else {
+        figma.currentPage.appendChild(instance);
+      }
+    } else {
+      figma.currentPage.appendChild(instance);
+    }
+
+    const mainComponent = await instance.getMainComponentAsync();
 
     return {
       id: instance.id,
@@ -1186,7 +1262,7 @@ async function createComponentInstance(params) {
       y: instance.y,
       width: instance.width,
       height: instance.height,
-      componentId: instance.componentId,
+      mainComponentId: mainComponent ? mainComponent.id : undefined,
     };
   } catch (error) {
     throw new Error(`Error creating component instance: ${error.message}`);
