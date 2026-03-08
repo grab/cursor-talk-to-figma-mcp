@@ -359,6 +359,18 @@ function filterFigmaNode(node) {
     });
   }
 
+  // Include effects (drop shadows, layer blur, etc.) from Figma API
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect) => {
+      var processedEffect = Object.assign({}, effect);
+      // Convert color to hex if present
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
+    });
+  }
+
   if (node.cornerRadius !== undefined) {
     filtered.cornerRadius = node.cornerRadius;
   }
