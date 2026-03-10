@@ -4155,10 +4155,19 @@ async function setFontProperties(params) {
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node || node.type !== "TEXT") throw new Error(`Text node not found: ${nodeId}`);
 
+  // Always load the node's current font before any text property writes.
+  // Figma requires fonts to be loaded even when only modifying fontSize,
+  // lineHeight, letterSpacing, or paragraphSpacing.
+  const currentFamily = node.fontName !== figma.mixed ? node.fontName.family : "Inter";
+  const currentStyle = node.fontName !== figma.mixed ? node.fontName.style : "Regular";
+  await figma.loadFontAsync({ family: currentFamily, style: currentStyle });
+
   if (fontFamily || fontStyle) {
-    const family = fontFamily || (node.fontName !== figma.mixed ? node.fontName.family : "Inter");
-    const style = fontStyle || (node.fontName !== figma.mixed ? node.fontName.style : "Regular");
-    await figma.loadFontAsync({ family, style });
+    const family = fontFamily || currentFamily;
+    const style = fontStyle || currentStyle;
+    if (family !== currentFamily || style !== currentStyle) {
+      await figma.loadFontAsync({ family, style });
+    }
     node.fontName = { family, style };
   }
   if (fontSize !== undefined) node.fontSize = fontSize;
@@ -4274,8 +4283,40 @@ async function setComponentProperty(params) {
   if (!nodeId || !properties) throw new Error("Missing required parameters: nodeId, properties");
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node || node.type !== "INSTANCE") throw new Error(`Instance node not found: ${nodeId}`);
-  node.setProperties(properties);
-  return { success: true, nodeId, appliedProperties: properties };
+
+  // Validate property values against the component's defined property types.
+  // Figma's setProperties() only supports string (TEXT/VARIANT) and boolean (BOOLEAN) values.
+  const mainComponent = await node.getMainComponentAsync();
+  if (!mainComponent) throw new Error(`Could not resolve main component for instance: ${nodeId}`);
+  const definitions = mainComponent.componentPropertyDefinitions;
+
+  const validatedProperties = {};
+  for (const [key, value] of Object.entries(properties)) {
+    const def = definitions[key];
+    if (!def) throw new Error(`Unknown component property: "${key}"`);
+
+    if (def.type === "BOOLEAN") {
+      if (typeof value === "boolean") {
+        validatedProperties[key] = value;
+      } else {
+        throw new Error(`Property "${key}" expects a boolean value, got ${typeof value}`);
+      }
+    } else if (def.type === "TEXT" || def.type === "VARIANT") {
+      if (typeof value === "string") {
+        validatedProperties[key] = value;
+      } else if (typeof value === "number") {
+        // Convert numeric inputs to strings for TEXT/VARIANT properties
+        validatedProperties[key] = String(value);
+      } else {
+        throw new Error(`Property "${key}" expects a string value, got ${typeof value}`);
+      }
+    } else {
+      throw new Error(`Unsupported property type "${def.type}" for property "${key}"`);
+    }
+  }
+
+  node.setProperties(validatedProperties);
+  return { success: true, nodeId, appliedProperties: validatedProperties };
 }
 
 async function createComponentSet(params) {

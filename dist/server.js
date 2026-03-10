@@ -2566,11 +2566,23 @@ server.tool(
   "Drive component properties directly on an instance \u2014 e.g. toggle hasIcon=true or set label='Submit' via the exposed property API rather than drilling into child nodes.",
   {
     nodeId: z.string().describe("ID of the INSTANCE node to update"),
-    properties: z.record(z.union([z.string(), z.boolean(), z.number()])).describe('Object of property name -> value (e.g. {"Label": "Submit", "hasIcon": true})')
+    properties: z.record(z.union([z.string(), z.boolean(), z.number()])).describe('Object of property name -> value (e.g. {"Label": "Submit", "hasIcon": true}). String/boolean values are passed as-is; numeric values are converted to strings for TEXT/VARIANT properties.')
   },
   async ({ nodeId, properties }) => {
     try {
-      const result = await sendCommandToFigma("set_component_property", { nodeId, properties });
+      const normalizedProperties = {};
+      for (const [key, value] of Object.entries(properties)) {
+        if (typeof value === "boolean") {
+          normalizedProperties[key] = value;
+        } else if (typeof value === "string") {
+          normalizedProperties[key] = value;
+        } else if (typeof value === "number") {
+          normalizedProperties[key] = String(value);
+        } else {
+          return { content: [{ type: "text", text: `Error: Property "${key}" has unsupported type "${typeof value}". Only string, boolean, and number (converted to string) are accepted.` }] };
+        }
+      }
+      const result = await sendCommandToFigma("set_component_property", { nodeId, properties: normalizedProperties });
       return { content: [{ type: "text", text: JSON.stringify(result) }] };
     } catch (error) {
       return { content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : String(error)}` }] };
