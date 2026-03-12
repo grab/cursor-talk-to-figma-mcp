@@ -6,6 +6,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
+import * as fs from "fs";
+import * as path from "path";
 var logger = {
   info: (message) => process.stderr.write(`[INFO] ${message}
 `),
@@ -706,6 +708,229 @@ server.tool(
           {
             type: "text",
             text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "export_node_to_file",
+  "Export a single Figma node and save it to a local file. Use this when you need to export with a custom filename.",
+  {
+    nodeId: z.string().describe("The ID of the node to export"),
+    filePath: z.string().describe("Full local file path to save the exported image (e.g. /Users/user/Downloads/icon.png)"),
+    format: z.enum(["PNG", "JPG", "SVG", "PDF"]).optional().describe("Export format. Defaults to PNG."),
+    scale: z.number().positive().optional().describe("Export scale. Defaults to 1.")
+  },
+  async ({ nodeId, filePath: destPath, format, scale }) => {
+    try {
+      const dir = path.dirname(destPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const result = await sendCommandToFigma(
+        "export_node_with_settings",
+        {
+          nodeId,
+          format: format || "PNG",
+          constraint: { type: "SCALE", value: scale || 1 }
+        },
+        6e4
+      );
+      const buffer = Buffer.from(result.imageData, "base64");
+      fs.writeFileSync(destPath, buffer);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Exported to: ${destPath} (${(buffer.length / 1024).toFixed(1)} KB)`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Export failed: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "scan_export_nodes",
+  "Scan for nodes that have export settings configured in Figma. Returns a list of nodes with their export configurations (format, scale, suffix).",
+  {
+    scope: z.enum(["page", "selection"]).optional().describe("Scan scope: 'page' for entire current page, 'selection' for selected nodes only. Defaults to 'page'."),
+    nodeId: z.string().optional().describe("Optional: scan only within a specific node subtree")
+  },
+  async ({ scope, nodeId }) => {
+    try {
+      const result = await sendCommandToFigma("scan_export_nodes", {
+        scope: scope || "page",
+        nodeId
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error scanning export nodes: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "batch_export_nodes",
+  "Batch export nodes from Figma and save them to a local directory. Supports exporting with each node's configured export settings, or with a specified format/scale.",
+  {
+    outputDir: z.string().describe("Local directory path to save exported images"),
+    nodeIds: z.array(z.string()).optional().describe("Node IDs to export. If not provided, exports all nodes with export settings on the current page."),
+    format: z.enum(["PNG", "JPG", "SVG", "PDF"]).optional().describe("Override export format for all nodes. If not set, uses each node's configured export settings."),
+    scale: z.number().positive().optional().describe("Override export scale for all nodes. If not set, uses each node's configured constraint."),
+    scope: z.enum(["page", "selection"]).optional().describe("Scan scope when nodeIds is not provided. Defaults to 'page'."),
+    flat: z.boolean().optional().describe("If true, save all files directly in outputDir without subdirectories. Defaults to true.")
+  },
+  async ({ outputDir, nodeIds, format, scale, scope, flat }) => {
+    try {
+      const useFlat = flat !== false;
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      let nodesToExport = [];
+      if (nodeIds && nodeIds.length > 0) {
+        nodesToExport = nodeIds.map((id) => ({
+          nodeId: id,
+          name: id,
+          type: "UNKNOWN",
+          exportSettings: [
+            {
+              format: format || "PNG",
+              suffix: "",
+              constraint: { type: "SCALE", value: scale || 1 },
+              contentsOnly: true
+            }
+          ]
+        }));
+      } else {
+        const scanResult = await sendCommandToFigma("scan_export_nodes", {
+          scope: scope || "page"
+        });
+        if (!scanResult.nodes || scanResult.nodes.length === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "No nodes with export settings found. Please add export settings to nodes in Figma first."
+              }
+            ]
+          };
+        }
+        nodesToExport = scanResult.nodes;
+      }
+      if (format) {
+        nodesToExport = nodesToExport.map((node) => ({
+          ...node,
+          exportSettings: node.exportSettings.map((s) => ({
+            ...s,
+            format,
+            constraint: scale ? { type: "SCALE", value: scale } : s.constraint
+          }))
+        }));
+      } else if (scale) {
+        nodesToExport = nodesToExport.map((node) => ({
+          ...node,
+          exportSettings: node.exportSettings.map((s) => ({
+            ...s,
+            constraint: { type: "SCALE", value: scale }
+          }))
+        }));
+      }
+      const exportedFiles = [];
+      const errors = [];
+      const usedFileNames = /* @__PURE__ */ new Map();
+      let totalSettings = 0;
+      for (const node of nodesToExport) {
+        totalSettings += node.exportSettings.length;
+      }
+      let processed = 0;
+      for (const node of nodesToExport) {
+        for (const setting of node.exportSettings) {
+          try {
+            const result = await sendCommandToFigma(
+              "export_node_with_settings",
+              {
+                nodeId: node.nodeId,
+                format: setting.format,
+                suffix: setting.suffix,
+                constraint: setting.constraint,
+                contentsOnly: setting.contentsOnly
+              },
+              6e4
+            );
+            let finalFileName = result.fileName;
+            const count = usedFileNames.get(finalFileName) || 0;
+            if (count > 0) {
+              const ext = path.extname(finalFileName);
+              const base = path.basename(finalFileName, ext);
+              finalFileName = `${base}_${count}${ext}`;
+            }
+            usedFileNames.set(result.fileName, count + 1);
+            const filePath = path.join(outputDir, finalFileName);
+            const buffer = Buffer.from(result.imageData, "base64");
+            fs.writeFileSync(filePath, buffer);
+            exportedFiles.push(filePath);
+            processed++;
+            logger.info(
+              `Exported [${processed}/${totalSettings}]: ${result.fileName}`
+            );
+          } catch (err) {
+            processed++;
+            const errMsg = `Export failed for ${node.name} (${setting.format}${setting.suffix}): ${err instanceof Error ? err.message : String(err)}`;
+            errors.push(errMsg);
+            logger.error(errMsg);
+          }
+        }
+      }
+      const summary = [
+        `Batch export completed:`,
+        `  Succeeded: ${exportedFiles.length} files`,
+        `  Failed: ${errors.length}`,
+        `  Output directory: ${outputDir}`,
+        "",
+        "Exported files:",
+        ...exportedFiles.map((f) => `  ${f}`)
+      ];
+      if (errors.length > 0) {
+        summary.push("", "Errors:", ...errors.map((e) => `  ${e}`));
+      }
+      return {
+        content: [
+          {
+            type: "text",
+            text: summary.join("\n")
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Batch export error: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
       };
