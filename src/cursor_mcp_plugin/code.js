@@ -237,6 +237,10 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    case "scan_export_nodes":
+      return await scanExportNodes(params);
+    case "export_node_with_settings":
+      return await exportNodeWithSettings(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1328,6 +1332,105 @@ async function exportNodeAsImage(params) {
     throw new Error(`Error exporting node as image: ${error.message}`);
   }
 }
+
+// Scan nodes with export settings configured in the current page/selection
+async function scanExportNodes(params) {
+  const { scope = "page", nodeId } = params || {};
+
+  let rootNodes = [];
+  if (scope === "selection") {
+    rootNodes = figma.currentPage.selection;
+    if (rootNodes.length === 0) {
+      return { success: true, message: "No nodes currently selected", nodes: [] };
+    }
+  } else if (nodeId) {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) throw new Error(`Node not found: ${nodeId}`);
+    rootNodes = [node];
+  } else {
+    rootNodes = [figma.currentPage];
+  }
+
+  const exportNodes = [];
+
+  function traverse(node) {
+    if ("exportSettings" in node && node.exportSettings && node.exportSettings.length > 0) {
+      exportNodes.push({
+        nodeId: node.id,
+        name: node.name,
+        type: node.type,
+        exportSettings: node.exportSettings.map((s) => ({
+          format: s.format,
+          suffix: s.suffix || "",
+          constraint: s.constraint || { type: "SCALE", value: 1 },
+          contentsOnly: s.contentsOnly !== undefined ? s.contentsOnly : true,
+        })),
+      });
+    }
+    if ("children" in node) {
+      for (const child of node.children) {
+        traverse(child);
+      }
+    }
+  }
+
+  for (const root of rootNodes) {
+    traverse(root);
+  }
+
+  return {
+    success: true,
+    message: `Found ${exportNodes.length} nodes with export settings`,
+    count: exportNodes.length,
+    nodes: exportNodes,
+  };
+}
+
+// Export a single node with specified export settings (format, suffix, constraint)
+async function exportNodeWithSettings(params) {
+  const { nodeId, format = "PNG", suffix = "", constraint, contentsOnly = true } = params || {};
+
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found: ${nodeId}`);
+  if (!("exportAsync" in node)) throw new Error(`Node does not support exporting: ${nodeId}`);
+
+  const settings = {
+    format: format,
+    suffix: suffix,
+    contentsOnly: contentsOnly,
+  };
+  if (constraint) {
+    settings.constraint = constraint;
+  }
+
+  const bytes = await node.exportAsync(settings);
+  const base64 = customBase64Encode(bytes);
+
+  let mimeType;
+  switch (format) {
+    case "PNG": mimeType = "image/png"; break;
+    case "JPG": mimeType = "image/jpeg"; break;
+    case "SVG": mimeType = "image/svg+xml"; break;
+    case "PDF": mimeType = "application/pdf"; break;
+    default: mimeType = "application/octet-stream";
+  }
+
+  // Sanitize filename by replacing invalid characters
+  const safeName = node.name.replace(/[\/\\:*?"<>|]/g, "_");
+
+  return {
+    nodeId,
+    nodeName: node.name,
+    fileName: `${safeName}${suffix}.${format.toLowerCase()}`,
+    format,
+    suffix,
+    mimeType,
+    imageData: base64,
+  };
+}
+
 function customBase64Encode(bytes) {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

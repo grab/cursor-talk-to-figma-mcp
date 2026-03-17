@@ -194,6 +194,9 @@ The MCP server provides the following tools for interacting with Figma:
 ### Export & Advanced
 
 - `export_node_as_image` - Export a node as an image (PNG, JPG, SVG, or PDF) - limited support on image currently returning base64 as text
+- `scan_export_nodes` - Scan for nodes with export settings configured in Figma, returning a list of nodes with their export configurations (format, scale, suffix)
+- `batch_export_nodes` - Batch export nodes from Figma and save them to a local directory. Automatically discovers nodes with export settings, or exports specified node IDs. Handles duplicate filenames by appending numeric suffixes.
+- `export_node_to_file` - Export a single Figma node and save it directly to a local file path with a custom filename. Useful when you need precise control over the output filename and location.
 
 ### Connection Management
 
@@ -257,6 +260,12 @@ When working with the Figma MCP:
 - Use `get_reactions` to extract prototype flows,
 - set a default connector with `set_default_connector`,
 - and generate connector lines with `create_connections` for clear visual flow mapping.
+
+12. For batch exporting assets:
+    - Use `scan_export_nodes` to discover which nodes have export settings configured
+    - Use `batch_export_nodes` to export all configured nodes to a local directory in one step
+    - Use `export_node_to_file` when you need custom filenames (e.g., naming icons by their text labels)
+    - Set export settings (format, scale, suffix) in Figma's right panel for best results with batch export
 
 ## License
 
