@@ -7,6 +7,28 @@ import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
+
+// Allowed base directories for file export.
+// Override via FIGMA_EXPORT_ALLOWED_DIRS env var (comma-separated absolute paths).
+const DEFAULT_ALLOWED_DIRS = [
+  os.homedir(),
+  path.join(os.homedir(), "Downloads"),
+  path.join(os.homedir(), "Desktop"),
+];
+
+function getAllowedExportDirs(): string[] {
+  const envDirs = process.env.FIGMA_EXPORT_ALLOWED_DIRS;
+  if (envDirs) {
+    return envDirs.split(",").map((d) => path.resolve(d.trim())).filter(Boolean);
+  }
+  return DEFAULT_ALLOWED_DIRS;
+}
+
+function isPathAllowed(targetPath: string): boolean {
+  const resolved = path.resolve(targetPath);
+  return getAllowedExportDirs().some((dir) => resolved.startsWith(dir + path.sep) || resolved === dir);
+}
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -898,28 +920,36 @@ server.tool(
 );
 
 // Export Node to File Tool
+const exportNodeToFileSchema = {
+  nodeId: z.string().describe("The ID of the node to export"),
+  filePath: z.string().describe("Full local file path to save the exported image (e.g. ~/Downloads/icon.png). Path must be within the user's home directory. Override allowed directories via FIGMA_EXPORT_ALLOWED_DIRS env var."),
+  format: z
+    .enum(["PNG", "JPG", "SVG", "PDF"])
+    .optional()
+    .describe("Export format. Defaults to PNG."),
+  scale: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Export scale. Defaults to 1."),
+};
+
 server.tool(
   "export_node_to_file",
-  "Export a single Figma node and save it to a local file. Use this when you need to export with a custom filename.",
-  {
-    nodeId: z.string().describe("The ID of the node to export"),
-    filePath: z.string().describe("Full local file path to save the exported image (e.g. /Users/user/Downloads/icon.png)"),
-    format: z
-      .enum(["PNG", "JPG", "SVG", "PDF"])
-      .optional()
-      .describe("Export format. Defaults to PNG."),
-    scale: z
-      .number()
-      .positive()
-      .optional()
-      .describe("Export scale. Defaults to 1."),
-  },
-  async ({ nodeId, filePath: destPath, format, scale }: any) => {
+  "Export a single Figma node and save it to a local file with a custom filename. The output path must be within the user's home directory (configurable via FIGMA_EXPORT_ALLOWED_DIRS env var).",
+  exportNodeToFileSchema,
+  async ({ nodeId, filePath: destPath, format, scale }) => {
     try {
-      const dir = path.dirname(destPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
+      const resolvedPath = path.resolve(destPath);
+      if (!isPathAllowed(resolvedPath)) {
+        return {
+          content: [{ type: "text" as const, text: `Path not allowed: ${resolvedPath}. Exports must be within: ${getAllowedExportDirs().join(", ")}` }],
+          isError: true,
+        };
       }
+
+      const dir = path.dirname(resolvedPath);
+      await fs.promises.mkdir(dir, { recursive: true });
 
       const result = (await sendCommandToFigma(
         "export_node_with_settings",
@@ -932,24 +962,15 @@ server.tool(
       )) as { imageData: string; mimeType: string; fileName: string };
 
       const buffer = Buffer.from(result.imageData, "base64");
-      fs.writeFileSync(destPath, buffer);
+      await fs.promises.writeFile(resolvedPath, buffer);
 
       return {
-        content: [
-          {
-            type: "text",
-            text: `Exported to: ${destPath} (${(buffer.length / 1024).toFixed(1)} KB)`,
-          },
-        ],
+        content: [{ type: "text" as const, text: `Exported to: ${resolvedPath} (${(buffer.length / 1024).toFixed(1)} KB)` }],
       };
     } catch (error) {
       return {
-        content: [
-          {
-            type: "text",
-            text: `Export failed: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: "text" as const, text: `Export failed: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
       };
     }
   }
@@ -969,39 +990,54 @@ server.tool(
       .optional()
       .describe("Optional: scan only within a specific node subtree"),
   },
-  async ({ scope, nodeId }: any) => {
+  async ({ scope, nodeId }) => {
     try {
-      const result = await sendCommandToFigma("scan_export_nodes", {
+      const result = (await sendCommandToFigma("scan_export_nodes", {
         scope: scope || "page",
         nodeId,
-      });
+      })) as { success: boolean; message: string; count: number; nodes: Array<{ nodeId: string; name: string; type: string; exportSettings: Array<{ format: string; suffix: string; constraint: { type: string; value: number } }> }> };
+
+      const lines = [
+        `Found ${result.count} nodes with export settings:`,
+        "",
+        ...result.nodes.map((n) => {
+          const settings = n.exportSettings
+            .map((s) => `${s.format}${s.suffix ? ` (${s.suffix})` : ""} @${s.constraint?.value ?? 1}x`)
+            .join(", ");
+          return `  ${n.name} [${n.type}] (${n.nodeId}): ${settings}`;
+        }),
+      ];
+
       return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify(result),
-          },
-        ],
+        content: [{ type: "text" as const, text: lines.join("\n") }],
       };
     } catch (error) {
       return {
-        content: [
-          {
-            type: "text",
-            text: `Error scanning export nodes: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: "text" as const, text: `Error scanning export nodes: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
       };
     }
   }
 );
 
 // Batch Export Nodes Tool
+interface ExportNodeInfo {
+  nodeId: string;
+  name: string;
+  type: string;
+  exportSettings: Array<{
+    format: string;
+    suffix: string;
+    constraint: { type: string; value: number };
+    contentsOnly: boolean;
+  }>;
+}
+
 server.tool(
   "batch_export_nodes",
-  "Batch export nodes from Figma and save them to a local directory. Supports exporting with each node's configured export settings, or with a specified format/scale.",
+  "Batch export nodes from Figma and save them to a local directory. The output path must be within the user's home directory (configurable via FIGMA_EXPORT_ALLOWED_DIRS env var).",
   {
-    outputDir: z.string().describe("Local directory path to save exported images"),
+    outputDir: z.string().describe("Local directory path to save exported images. Must be within the user's home directory."),
     nodeIds: z
       .array(z.string())
       .optional()
@@ -1019,37 +1055,38 @@ server.tool(
       .enum(["page", "selection"])
       .optional()
       .describe("Scan scope when nodeIds is not provided. Defaults to 'page'."),
-    flat: z
-      .boolean()
-      .optional()
-      .describe("If true, save all files directly in outputDir without subdirectories. Defaults to true."),
   },
-  async ({ outputDir, nodeIds, format, scale, scope, flat }: any) => {
+  async ({ outputDir, nodeIds, format, scale, scope }) => {
     try {
-      const useFlat = flat !== false;
-
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
+      const resolvedDir = path.resolve(outputDir);
+      if (!isPathAllowed(resolvedDir)) {
+        return {
+          content: [{ type: "text" as const, text: `Path not allowed: ${resolvedDir}. Exports must be within: ${getAllowedExportDirs().join(", ")}` }],
+          isError: true,
+        };
       }
 
-      interface ExportNodeInfo {
-        nodeId: string;
-        name: string;
-        type: string;
-        exportSettings: Array<{
-          format: string;
-          suffix: string;
-          constraint: { type: string; value: number };
-          contentsOnly: boolean;
-        }>;
-      }
+      await fs.promises.mkdir(resolvedDir, { recursive: true });
 
       let nodesToExport: ExportNodeInfo[] = [];
 
       if (nodeIds && nodeIds.length > 0) {
+        // Fetch actual node info to get real names for filenames
+        const nodesInfo = (await sendCommandToFigma("get_nodes_info", { nodeIds })) as
+          Array<{ nodeId: string; document: { name: string; type: string } }>;
+
+        const nodeNameMap = new Map<string, string>();
+        if (Array.isArray(nodesInfo)) {
+          for (const info of nodesInfo) {
+            if (info.nodeId && info.document?.name) {
+              nodeNameMap.set(info.nodeId, info.document.name);
+            }
+          }
+        }
+
         nodesToExport = nodeIds.map((id: string) => ({
           nodeId: id,
-          name: id,
+          name: nodeNameMap.get(id) || id,
           type: "UNKNOWN",
           exportSettings: [
             {
@@ -1067,12 +1104,7 @@ server.tool(
 
         if (!scanResult.nodes || scanResult.nodes.length === 0) {
           return {
-            content: [
-              {
-                type: "text",
-                text: "No nodes with export settings found. Please add export settings to nodes in Figma first.",
-              },
-            ],
+            content: [{ type: "text" as const, text: "No nodes with export settings found. Please add export settings to nodes in Figma first." }],
           };
         }
         nodesToExport = scanResult.nodes;
@@ -1135,10 +1167,10 @@ server.tool(
             }
             usedFileNames.set(result.fileName, count + 1);
 
-            const filePath = path.join(outputDir, finalFileName);
+            const filePath = path.join(resolvedDir, finalFileName);
 
             const buffer = Buffer.from(result.imageData, "base64");
-            fs.writeFileSync(filePath, buffer);
+            await fs.promises.writeFile(filePath, buffer);
             exportedFiles.push(filePath);
 
             processed++;
@@ -1158,7 +1190,7 @@ server.tool(
         `Batch export completed:`,
         `  Succeeded: ${exportedFiles.length} files`,
         `  Failed: ${errors.length}`,
-        `  Output directory: ${outputDir}`,
+        `  Output directory: ${resolvedDir}`,
         "",
         "Exported files:",
         ...exportedFiles.map((f) => `  ${f}`),
@@ -1169,21 +1201,12 @@ server.tool(
       }
 
       return {
-        content: [
-          {
-            type: "text",
-            text: summary.join("\n"),
-          },
-        ],
+        content: [{ type: "text" as const, text: summary.join("\n") }],
       };
     } catch (error) {
       return {
-        content: [
-          {
-            type: "text",
-            text: `Batch export error: ${error instanceof Error ? error.message : String(error)}`,
-          },
-        ],
+        content: [{ type: "text" as const, text: `Batch export error: ${error instanceof Error ? error.message : String(error)}` }],
+        isError: true,
       };
     }
   }

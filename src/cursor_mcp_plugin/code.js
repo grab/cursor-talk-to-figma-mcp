@@ -1398,6 +1398,7 @@ async function exportNodeWithSettings(params) {
 
   const settings = {
     format: format,
+    suffix: suffix,
     contentsOnly: contentsOnly,
   };
   if (constraint) {
