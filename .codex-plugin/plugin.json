@@ -1,0 +1,24 @@
+{
+  "name": "talk-to-figma",
+  "version": "0.1.0",
+  "description": "Read and modify Figma designs from Codex via MCP",
+  "author": {
+    "name": "grab",
+    "url": "https://github.com/grab/cursor-talk-to-figma-mcp"
+  },
+  "homepage": "https://github.com/grab/cursor-talk-to-figma-mcp",
+  "repository": "https://github.com/grab/cursor-talk-to-figma-mcp",
+  "keywords": [
+    "mcp",
+    "codex"
+  ],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Talk to Figma MCP",
+    "shortDescription": "Read and modify Figma designs from Codex via MCP",
+    "longDescription": "MCP integration between AI agents and Figma, allowing agentic AI to communicate with Figma for reading designs and modifying them programmatically.",
+    "category": "Design",
+    "websiteURL": "https://github.com/grab/cursor-talk-to-figma-mcp"
+  }
+}
