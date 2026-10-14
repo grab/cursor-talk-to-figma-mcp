@@ -2657,7 +2657,10 @@ type FigmaCommand =
   | "set_image_fill"
   | "rename_node"
   | "create_section"
-  | "set_parent";
+  | "set_parent"
+  | "set_rotation"
+  | "set_visible"
+  | "set_font_size";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2828,6 +2831,22 @@ type CommandParams = {
     x?: number;
     y?: number;
     index?: number;
+  };
+  set_rotation: {
+    nodeId: string;
+    rotation: number;
+    origin?: "center" | "topLeft";
+  };
+  set_visible: {
+    nodeId?: string;
+    nodeIds?: string[];
+    visible: boolean;
+  };
+  set_font_size: {
+    nodeId: string;
+    fontSize: number;
+    start?: number;
+    end?: number;
   };
 
 };
@@ -3279,6 +3298,107 @@ server.tool(
             type: "text",
             text: `Error setting parent: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Rotation Tool
+server.tool(
+  "set_rotation",
+  "Set the rotation of a node in Figma, in degrees (positive = counter-clockwise, as in the Figma UI). Keeps the node's visual center in place by default",
+  {
+    nodeId: z.string().describe("The ID of the node to rotate"),
+    rotation: z.number().min(-180).max(180).describe("Absolute rotation angle in degrees, -180..180"),
+    origin: z
+      .enum(["center", "topLeft"])
+      .optional()
+      .describe("Pivot: center (default) or topLeft (Figma's native behaviour)"),
+  },
+  async ({ nodeId, rotation, origin }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_rotation", {
+        nodeId,
+        rotation,
+        origin: origin || "center",
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting rotation: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Visible Tool
+server.tool(
+  "set_visible",
+  "Show or hide one or more layers in Figma (works on layers inside instances too)",
+  {
+    nodeId: z.string().optional().describe("The ID of a single node"),
+    nodeIds: z.array(z.string()).optional().describe("IDs of several nodes"),
+    visible: z.boolean().describe("true to show, false to hide"),
+  },
+  async ({ nodeId, nodeIds, visible }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_visible", {
+        nodeId,
+        nodeIds,
+        visible,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting visibility: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Set Font Size Tool
+server.tool(
+  "set_font_size",
+  "Set the font size of a text node in Figma. Loads all fonts used in the text, so mixed-style text works. Optional start/end change only a character range",
+  {
+    nodeId: z.string().describe("The ID of the text node"),
+    fontSize: z.number().min(1).describe("Font size in px"),
+    start: z.number().int().min(0).optional().describe("Optional range start (character index, inclusive)"),
+    end: z.number().int().min(1).optional().describe("Optional range end (character index, exclusive)"),
+  },
+  async ({ nodeId, fontSize, start, end }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_font_size", {
+        nodeId,
+        fontSize,
+        start,
+        end,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting font size: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

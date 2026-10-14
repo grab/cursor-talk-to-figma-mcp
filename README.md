@@ -161,6 +161,7 @@ The MCP server provides the following tools for interacting with Figma:
 - `scan_text_nodes` - Scan text nodes with intelligent chunking for large designs
 - `set_text_content` - Set the text content of a single text node
 - `set_multiple_text_contents` - Batch update multiple text nodes efficiently
+- `set_font_size` - Set the font size of a whole text node or a character range (loads every font in the range, so mixed-style text works)
 
 ### Auto Layout & Spacing
 
@@ -181,6 +182,8 @@ The MCP server provides the following tools for interacting with Figma:
 
 - `move_node` - Move a node to a new position
 - `resize_node` - Resize a node with new dimensions
+- `set_rotation` - Rotate a node in degrees, around its center by default
+- `set_visible` - Show or hide one or more nodes, including layers inside instances
 - `delete_node` - Delete a node
 - `delete_multiple_nodes` - Delete multiple nodes at once efficiently
 - `clone_node` - Create a copy of an existing node with optional position offset
