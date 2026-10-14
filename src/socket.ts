@@ -40,8 +40,10 @@ function handleConnection(ws: ServerWebSocket<any>) {
 
 const server = Bun.serve({
   port: 3055,
-  // uncomment this to allow connections in windows wsl
-  // hostname: "0.0.0.0",
+  // Listen on localhost only by default, so other machines on the network
+  // can't join a channel and send commands to Figma. Set HOST=0.0.0.0 to
+  // accept outside connections (e.g. Windows + WSL, or a remote relay).
+  hostname: process.env.HOST || "127.0.0.1",
   fetch(req: Request, server: Server) {
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
@@ -208,4 +210,4 @@ const server = Bun.serve({
   }
 });
 
-console.log(`WebSocket server running on port ${server.port}`);
+console.log(`WebSocket server running on ${server.hostname}:${server.port}`);
