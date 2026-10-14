@@ -262,6 +262,12 @@ async function handleCommand(command, params) {
       return await createSection(params);
     case "set_parent":
       return await setParent(params);
+    case "set_rotation":
+      return await setRotation(params);
+    case "set_visible":
+      return await setVisible(params);
+    case "set_font_size":
+      return await setFontSize(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1249,6 +1255,123 @@ async function setParent(params) {
     x: "x" in node ? node.x : undefined,
     y: "y" in node ? node.y : undefined,
     index: parentNode.children.indexOf(node),
+  };
+}
+
+async function setRotation(params) {
+  const { nodeId, rotation, origin } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (rotation === undefined) {
+    throw new Error("Missing rotation parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("rotation" in node) || !("relativeTransform" in node)) {
+    throw new Error(`Node does not support rotation: ${nodeId}`);
+  }
+
+  // Figma rotates around the top-left corner; keep the visual center in place by default
+  const centerOf = (n) => {
+    const t = n.relativeTransform;
+    return {
+      x: t[0][2] + (t[0][0] * n.width + t[0][1] * n.height) / 2,
+      y: t[1][2] + (t[1][0] * n.width + t[1][1] * n.height) / 2,
+    };
+  };
+
+  const before = origin === "topLeft" ? null : centerOf(node);
+  node.rotation = rotation;
+  if (before) {
+    const after = centerOf(node);
+    node.x += before.x - after.x;
+    node.y += before.y - after.y;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    rotation: node.rotation,
+    x: node.x,
+    y: node.y,
+  };
+}
+
+async function setVisible(params) {
+  const { nodeId, nodeIds, visible } = params || {};
+
+  const ids = nodeIds && nodeIds.length ? nodeIds : nodeId ? [nodeId] : [];
+  if (!ids.length) {
+    throw new Error("Missing nodeId or nodeIds parameter");
+  }
+  if (visible === undefined) {
+    throw new Error("Missing visible parameter");
+  }
+
+  const results = [];
+  for (const id of ids) {
+    try {
+      const node = await figma.getNodeByIdAsync(id);
+      if (!node) throw new Error("Node not found");
+      if (!("visible" in node)) throw new Error("Node has no visibility");
+      node.visible = !!visible;
+      results.push({ id: node.id, name: node.name, visible: node.visible });
+    } catch (error) {
+      results.push({ id, error: error.message || String(error) });
+    }
+  }
+
+  return { results };
+}
+
+async function setFontSize(params) {
+  const { nodeId, fontSize, start, end } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  if (fontSize === undefined || fontSize < 1) {
+    throw new Error("Missing or invalid fontSize parameter");
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a text node: ${nodeId}`);
+  }
+
+  const length = node.characters.length;
+  const from = start !== undefined ? start : 0;
+  const to = end !== undefined ? end : length;
+  if (from < 0 || to > length || from >= to) {
+    throw new Error(`Invalid range ${from}..${to} for text of length ${length}`);
+  }
+
+  // Mixed-style text: load every font used in the range, not only the first
+  const fonts = node.getRangeAllFontNames(from, to);
+  await Promise.all(fonts.map((font) => figma.loadFontAsync(font)));
+
+  if (from === 0 && to === length) {
+    node.fontSize = fontSize;
+  } else {
+    node.setRangeFontSize(from, to, fontSize);
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    fontSize: node.fontSize === figma.mixed ? "mixed" : node.fontSize,
+    range: [from, to],
+    fonts: fonts.map((f) => `${f.family} ${f.style}`),
+    width: node.width,
+    height: node.height,
   };
 }
 
