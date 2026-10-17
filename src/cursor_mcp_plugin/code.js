@@ -170,6 +170,8 @@ async function handleCommand(command, params) {
       return await createComponentInstance(params);
     case "export_node_as_image":
       return await exportNodeAsImage(params);
+    case "export_node_bytes":
+      return await exportNodeBytes(params);
     case "set_corner_radius":
       return await setCornerRadius(params);
     case "set_text_content":
@@ -1569,6 +1571,86 @@ async function exportNodeAsImage(params) {
     throw new Error(`Error exporting node as image: ${error.message}`);
   }
 }
+// Batch-export helper: returns the exported bytes (base64) for a single node.
+// - Supports PNG/JPG (scaled by `scale`) and SVG/PDF (not scaled)
+// - Temporarily hides the children listed in `hideIds` while exporting and
+//   restores them afterwards (also on failure)
+// - Temporarily enables clipsContent while exporting and restores it afterwards
+async function exportNodeBytes(params) {
+  const { nodeId, format = "PNG", scale = 1, hideIds = [] } = params || {};
+
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+
+  const exportFormat = String(format).toUpperCase();
+  const mimeTypes = {
+    PNG: "image/png",
+    JPG: "image/jpeg",
+    SVG: "image/svg+xml",
+    PDF: "application/pdf",
+  };
+  if (!mimeTypes[exportFormat]) {
+    throw new Error(`Unsupported format: ${format}`);
+  }
+
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (!("exportAsync" in node)) {
+    throw new Error(`Node does not support exporting: ${nodeId}`);
+  }
+
+  const hiddenBefore = [];
+  let clipsContentBefore = null;
+
+  try {
+    for (const hid of hideIds) {
+      const child = await figma.getNodeByIdAsync(hid);
+      if (child && "visible" in child) {
+        hiddenBefore.push({ node: child, wasVisible: child.visible });
+        child.visible = false;
+      }
+    }
+
+    if ("clipsContent" in node && !node.clipsContent) {
+      clipsContentBefore = false;
+      node.clipsContent = true;
+    }
+
+    const settings =
+      exportFormat === "SVG" || exportFormat === "PDF"
+        ? { format: exportFormat }
+        : {
+            format: exportFormat,
+            constraint: { type: "SCALE", value: Number(scale) || 1 },
+          };
+
+    const bytes = await node.exportAsync(settings);
+
+    return {
+      nodeId,
+      name: node.name,
+      format: exportFormat,
+      scale: Number(scale) || 1,
+      mimeType: mimeTypes[exportFormat],
+      size: bytes.length,
+      data: figma.base64Encode(bytes),
+    };
+  } catch (error) {
+    throw new Error(`Error exporting node bytes: ${error.message}`);
+  } finally {
+    // Always restore the original state so the design file is left untouched
+    if (clipsContentBefore !== null) {
+      node.clipsContent = clipsContentBefore;
+    }
+    for (const item of hiddenBefore) {
+      item.node.visible = item.wasVisible;
+    }
+  }
+}
+
 function customBase64Encode(bytes) {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
