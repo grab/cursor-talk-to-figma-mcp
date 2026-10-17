@@ -198,6 +198,7 @@ The MCP server provides the following tools for interacting with Figma:
 ### Export & Advanced
 
 - `export_node_as_image` - Export a node as an image (PNG, JPG, SVG, or PDF) - limited support on image currently returning base64 as text
+- `export_nodes_to_disk` - Batch export nodes and write the files straight to a local directory (PNG/JPG/SVG/PDF, scale 0.01-4). Input uses the same `nodeId|filename` / `nodeId|filename|-hideId1,-hideId2` format as the Batch Export Images plugin; hidden child nodes are restored after export
 
 ### Connection Management
 

@@ -5,7 +5,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
-import { readFile } from "fs/promises";
+import { readFile, mkdir, writeFile } from "fs/promises";
+import path from "path";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -889,6 +890,168 @@ server.tool(
             type: "text",
             text: `Error exporting node as image: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Batch export spec: same input format as the figma-export-plugin (Batch Export Images)
+interface ExportNodeSpec {
+  nodeId: string;
+  filename: string;
+  hideIds: string[];
+}
+
+/**
+ * Parse the export node text.
+ * One entry per line (or comma-separated), formats:
+ *   nodeId|filename
+ *   nodeId|filename|-hideId1,-hideId2
+ */
+function parseExportNodes(text: string): { specs: ExportNodeSpec[]; errors: string[] } {
+  const specs: ExportNodeSpec[] = [];
+  const errors: string[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // Only split on a comma followed by "xxx|" so the commas inside |-id1,-id2 are kept
+    const entries = line.split(/,(?=\s*[^,|]*\|)/);
+    for (const entry of entries) {
+      const parts = entry.split("|").map((s) => s.trim());
+      if (parts.length < 2 || !parts[0] || !parts[1]) {
+        errors.push(`Invalid format, expected nodeId|filename: ${entry.trim()}`);
+        continue;
+      }
+
+      // Accept the URL form 1-12 and convert it to 1:12
+      const nodeId = /^\d+-\d+$/.test(parts[0]) ? parts[0].replace("-", ":") : parts[0];
+      const filename = parts[1];
+      if (/[\\/]/.test(filename) || filename === "." || filename === "..") {
+        errors.push(`Filename must not contain path separators: ${filename}`);
+        continue;
+      }
+
+      // The third segment looks like -id1,-id2; strip the leading "-" from each ID
+      const hideIds = (parts[2] || "")
+        .split(",")
+        .map((s) => s.trim().replace(/^-/, ""))
+        .filter(Boolean)
+        .map((s) => (/^\d+-\d+$/.test(s) ? s.replace("-", ":") : s));
+
+      specs.push({ nodeId, filename, hideIds });
+    }
+  }
+
+  return { specs, errors };
+}
+
+// Export Nodes To Disk Tool
+server.tool(
+  "export_nodes_to_disk",
+  "Batch export Figma nodes as image files and write them directly to a local directory (no base64 returned to the model). " +
+  "Input format is identical to the figma-export-plugin: one entry per line (or comma-separated), `nodeId|filename` or " +
+  "`nodeId|filename|-hideId1,-hideId2` (the listed child nodes are temporarily hidden while exporting, then restored). " +
+  "Files are saved as `<outputDir>/<filename>.<format>`.",
+  {
+    nodes: z
+      .string()
+      .describe(
+        "Nodes to export, one per line or comma-separated: `nodeId|filename` or `nodeId|filename|-hideId1,-hideId2`. e.g. `1:12|banner-bg`"
+      ),
+    outputDir: z
+      .string()
+      .describe("Absolute path of the output directory; created if it does not exist"),
+    format: z
+      .enum(["png", "jpg", "svg", "pdf", "PNG", "JPG", "SVG", "PDF"])
+      .optional()
+      .describe("Image format, default png"),
+    scale: z
+      .number()
+      .min(0.01)
+      .max(4)
+      .optional()
+      .describe("Export scale (0.01-4), default 1. Ignored for svg/pdf"),
+  },
+  async ({ nodes, outputDir, format, scale }: any) => {
+    try {
+      if (!path.isAbsolute(outputDir)) {
+        return {
+          content: [
+            { type: "text", text: `outputDir must be an absolute path, received: ${outputDir}` },
+          ],
+        };
+      }
+
+      const fmt = String(format || "png").toLowerCase() as "png" | "jpg" | "svg" | "pdf";
+      const { specs, errors } = parseExportNodes(nodes);
+      if (specs.length === 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `No valid nodes parsed.${errors.length ? "\n" + errors.join("\n") : ""}`,
+            },
+          ],
+        };
+      }
+
+      await mkdir(outputDir, { recursive: true });
+
+      const okLines: string[] = [];
+      const failLines: string[] = [...errors.map((e) => `❌ ${e}`)];
+      const seen = new Set<string>();
+
+      // Export node by node to keep each message small and make failures easy to locate
+      for (const spec of specs) {
+        const fileName = `${spec.filename}.${fmt}`;
+        if (seen.has(fileName)) {
+          failLines.push(`❌ ${fileName} — duplicate filename, skipped ${spec.nodeId}`);
+          continue;
+        }
+        seen.add(fileName);
+
+        try {
+          const result = (await sendCommandToFigma(
+            "export_node_bytes",
+            {
+              nodeId: spec.nodeId,
+              format: fmt.toUpperCase(),
+              scale: scale || 1,
+              hideIds: spec.hideIds,
+            },
+            60000
+          )) as { data: string };
+
+          const buffer = Buffer.from(result.data, "base64");
+          const filePath = path.join(outputDir, fileName);
+          await writeFile(filePath, buffer);
+          okLines.push(`✅ ${filePath} (${(buffer.length / 1024).toFixed(1)} KB)`);
+        } catch (err) {
+          failLines.push(
+            `❌ ${fileName} — ${spec.nodeId}: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+
+      const summary = `Export finished: ${okLines.length} succeeded, ${failLines.length} failed (format ${fmt}${fmt === "svg" || fmt === "pdf" ? "" : `, ${scale || 1}x`}, directory ${outputDir})`;
+      return {
+        content: [
+          {
+            type: "text",
+            text: [summary, ...okLines, ...failLines].join("\n"),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error exporting nodes to disk: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -2634,6 +2797,7 @@ type FigmaCommand =
   | "get_instance_overrides"
   | "set_instance_overrides"
   | "export_node_as_image"
+  | "export_node_bytes"
   | "join"
   | "set_corner_radius"
   | "clone_node"
@@ -2743,6 +2907,12 @@ type CommandParams = {
     nodeId: string;
     format?: "PNG" | "JPG" | "SVG" | "PDF";
     scale?: number;
+  };
+  export_node_bytes: {
+    nodeId: string;
+    format?: "PNG" | "JPG" | "SVG" | "PDF";
+    scale?: number;
+    hideIds?: string[];
   };
   execute_code: {
     code: string;

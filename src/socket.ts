@@ -73,6 +73,8 @@ const server = Bun.serve({
     });
   },
   websocket: {
+    // Bun's default max message size is 16MB; base64 from high-scale exports can exceed it
+    maxPayloadLength: 128 * 1024 * 1024,
     open: handleConnection,
     message(ws: ServerWebSocket<any>, message: string | Buffer) {
       try {
@@ -84,7 +86,14 @@ const server = Bun.serve({
         } else if (data.message?.result) {
           console.log(`Response: ID: ${data.id}, Has Result: ${!!data.message.result}`);
         }
-        console.log(`Full message:`, JSON.stringify(data, null, 2));
+        // Image exports can be several MB of base64; truncate long messages in the logs
+        const fullMessage = JSON.stringify(data, null, 2);
+        console.log(
+          `Full message:`,
+          fullMessage.length > 2000
+            ? fullMessage.slice(0, 2000) + `... [truncated, total ${fullMessage.length} chars]`
+            : fullMessage
+        );
 
         if (data.type === "join") {
           const channelName = data.channel;
@@ -169,8 +178,13 @@ const server = Bun.serve({
                 channel: channelName
               };
               console.log(`\n=== Broadcasting to peer #${broadcastCount} ===`);
-              console.log(JSON.stringify(broadcastMessage, null, 2));
-              client.send(JSON.stringify(broadcastMessage));
+              const broadcastText = JSON.stringify(broadcastMessage);
+              console.log(
+                broadcastText.length > 2000
+                  ? broadcastText.slice(0, 2000) + `... [truncated, total ${broadcastText.length} chars]`
+                  : JSON.stringify(broadcastMessage, null, 2)
+              );
+              client.send(broadcastText);
             }
           });
           
