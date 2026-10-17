@@ -107,6 +107,55 @@ bun socket
 4. Connect the plugin to the WebSocket server by joining a channel using `join_channel`
 5. Use Cursor to communicate with Figma using the MCP tools
 
+### Optional: research design copy with Parallel Search MCP
+
+Use [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp)
+alongside TalkToFigma to find sources before writing design copy. It provides
+free web search and page fetching without an account or API key. Anonymous search
+uses Fast mode and has usage limits.
+
+In `~/.cursor/mcp.json`, merge the following entry into your existing
+`mcpServers` object, keeping your TalkToFigma configuration and other servers:
+
+```json
+{
+  "mcpServers": {
+    "ParallelSearch": {
+      "url": "https://search.parallel.ai/mcp",
+      "headers": {
+        "User-Agent": "cursor-talk-to-figma-mcp"
+      }
+    }
+  }
+}
+```
+
+Cursor connects to this server over HTTP. See the
+[Cursor MCP documentation](https://cursor.com/docs/context/mcp) for configuration
+details. Enable the server in Cursor and check that its `web_search` and
+`web_fetch` tools are available. The Figma plugin and WebSocket relay are still
+required for Figma commands; follow the setup steps above.
+
+For example, ask Cursor:
+
+```text
+Use ParallelSearch to research W3C guidance on accessible form labels and error
+messages for a public signup form. Search with web_search, then use web_fetch
+to read the relevant W3C pages. Propose concise email and password labels and
+error messages, and include source URLs. Wait for me to approve the copy before
+changing anything in Figma.
+```
+
+After reviewing the sources and approving the text, ask Cursor to join your
+Figma channel with `join_channel`, call `get_document_info`, and inspect the
+selected form with `read_my_design`. Have it show the target text node IDs and
+replacements for confirmation, apply the approved changes with
+`set_multiple_text_contents`, and verify them with `get_node_info`.
+
+Search results provide reference material; the agent chooses and calls the Figma
+tools. Adding ParallelSearch does not connect it directly to your Figma document.
+
+
 ## Local Development Setup
 
 To develop, update your mcp config to direct to your local directory.
