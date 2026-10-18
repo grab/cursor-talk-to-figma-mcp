@@ -2246,9 +2246,9 @@ server.tool(
 // Set Layout Sizing Tool
 server.tool(
   "set_layout_sizing",
-  "Set horizontal and vertical sizing modes for an auto-layout frame in Figma",
+  "Set horizontal and vertical sizing modes for a frame or text node in Figma. FILL works for any child of an auto-layout frame, including text; a text node set to FILL or FIXED width switches to auto height so it wraps",
   {
-    nodeId: z.string().describe("The ID of the frame to modify"),
+    nodeId: z.string().describe("The ID of the frame or text node to modify"),
     layoutSizingHorizontal: z
       .enum(["FIXED", "HUG", "FILL"])
       .optional()
@@ -2280,7 +2280,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set ${sizingText} for frame "${typedResult.name}"`,
+            text: `Set ${sizingText} for "${typedResult.name}"`,
           },
         ],
       };
@@ -2657,7 +2657,8 @@ type FigmaCommand =
   | "set_image_fill"
   | "rename_node"
   | "create_section"
-  | "set_parent";
+  | "set_parent"
+  | "set_text_auto_resize";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2828,6 +2829,12 @@ type CommandParams = {
     x?: number;
     y?: number;
     index?: number;
+  };
+  set_text_auto_resize: {
+    nodeId?: string;
+    nodeIds?: string[];
+    mode: "NONE" | "WIDTH_AND_HEIGHT" | "HEIGHT" | "TRUNCATE";
+    width?: number;
   };
 
 };
@@ -3279,6 +3286,45 @@ server.tool(
             type: "text",
             text: `Error setting parent: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Text tools target one text node, or every text node inside a container
+const textTargetSchema = {
+  nodeId: z.string().optional().describe("A text node, or a frame/group/instance whose text nodes all change"),
+  nodeIds: z.array(z.string()).optional().describe("Several text nodes or containers at once (instead of nodeId)"),
+};
+
+// Set Text Auto Resize Tool
+server.tool(
+  "set_text_auto_resize",
+  "Set how a text box sizes itself in Figma: WIDTH_AND_HEIGHT (auto width, never wraps), HEIGHT (fixed width, wraps and grows down), NONE (fixed box), TRUNCATE (fixed box with ellipsis). Optional width sets the box width first, so { mode: \"HEIGHT\", width: 600 } makes wrapping text 600 px wide",
+  {
+    ...textTargetSchema,
+    mode: z.enum(["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"]).describe("Auto-resize mode"),
+    width: z.number().positive().optional().describe("Optional box width in px, applied before the mode"),
+  },
+  async ({ nodeId, nodeIds, mode, width }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_text_auto_resize", {
+        nodeId,
+        nodeIds,
+        mode,
+        width,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting text auto resize: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

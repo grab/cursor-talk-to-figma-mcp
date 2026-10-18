@@ -161,13 +161,14 @@ The MCP server provides the following tools for interacting with Figma:
 - `scan_text_nodes` - Scan text nodes with intelligent chunking for large designs
 - `set_text_content` - Set the text content of a single text node
 - `set_multiple_text_contents` - Batch update multiple text nodes efficiently
+- `set_text_auto_resize` - Set how a text box sizes itself (auto width, auto height with a set width, fixed, truncate)
 
 ### Auto Layout & Spacing
 
 - `set_layout_mode` - Set the layout mode and wrap behavior of a frame (NONE, HORIZONTAL, VERTICAL)
 - `set_padding` - Set padding values for an auto-layout frame (top, right, bottom, left)
 - `set_axis_align` - Set primary and counter axis alignment for auto-layout frames
-- `set_layout_sizing` - Set horizontal and vertical sizing modes for auto-layout frames (FIXED, HUG, FILL)
+- `set_layout_sizing` - Set horizontal and vertical sizing modes for auto-layout frames and text nodes (FIXED, HUG, FILL)
 - `set_item_spacing` - Set distance between children in an auto-layout frame
 
 ### Styling

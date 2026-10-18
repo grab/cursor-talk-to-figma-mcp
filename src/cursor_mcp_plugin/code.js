@@ -262,6 +262,8 @@ async function handleCommand(command, params) {
       return await createSection(params);
     case "set_parent":
       return await setParent(params);
+    case "set_text_auto_resize":
+      return await setTextAutoResize(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1250,6 +1252,81 @@ async function setParent(params) {
     y: "y" in node ? node.y : undefined,
     index: parentNode.children.indexOf(node),
   };
+}
+
+// Text nodes for a list of IDs: a text node itself, or every text node inside a frame, group or instance
+async function collectTextNodes(nodeIds) {
+  const textNodes = [];
+  const missing = [];
+  for (const id of nodeIds) {
+    const node = await figma.getNodeByIdAsync(id);
+    if (!node) {
+      missing.push(id);
+      continue;
+    }
+    if (node.type === "TEXT") {
+      textNodes.push(node);
+    } else if ("findAllWithCriteria" in node) {
+      textNodes.push(...node.findAllWithCriteria({ types: ["TEXT"] }));
+    }
+  }
+  return { textNodes, missing };
+}
+
+function normalizeNodeIds(params) {
+  const { nodeId, nodeIds } = params || {};
+  const ids = nodeIds && nodeIds.length ? nodeIds : nodeId ? [nodeId] : [];
+  if (ids.length === 0) {
+    throw new Error("Missing nodeId or nodeIds parameter");
+  }
+  return ids;
+}
+
+async function loadAllFonts(node) {
+  if (node.characters.length === 0) {
+    if (node.fontName !== figma.mixed) await figma.loadFontAsync(node.fontName);
+    return;
+  }
+  const fonts = node.getRangeAllFontNames(0, node.characters.length);
+  await Promise.all(fonts.map((font) => figma.loadFontAsync(font)));
+}
+
+async function setTextAutoResize(params) {
+  const { mode, width } = params || {};
+  const modes = ["NONE", "WIDTH_AND_HEIGHT", "HEIGHT", "TRUNCATE"];
+  if (!modes.includes(mode)) {
+    throw new Error(`Invalid mode. Must be one of: ${modes.join(", ")}`);
+  }
+  if (width !== undefined && !(width > 0)) {
+    throw new Error("width must be a positive number");
+  }
+  const ids = normalizeNodeIds(params);
+  const { textNodes, missing } = await collectTextNodes(ids);
+  if (textNodes.length === 0) {
+    throw new Error(`No text nodes found in: ${ids.join(", ")}`);
+  }
+
+  const updated = [];
+  const failed = [];
+  for (const node of textNodes) {
+    try {
+      await loadAllFonts(node);
+      // resize() switches the node to fixed size, so the mode is applied after it
+      if (width !== undefined) node.resize(width, node.height);
+      node.textAutoResize = mode;
+      updated.push({
+        id: node.id,
+        name: node.name,
+        textAutoResize: node.textAutoResize,
+        width: node.width,
+        height: node.height,
+      });
+    } catch (error) {
+      failed.push({ id: node.id, name: node.name, error: error.message });
+    }
+  }
+
+  return { updated: updated.length, nodes: updated, failed, missing };
 }
 
 async function moveNode(params) {
@@ -3738,21 +3815,29 @@ async function setLayoutSizing(params) {
     throw new Error(`Node with ID ${nodeId} not found`);
   }
 
-  // Check if node is a frame or component that supports layout sizing
+  // Frames, components, instances and text nodes support layout sizing
   if (
     node.type !== "FRAME" &&
     node.type !== "COMPONENT" &&
     node.type !== "COMPONENT_SET" &&
-    node.type !== "INSTANCE"
+    node.type !== "INSTANCE" &&
+    node.type !== "TEXT"
   ) {
     throw new Error(`Node type ${node.type} does not support layout sizing`);
   }
 
-  // Check if the node has auto-layout enabled
-  if (node.layoutMode === "NONE") {
+  // HUG on a frame needs its own auto-layout; FILL and FIXED only depend on the parent
+  const wantsHug =
+    layoutSizingHorizontal === "HUG" || layoutSizingVertical === "HUG";
+  if (wantsHug && node.type !== "TEXT" && node.layoutMode === "NONE") {
     throw new Error(
-      "Layout sizing can only be set on auto-layout frames (layoutMode must not be NONE)"
+      "HUG sizing needs an auto-layout frame (layoutMode must not be NONE)"
     );
+  }
+
+  // Text layout changes need the node's fonts loaded
+  if (node.type === "TEXT") {
+    await loadAllFonts(node);
   }
 
   // Validate and set layoutSizingHorizontal if provided
@@ -3807,12 +3892,22 @@ async function setLayoutSizing(params) {
     node.layoutSizingVertical = layoutSizingVertical;
   }
 
+  // Auto-width text would never wrap inside a fixed or filled width: switch it to auto height
+  if (
+    node.type === "TEXT" &&
+    (layoutSizingHorizontal === "FILL" || layoutSizingHorizontal === "FIXED") &&
+    node.textAutoResize === "WIDTH_AND_HEIGHT"
+  ) {
+    node.textAutoResize = "HEIGHT";
+  }
+
   return {
     id: node.id,
     name: node.name,
     layoutSizingHorizontal: node.layoutSizingHorizontal,
     layoutSizingVertical: node.layoutSizingVertical,
-    layoutMode: node.layoutMode,
+    layoutMode: node.type === "TEXT" ? undefined : node.layoutMode,
+    textAutoResize: node.type === "TEXT" ? node.textAutoResize : undefined,
   };
 }
 
