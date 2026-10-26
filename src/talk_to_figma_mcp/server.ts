@@ -933,6 +933,52 @@ server.tool(
   }
 );
 
+// Get Code Block Tool (FigJam code blocks are not text nodes)
+server.tool(
+  "get_code_block",
+  "Read the source text of an existing FigJam code block node",
+  {
+    nodeId: z.string().describe("The ID of the CODE_BLOCK node"),
+  },
+  async ({ nodeId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_code_block", { nodeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error getting code block: ${error instanceof Error ? error.message : String(error)}`,
+        }],
+      };
+    }
+  }
+);
+
+// Set Code Block Tool (edits the existing node in place)
+server.tool(
+  "set_code_block",
+  "Replace the source text of an existing FigJam code block node in place (does not create a new node)",
+  {
+    nodeId: z.string().describe("The ID of the CODE_BLOCK node"),
+    code: z.string().describe("New code text"),
+    codeLanguage: z.string().optional().describe("Optional code language, e.g. TYPESCRIPT, JSON, PLAINTEXT"),
+  },
+  async ({ nodeId, code, codeLanguage }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_code_block", { nodeId, code, codeLanguage });
+      return { content: [{ type: "text", text: `Updated code block: ${JSON.stringify(result)}` }] };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error setting code block: ${error instanceof Error ? error.message : String(error)}`,
+        }],
+      };
+    }
+  }
+);
+
 // Get Styles Tool
 server.tool(
   "get_styles",
@@ -2638,6 +2684,8 @@ type FigmaCommand =
   | "set_corner_radius"
   | "clone_node"
   | "set_text_content"
+  | "get_code_block"
+  | "set_code_block"
   | "scan_text_nodes"
   | "set_multiple_text_contents"
   | "get_annotations"
@@ -2764,6 +2812,8 @@ type CommandParams = {
     nodeId: string;
     text: string;
   };
+  get_code_block: { nodeId: string };
+  set_code_block: { nodeId: string; code: string; codeLanguage?: string };
   scan_text_nodes: {
     nodeId: string;
     useChunking: boolean;

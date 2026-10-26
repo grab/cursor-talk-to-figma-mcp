@@ -6,6 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
+import { readFile } from "fs/promises";
 var logger = {
   info: (message) => process.stderr.write(`[INFO] ${message}
 `),
@@ -742,6 +743,48 @@ server.tool(
             text: `Error setting text content: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
+      };
+    }
+  }
+);
+server.tool(
+  "get_code_block",
+  "Read the source text of an existing FigJam code block node",
+  {
+    nodeId: z.string().describe("The ID of the CODE_BLOCK node")
+  },
+  async ({ nodeId }) => {
+    try {
+      const result = await sendCommandToFigma("get_code_block", { nodeId });
+      return { content: [{ type: "text", text: JSON.stringify(result) }] };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error getting code block: ${error instanceof Error ? error.message : String(error)}`
+        }]
+      };
+    }
+  }
+);
+server.tool(
+  "set_code_block",
+  "Replace the source text of an existing FigJam code block node in place (does not create a new node)",
+  {
+    nodeId: z.string().describe("The ID of the CODE_BLOCK node"),
+    code: z.string().describe("New code text"),
+    codeLanguage: z.string().optional().describe("Optional code language, e.g. TYPESCRIPT, JSON, PLAINTEXT")
+  },
+  async ({ nodeId, code, codeLanguage }) => {
+    try {
+      const result = await sendCommandToFigma("set_code_block", { nodeId, code, codeLanguage });
+      return { content: [{ type: "text", text: `Updated code block: ${JSON.stringify(result)}` }] };
+    } catch (error) {
+      return {
+        content: [{
+          type: "text",
+          text: `Error setting code block: ${error instanceof Error ? error.message : String(error)}`
+        }]
       };
     }
   }
@@ -2335,6 +2378,185 @@ function sendCommandToFigma(command, params = {}, timeoutMs = 3e4) {
     ws.send(JSON.stringify(request));
   });
 }
+server.tool(
+  "set_image_fill",
+  "Fill a node in Figma with an image from a local file path, a URL, or base64 data (replaces the node's existing fills)",
+  {
+    nodeId: z.string().describe("The ID of the node to fill"),
+    imagePath: z.string().optional().describe(
+      "Absolute path to a local image file, read by the MCP server (preferred: keeps image bytes out of the model context)"
+    ),
+    imageUrl: z.string().optional().describe(
+      "Image URL, fetched by the MCP server (the Figma plugin cannot fetch arbitrary domains itself)"
+    ),
+    imageBase64: z.string().optional().describe(
+      "Base64-encoded image data, with or without a data: URI prefix (only when the image exists nowhere else)"
+    ),
+    scaleMode: z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image fills the node (default: FILL)")
+  },
+  async ({ nodeId, imagePath, imageUrl, imageBase64, scaleMode }) => {
+    try {
+      const sources = [imagePath, imageUrl, imageBase64].filter(
+        (source) => source !== void 0 && source !== ""
+      );
+      if (sources.length !== 1) {
+        throw new Error("Provide exactly one of imagePath, imageUrl or imageBase64");
+      }
+      let base64Data;
+      if (imagePath) {
+        base64Data = (await readFile(imagePath)).toString("base64");
+      } else if (imageUrl) {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image URL (HTTP ${response.status})`);
+        }
+        base64Data = Buffer.from(await response.arrayBuffer()).toString("base64");
+      } else {
+        base64Data = imageBase64.replace(/^data:[^;,]+;base64,/, "");
+      }
+      if (base64Data.length > 12 * 1024 * 1024) {
+        throw new Error(
+          "Image is too large to send over the relay (~9MB binary max); downscale it first"
+        );
+      }
+      const result = await sendCommandToFigma("set_image_fill", {
+        nodeId,
+        imageBase64: base64Data,
+        scaleMode: scaleMode || "FILL"
+      });
+      const typedResult = result;
+      const sizeInfo = typedResult.imageWidth ? ` (${typedResult.imageWidth}x${typedResult.imageHeight})` : "";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set image fill of node "${typedResult.name}"${sizeInfo} with scale mode ${scaleMode || "FILL"}, imageHash: ${typedResult.imageHash}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "rename_node",
+  "Rename a node in Figma",
+  {
+    nodeId: z.string().describe("The ID of the node to rename"),
+    name: z.string().describe("The new name for the node")
+  },
+  async ({ nodeId, name }) => {
+    try {
+      const result = await sendCommandToFigma("rename_node", { nodeId, name });
+      const typedResult = result;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Renamed node from "${typedResult.previousName}" to "${typedResult.name}"`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "create_section",
+  "Create a section in Figma to group related content on the canvas",
+  {
+    x: z.number().describe("X position"),
+    y: z.number().describe("Y position"),
+    width: z.number().describe("Width of the section"),
+    height: z.number().describe("Height of the section"),
+    name: z.string().optional().describe("Optional name for the section")
+  },
+  async ({ x, y, width, height, name }) => {
+    try {
+      const result = await sendCommandToFigma("create_section", {
+        x,
+        y,
+        width,
+        height,
+        name: name || "Section"
+      });
+      const typedResult = result;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created section "${typedResult.name}" with ID: ${typedResult.id}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating section: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "set_parent",
+  "Move a node into a new parent node (e.g. a section, frame or group). Preserves the node's absolute position unless x/y are provided",
+  {
+    nodeId: z.string().describe("The ID of the node to move"),
+    parentId: z.string().describe("The ID of the new parent node (must support children, e.g. a section, frame or group)"),
+    x: z.number().optional().describe("Optional X position relative to the new parent"),
+    y: z.number().optional().describe("Optional Y position relative to the new parent"),
+    index: z.number().optional().describe("Optional child index to insert at (default: appended as last child)")
+  },
+  async ({ nodeId, parentId, x, y, index }) => {
+    try {
+      const result = await sendCommandToFigma("set_parent", {
+        nodeId,
+        parentId,
+        x,
+        y,
+        index
+      });
+      const typedResult = result;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Moved node "${typedResult.name}" into "${typedResult.parentName}" at (${typedResult.x}, ${typedResult.y})`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting parent: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
 server.tool(
   "join_channel",
   "Join a specific channel to communicate with Figma",

@@ -174,6 +174,10 @@ async function handleCommand(command, params) {
       return await setCornerRadius(params);
     case "set_text_content":
       return await setTextContent(params);
+    case "get_code_block":
+      return await getCodeBlock(params);
+    case "set_code_block":
+      return await setCodeBlock(params);
     case "clone_node":
       return await cloneNode(params);
     case "scan_text_nodes":
@@ -1669,6 +1673,50 @@ async function setCornerRadius(params) {
       "bottomRightRadius" in node ? node.bottomRightRadius : undefined,
     bottomLeftRadius:
       "bottomLeftRadius" in node ? node.bottomLeftRadius : undefined,
+  };
+}
+
+async function getCodeBlock(params) {
+  const { nodeId } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (node.type !== "CODE_BLOCK") {
+    throw new Error(`Node is not a code block: ${nodeId} (${node.type})`);
+  }
+  return {
+    id: node.id,
+    name: node.name,
+    codeLanguage: node.codeLanguage,
+    code: node.code,
+  };
+}
+
+async function setCodeBlock(params) {
+  const { nodeId, code, codeLanguage } = params || {};
+  if (!nodeId) throw new Error("Missing nodeId parameter");
+  if (code === undefined) throw new Error("Missing code parameter");
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+  if (node.type !== "CODE_BLOCK") {
+    throw new Error(`Node is not a code block: ${nodeId} (${node.type})`);
+  }
+  // FigJam renders code blocks in Source Code Pro; writing `code` requires
+  // the fonts to be loaded first, like any text edit.
+  await Promise.all(
+    ["Regular", "Medium", "Bold"].map((style) =>
+      figma
+        .loadFontAsync({ family: "Source Code Pro", style })
+        .catch(() => {})
+    )
+  );
+  node.code = code;
+  if (codeLanguage) node.codeLanguage = codeLanguage;
+  return {
+    id: node.id,
+    name: node.name,
+    codeLanguage: node.codeLanguage,
+    length: node.code.length,
   };
 }
 
