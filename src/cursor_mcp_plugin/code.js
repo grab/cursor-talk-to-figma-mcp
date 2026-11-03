@@ -262,6 +262,12 @@ async function handleCommand(command, params) {
       return await createSection(params);
     case "set_parent":
       return await setParent(params);
+    case "set_font":
+      return await setFont(params);
+    case "set_text_style":
+      return await setTextStyle(params);
+    case "create_text_style":
+      return await createTextStyle(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1156,6 +1162,83 @@ async function renameNode(params) {
     previousName: previousName,
     name: node.name,
   };
+}
+
+async function getTextNode(nodeId) {
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a TEXT node: ${nodeId}`);
+  }
+  return node;
+}
+
+async function setFont(params) {
+  const { nodeId, fontFamily, fontStyle, fontSize } = params || {};
+  const node = await getTextNode(nodeId);
+
+  // Mixed fonts collapse to the first character's font before applying changes
+  const current =
+    node.fontName === figma.mixed ? node.getRangeFontName(0, 1) : node.fontName;
+  const fontName = {
+    family: fontFamily || current.family,
+    style: fontStyle || current.style,
+  };
+  await figma.loadFontAsync(fontName);
+  node.fontName = fontName;
+  if (fontSize !== undefined) {
+    node.fontSize = fontSize;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    fontName: node.fontName,
+    fontSize: node.fontSize,
+  };
+}
+
+async function setTextStyle(params) {
+  const { nodeId, styleId } = params || {};
+  const node = await getTextNode(nodeId);
+  const style = await figma.getStyleByIdAsync(styleId);
+  if (!style || style.type !== "TEXT") {
+    throw new Error(`Text style not found with ID: ${styleId}`);
+  }
+
+  await figma.loadFontAsync(style.fontName);
+  await node.setTextStyleIdAsync(style.id);
+
+  return { id: node.id, name: node.name, styleName: style.name };
+}
+
+async function createTextStyle(params) {
+  const { name, fontFamily, fontStyle = "Regular", fontSize, lineHeightPercent } = params || {};
+  if (!name || !fontFamily || !fontSize) {
+    throw new Error("Missing name, fontFamily or fontSize parameter");
+  }
+
+  const existing = (await figma.getLocalTextStylesAsync()).find((s) => s.name === name);
+  if (existing) {
+    throw new Error(`Text style already exists: ${name} (${existing.id})`);
+  }
+
+  const fontName = { family: fontFamily, style: fontStyle };
+  await figma.loadFontAsync(fontName);
+  const style = figma.createTextStyle();
+  style.name = name;
+  style.fontName = fontName;
+  style.fontSize = fontSize;
+  if (lineHeightPercent !== undefined) {
+    style.lineHeight = { unit: "PERCENT", value: lineHeightPercent };
+  }
+
+  return { id: style.id, name: style.name, fontName: style.fontName, fontSize: style.fontSize };
 }
 
 async function createSection(params) {

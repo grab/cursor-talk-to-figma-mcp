@@ -2662,7 +2662,10 @@ type FigmaCommand =
   | "set_image_fill"
   | "rename_node"
   | "create_section"
-  | "set_parent";
+  | "set_parent"
+  | "set_font"
+  | "set_text_style"
+  | "create_text_style";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2833,6 +2836,20 @@ type CommandParams = {
     x?: number;
     y?: number;
     index?: number;
+  };
+  set_font: {
+    nodeId: string;
+    fontFamily?: string;
+    fontStyle?: string;
+    fontSize?: number;
+  };
+  set_text_style: { nodeId: string; styleId: string };
+  create_text_style: {
+    name: string;
+    fontFamily: string;
+    fontStyle?: string;
+    fontSize: number;
+    lineHeightPercent?: number;
   };
 
 };
@@ -3193,6 +3210,61 @@ server.tool(
       };
     }
   }
+);
+
+// Run a plugin command and return its JSON result, or the error as text
+async function runCommand(command: FigmaCommand, params: unknown, label: string) {
+  try {
+    const result = await sendCommandToFigma(command, params);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Error ${label}: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ],
+    };
+  }
+}
+
+// Set Font Tool
+server.tool(
+  "set_font",
+  "Change font family, style and/or size of an existing text node",
+  {
+    nodeId: z.string().describe("The ID of the text node"),
+    fontFamily: z.string().optional().describe("Font family, e.g. \"Noto Sans KR\""),
+    fontStyle: z.string().optional().describe("Font style name, e.g. \"Regular\", \"Bold\""),
+    fontSize: z.number().optional().describe("Font size"),
+  },
+  async (params: any) => runCommand("set_font", params, "setting font")
+);
+
+// Set Text Style Tool
+server.tool(
+  "set_text_style",
+  "Apply a local text style (id from get_styles) to a text node",
+  {
+    nodeId: z.string().describe("The ID of the text node"),
+    styleId: z.string().describe("Text style ID from get_styles"),
+  },
+  async (params: any) => runCommand("set_text_style", params, "setting text style")
+);
+
+// Create Text Style Tool
+server.tool(
+  "create_text_style",
+  "Create a local text style. Fails if a style with the same name exists",
+  {
+    name: z.string().describe("Style name, e.g. \"title/20-bold\""),
+    fontFamily: z.string().describe("Font family, e.g. \"Noto Sans KR\""),
+    fontStyle: z.string().optional().describe("Font style name (default: Regular)"),
+    fontSize: z.number().describe("Font size"),
+    lineHeightPercent: z.number().optional().describe("Line height in percent, e.g. 120"),
+  },
+  async (params: any) => runCommand("create_text_style", params, "creating text style")
 );
 
 // Create Section Tool
