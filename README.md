@@ -154,13 +154,15 @@ The MCP server provides the following tools for interacting with Figma:
 - `create_rectangle` - Create a new rectangle with position, size, and optional name
 - `create_frame` - Create a new frame with position, size, and optional name
 - `create_section` - Create a section to group related content on the canvas
-- `create_text` - Create a new text node with customizable font properties
+- `create_text` - Create a new text node with customizable font properties (family, weight, size, color)
 
 ### Modifying text content
 
 - `scan_text_nodes` - Scan text nodes with intelligent chunking for large designs
 - `set_text_content` - Set the text content of a single text node
 - `set_multiple_text_contents` - Batch update multiple text nodes efficiently
+- `set_font` - Change font family, style and/or size of an existing text node
+- `set_text_style` - Apply a local text style to a text node
 
 ### Auto Layout & Spacing
 
@@ -186,14 +188,21 @@ The MCP server provides the following tools for interacting with Figma:
 - `clone_node` - Create a copy of an existing node with optional position offset
 - `rename_node` - Rename a node
 - `set_parent` - Move a node into a new parent (section, frame or group), preserving its absolute position by default
+- `duplicate_page` - Duplicate a page (default: current page) with an optional new name
 
 ### Components & Styles
 
 - `get_styles` - Get information about local styles
+- `create_text_style` - Create a local text style (font family, style, size, line height)
 - `get_local_components` - Get information about local components
 - `create_component_instance` - Create an instance of a component
 - `get_instance_overrides` - Extract override properties from a selected component instance
 - `set_instance_overrides` - Apply extracted overrides to target instances
+
+### Variables
+
+- `get_variables` - Get local variable collections with their variables and values per mode
+- `bind_variable` - Bind a variable to a node's fill/stroke color or a numeric property (itemSpacing, padding, cornerRadius, ...)
 
 ### Export & Advanced
 
