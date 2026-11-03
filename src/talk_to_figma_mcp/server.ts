@@ -282,6 +282,15 @@ function filterFigmaNode(node: any) {
     filtered.cornerRadius = node.cornerRadius;
   }
 
+  // Variable bindings and style ids, e.g. boundVariables.fills[0].id = "VariableID:1:2"
+  if (node.boundVariables && Object.keys(node.boundVariables).length > 0) {
+    filtered.boundVariables = node.boundVariables;
+  }
+
+  if (node.styles) {
+    filtered.styles = node.styles;
+  }
+
   if (node.absoluteBoundingBox) {
     filtered.absoluteBoundingBox = node.absoluteBoundingBox;
   }
@@ -2665,7 +2674,9 @@ type FigmaCommand =
   | "set_parent"
   | "set_font"
   | "set_text_style"
-  | "create_text_style";
+  | "create_text_style"
+  | "get_variables"
+  | "bind_variable";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2851,6 +2862,8 @@ type CommandParams = {
     fontSize: number;
     lineHeightPercent?: number;
   };
+  get_variables: Record<string, never>;
+  bind_variable: { nodeId: string; field: string; variableId: string };
 
 };
 
@@ -3265,6 +3278,26 @@ server.tool(
     lineHeightPercent: z.number().optional().describe("Line height in percent, e.g. 120"),
   },
   async (params: any) => runCommand("create_text_style", params, "creating text style")
+);
+
+// Get Variables Tool
+server.tool(
+  "get_variables",
+  "Get local variable collections with their variables and values per mode",
+  {},
+  async () => runCommand("get_variables", {}, "getting variables")
+);
+
+// Bind Variable Tool
+server.tool(
+  "bind_variable",
+  "Bind a variable to a node field. field = \"fills\" or \"strokes\" (binds first solid paint color) or a numeric property like itemSpacing, paddingLeft, cornerRadius, width",
+  {
+    nodeId: z.string().describe("The ID of the node"),
+    field: z.string().describe("fills | strokes | numeric property name"),
+    variableId: z.string().describe("Variable ID from get_variables"),
+  },
+  async (params: any) => runCommand("bind_variable", params, "binding variable")
 );
 
 // Create Section Tool

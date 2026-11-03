@@ -268,6 +268,10 @@ async function handleCommand(command, params) {
       return await setTextStyle(params);
     case "create_text_style":
       return await createTextStyle(params);
+    case "get_variables":
+      return await getVariables();
+    case "bind_variable":
+      return await bindVariable(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -392,6 +396,15 @@ function filterFigmaNode(node) {
 
   if (node.cornerRadius !== undefined) {
     filtered.cornerRadius = node.cornerRadius;
+  }
+
+  // Variable bindings and style ids, e.g. boundVariables.fills[0].id = "VariableID:1:2"
+  if (node.boundVariables && Object.keys(node.boundVariables).length > 0) {
+    filtered.boundVariables = node.boundVariables;
+  }
+
+  if (node.styles) {
+    filtered.styles = node.styles;
   }
 
   if (node.absoluteBoundingBox) {
@@ -1217,6 +1230,17 @@ async function setTextStyle(params) {
   return { id: node.id, name: node.name, styleName: style.name };
 }
 
+// Colors as hex for readability, e.g. { "1:0": "#111315" }; aliases stay as { type: "VARIABLE_ALIAS", id }
+function formatModeValues(variable) {
+  var result = {};
+  for (var mode in variable.valuesByMode) {
+    var value = variable.valuesByMode[mode];
+    var isColor = variable.resolvedType === "COLOR" && value.type !== "VARIABLE_ALIAS";
+    result[mode] = isColor ? rgbaToHex(value) : value;
+  }
+  return result;
+}
+
 async function createTextStyle(params) {
   const { name, fontFamily, fontStyle = "Regular", fontSize, lineHeightPercent } = params || {};
   if (!name || !fontFamily || !fontSize) {
@@ -1239,6 +1263,55 @@ async function createTextStyle(params) {
   }
 
   return { id: style.id, name: style.name, fontName: style.fontName, fontSize: style.fontSize };
+}
+
+async function getVariables() {
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const variables = await figma.variables.getLocalVariablesAsync();
+
+  return collections.map((collection) => ({
+    id: collection.id,
+    name: collection.name,
+    modes: collection.modes,
+    variables: variables
+      .filter((v) => v.variableCollectionId === collection.id)
+      .map((v) => ({
+        id: v.id,
+        name: v.name,
+        type: v.resolvedType,
+        valuesByMode: formatModeValues(v),
+      })),
+  }));
+}
+
+async function bindVariable(params) {
+  const { nodeId, field, variableId } = params || {};
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found with ID: ${variableId}`);
+  }
+
+  // fills/strokes bind the color of the first solid paint; other fields are numeric props (itemSpacing, paddingLeft, cornerRadius, ...)
+  if (field === "fills" || field === "strokes") {
+    const paints = node[field];
+    if (!paints || paints.length === 0 || paints[0].type !== "SOLID") {
+      throw new Error(`Node has no solid ${field} to bind: ${nodeId}`);
+    }
+    const bound = figma.variables.setBoundVariableForPaint(
+      paints[0],
+      "color",
+      variable
+    );
+    node[field] = [bound].concat(paints.slice(1));
+  } else {
+    node.setBoundVariable(field, variable);
+  }
+
+  return { id: node.id, name: node.name, field: field, variableName: variable.name };
 }
 
 async function createSection(params) {
