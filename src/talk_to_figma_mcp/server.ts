@@ -538,6 +538,10 @@ server.tool(
       .number()
       .optional()
       .describe("Font weight (e.g., 400 for Regular, 700 for Bold)"),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe("Font family (default: Inter), e.g. \"Noto Sans KR\""),
     fontColor: z
       .object({
         r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -561,7 +565,7 @@ server.tool(
       .optional()
       .describe("Optional parent node ID to append the text to"),
   },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
+  async ({ x, y, text, fontSize, fontWeight, fontFamily, fontColor, name, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -569,6 +573,7 @@ server.tool(
         text,
         fontSize: fontSize || 14,
         fontWeight: fontWeight || 400,
+        fontFamily: fontFamily || "Inter",
         fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
         name: name || "Text",
         parentId,
