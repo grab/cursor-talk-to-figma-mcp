@@ -282,6 +282,15 @@ function filterFigmaNode(node: any) {
     filtered.cornerRadius = node.cornerRadius;
   }
 
+  // Variable bindings and style ids, e.g. boundVariables.fills[0].id = "VariableID:1:2"
+  if (node.boundVariables && Object.keys(node.boundVariables).length > 0) {
+    filtered.boundVariables = node.boundVariables;
+  }
+
+  if (node.styles) {
+    filtered.styles = node.styles;
+  }
+
   if (node.absoluteBoundingBox) {
     filtered.absoluteBoundingBox = node.absoluteBoundingBox;
   }
@@ -538,6 +547,10 @@ server.tool(
       .number()
       .optional()
       .describe("Font weight (e.g., 400 for Regular, 700 for Bold)"),
+    fontFamily: z
+      .string()
+      .optional()
+      .describe("Font family (default: Inter), e.g. \"Noto Sans KR\""),
     fontColor: z
       .object({
         r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -561,7 +574,7 @@ server.tool(
       .optional()
       .describe("Optional parent node ID to append the text to"),
   },
-  async ({ x, y, text, fontSize, fontWeight, fontColor, name, parentId }: any) => {
+  async ({ x, y, text, fontSize, fontWeight, fontFamily, fontColor, name, parentId }: any) => {
     try {
       const result = await sendCommandToFigma("create_text", {
         x,
@@ -569,6 +582,7 @@ server.tool(
         text,
         fontSize: fontSize || 14,
         fontWeight: fontWeight || 400,
+        fontFamily: fontFamily || "Inter",
         fontColor: fontColor || { r: 0, g: 0, b: 0, a: 1 },
         name: name || "Text",
         parentId,
@@ -2657,7 +2671,13 @@ type FigmaCommand =
   | "set_image_fill"
   | "rename_node"
   | "create_section"
-  | "set_parent";
+  | "set_parent"
+  | "set_font"
+  | "set_text_style"
+  | "create_text_style"
+  | "get_variables"
+  | "bind_variable"
+  | "duplicate_page";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2829,6 +2849,23 @@ type CommandParams = {
     y?: number;
     index?: number;
   };
+  set_font: {
+    nodeId: string;
+    fontFamily?: string;
+    fontStyle?: string;
+    fontSize?: number;
+  };
+  set_text_style: { nodeId: string; styleId: string };
+  create_text_style: {
+    name: string;
+    fontFamily: string;
+    fontStyle?: string;
+    fontSize: number;
+    lineHeightPercent?: number;
+  };
+  get_variables: Record<string, never>;
+  bind_variable: { nodeId: string; field: string; variableId: string };
+  duplicate_page: { pageId?: string; name?: string };
 
 };
 
@@ -3188,6 +3225,92 @@ server.tool(
       };
     }
   }
+);
+
+// Run a plugin command and return its JSON result, or the error as text
+async function runCommand(command: FigmaCommand, params: unknown, label: string) {
+  try {
+    const result = await sendCommandToFigma(command, params);
+    return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+  } catch (error) {
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: `Error ${label}: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      ],
+    };
+  }
+}
+
+// Set Font Tool
+server.tool(
+  "set_font",
+  "Change font family, style and/or size of an existing text node",
+  {
+    nodeId: z.string().describe("The ID of the text node"),
+    fontFamily: z.string().optional().describe("Font family, e.g. \"Noto Sans KR\""),
+    fontStyle: z.string().optional().describe("Font style name, e.g. \"Regular\", \"Bold\""),
+    fontSize: z.number().optional().describe("Font size"),
+  },
+  async (params: any) => runCommand("set_font", params, "setting font")
+);
+
+// Set Text Style Tool
+server.tool(
+  "set_text_style",
+  "Apply a local text style (id from get_styles) to a text node",
+  {
+    nodeId: z.string().describe("The ID of the text node"),
+    styleId: z.string().describe("Text style ID from get_styles"),
+  },
+  async (params: any) => runCommand("set_text_style", params, "setting text style")
+);
+
+// Create Text Style Tool
+server.tool(
+  "create_text_style",
+  "Create a local text style. Fails if a style with the same name exists",
+  {
+    name: z.string().describe("Style name, e.g. \"title/20-bold\""),
+    fontFamily: z.string().describe("Font family, e.g. \"Noto Sans KR\""),
+    fontStyle: z.string().optional().describe("Font style name (default: Regular)"),
+    fontSize: z.number().describe("Font size"),
+    lineHeightPercent: z.number().optional().describe("Line height in percent, e.g. 120"),
+  },
+  async (params: any) => runCommand("create_text_style", params, "creating text style")
+);
+
+// Get Variables Tool
+server.tool(
+  "get_variables",
+  "Get local variable collections with their variables and values per mode",
+  {},
+  async () => runCommand("get_variables", {}, "getting variables")
+);
+
+// Bind Variable Tool
+server.tool(
+  "bind_variable",
+  "Bind a variable to a node field. field = \"fills\" or \"strokes\" (binds first solid paint color) or a numeric property like itemSpacing, paddingLeft, cornerRadius, width",
+  {
+    nodeId: z.string().describe("The ID of the node"),
+    field: z.string().describe("fills | strokes | numeric property name"),
+    variableId: z.string().describe("Variable ID from get_variables"),
+  },
+  async (params: any) => runCommand("bind_variable", params, "binding variable")
+);
+
+// Duplicate Page Tool
+server.tool(
+  "duplicate_page",
+  "Duplicate a page (default: current page) with an optional new name",
+  {
+    pageId: z.string().optional().describe("Page ID to duplicate (default: current page)"),
+    name: z.string().optional().describe("Name for the copy"),
+  },
+  async (params: any) => runCommand("duplicate_page", params, "duplicating page")
 );
 
 // Create Section Tool

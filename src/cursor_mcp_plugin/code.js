@@ -262,6 +262,18 @@ async function handleCommand(command, params) {
       return await createSection(params);
     case "set_parent":
       return await setParent(params);
+    case "set_font":
+      return await setFont(params);
+    case "set_text_style":
+      return await setTextStyle(params);
+    case "create_text_style":
+      return await createTextStyle(params);
+    case "get_variables":
+      return await getVariables();
+    case "bind_variable":
+      return await bindVariable(params);
+    case "duplicate_page":
+      return await duplicatePage(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -386,6 +398,15 @@ function filterFigmaNode(node) {
 
   if (node.cornerRadius !== undefined) {
     filtered.cornerRadius = node.cornerRadius;
+  }
+
+  // Variable bindings and style ids, e.g. boundVariables.fills[0].id = "VariableID:1:2"
+  if (node.boundVariables && Object.keys(node.boundVariables).length > 0) {
+    filtered.boundVariables = node.boundVariables;
+  }
+
+  if (node.styles) {
+    filtered.styles = node.styles;
   }
 
   if (node.absoluteBoundingBox) {
@@ -842,6 +863,7 @@ async function createText(params) {
     text = "Text",
     fontSize = 14,
     fontWeight = 400,
+    fontFamily = "Inter",
     fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
     name = "",
     parentId,
@@ -878,11 +900,9 @@ async function createText(params) {
   textNode.y = y;
   textNode.name = name || text;
   try {
-    await figma.loadFontAsync({
-      family: "Inter",
-      style: getFontStyle(fontWeight),
-    });
-    textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
+    const fontName = { family: fontFamily, style: getFontStyle(fontWeight) };
+    await figma.loadFontAsync(fontName);
+    textNode.fontName = fontName;
     textNode.fontSize = parseInt(fontSize);
   } catch (error) {
     console.error("Error setting font size", error);
@@ -1157,6 +1177,159 @@ async function renameNode(params) {
     previousName: previousName,
     name: node.name,
   };
+}
+
+async function getTextNode(nodeId) {
+  if (!nodeId) {
+    throw new Error("Missing nodeId parameter");
+  }
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  if (node.type !== "TEXT") {
+    throw new Error(`Node is not a TEXT node: ${nodeId}`);
+  }
+  return node;
+}
+
+async function setFont(params) {
+  const { nodeId, fontFamily, fontStyle, fontSize } = params || {};
+  const node = await getTextNode(nodeId);
+
+  // Mixed fonts collapse to the first character's font before applying changes
+  const current =
+    node.fontName === figma.mixed ? node.getRangeFontName(0, 1) : node.fontName;
+  const fontName = {
+    family: fontFamily || current.family,
+    style: fontStyle || current.style,
+  };
+  await figma.loadFontAsync(fontName);
+  node.fontName = fontName;
+  if (fontSize !== undefined) {
+    node.fontSize = fontSize;
+  }
+
+  return {
+    id: node.id,
+    name: node.name,
+    fontName: node.fontName,
+    fontSize: node.fontSize,
+  };
+}
+
+async function setTextStyle(params) {
+  const { nodeId, styleId } = params || {};
+  const node = await getTextNode(nodeId);
+  const style = await figma.getStyleByIdAsync(styleId);
+  if (!style || style.type !== "TEXT") {
+    throw new Error(`Text style not found with ID: ${styleId}`);
+  }
+
+  await figma.loadFontAsync(style.fontName);
+  await node.setTextStyleIdAsync(style.id);
+
+  return { id: node.id, name: node.name, styleName: style.name };
+}
+
+// Colors as hex for readability, e.g. { "1:0": "#111315" }; aliases stay as { type: "VARIABLE_ALIAS", id }
+function formatModeValues(variable) {
+  var result = {};
+  for (var mode in variable.valuesByMode) {
+    var value = variable.valuesByMode[mode];
+    var isColor = variable.resolvedType === "COLOR" && value.type !== "VARIABLE_ALIAS";
+    result[mode] = isColor ? rgbaToHex(value) : value;
+  }
+  return result;
+}
+
+async function createTextStyle(params) {
+  const { name, fontFamily, fontStyle = "Regular", fontSize, lineHeightPercent } = params || {};
+  if (!name || !fontFamily || !fontSize) {
+    throw new Error("Missing name, fontFamily or fontSize parameter");
+  }
+
+  const existing = (await figma.getLocalTextStylesAsync()).find((s) => s.name === name);
+  if (existing) {
+    throw new Error(`Text style already exists: ${name} (${existing.id})`);
+  }
+
+  const fontName = { family: fontFamily, style: fontStyle };
+  await figma.loadFontAsync(fontName);
+  const style = figma.createTextStyle();
+  style.name = name;
+  style.fontName = fontName;
+  style.fontSize = fontSize;
+  if (lineHeightPercent !== undefined) {
+    style.lineHeight = { unit: "PERCENT", value: lineHeightPercent };
+  }
+
+  return { id: style.id, name: style.name, fontName: style.fontName, fontSize: style.fontSize };
+}
+
+async function getVariables() {
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const variables = await figma.variables.getLocalVariablesAsync();
+
+  return collections.map((collection) => ({
+    id: collection.id,
+    name: collection.name,
+    modes: collection.modes,
+    variables: variables
+      .filter((v) => v.variableCollectionId === collection.id)
+      .map((v) => ({
+        id: v.id,
+        name: v.name,
+        type: v.resolvedType,
+        valuesByMode: formatModeValues(v),
+      })),
+  }));
+}
+
+async function bindVariable(params) {
+  const { nodeId, field, variableId } = params || {};
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) {
+    throw new Error(`Node not found with ID: ${nodeId}`);
+  }
+  const variable = await figma.variables.getVariableByIdAsync(variableId);
+  if (!variable) {
+    throw new Error(`Variable not found with ID: ${variableId}`);
+  }
+
+  // fills/strokes bind the color of the first solid paint; other fields are numeric props (itemSpacing, paddingLeft, cornerRadius, ...)
+  if (field === "fills" || field === "strokes") {
+    const paints = node[field];
+    if (!paints || paints.length === 0 || paints[0].type !== "SOLID") {
+      throw new Error(`Node has no solid ${field} to bind: ${nodeId}`);
+    }
+    const bound = figma.variables.setBoundVariableForPaint(
+      paints[0],
+      "color",
+      variable
+    );
+    node[field] = [bound].concat(paints.slice(1));
+  } else {
+    node.setBoundVariable(field, variable);
+  }
+
+  return { id: node.id, name: node.name, field: field, variableName: variable.name };
+}
+
+async function duplicatePage(params) {
+  const { pageId, name } = params || {};
+  const page = pageId ? await figma.getNodeByIdAsync(pageId) : figma.currentPage;
+  if (!page || page.type !== "PAGE") {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  await page.loadAsync();
+  const copy = page.clone();
+  if (name) {
+    copy.name = name;
+  }
+
+  return { id: copy.id, name: copy.name, sourceId: page.id };
 }
 
 async function createSection(params) {
