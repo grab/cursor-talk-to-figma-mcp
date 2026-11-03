@@ -2676,7 +2676,8 @@ type FigmaCommand =
   | "set_text_style"
   | "create_text_style"
   | "get_variables"
-  | "bind_variable";
+  | "bind_variable"
+  | "duplicate_page";
 
 type CommandParams = {
   get_document_info: Record<string, never>;
@@ -2864,6 +2865,7 @@ type CommandParams = {
   };
   get_variables: Record<string, never>;
   bind_variable: { nodeId: string; field: string; variableId: string };
+  duplicate_page: { pageId?: string; name?: string };
 
 };
 
@@ -3298,6 +3300,17 @@ server.tool(
     variableId: z.string().describe("Variable ID from get_variables"),
   },
   async (params: any) => runCommand("bind_variable", params, "binding variable")
+);
+
+// Duplicate Page Tool
+server.tool(
+  "duplicate_page",
+  "Duplicate a page (default: current page) with an optional new name",
+  {
+    pageId: z.string().optional().describe("Page ID to duplicate (default: current page)"),
+    name: z.string().optional().describe("Name for the copy"),
+  },
+  async (params: any) => runCommand("duplicate_page", params, "duplicating page")
 );
 
 // Create Section Tool

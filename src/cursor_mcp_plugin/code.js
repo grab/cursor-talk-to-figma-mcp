@@ -272,6 +272,8 @@ async function handleCommand(command, params) {
       return await getVariables();
     case "bind_variable":
       return await bindVariable(params);
+    case "duplicate_page":
+      return await duplicatePage(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -1312,6 +1314,22 @@ async function bindVariable(params) {
   }
 
   return { id: node.id, name: node.name, field: field, variableName: variable.name };
+}
+
+async function duplicatePage(params) {
+  const { pageId, name } = params || {};
+  const page = pageId ? await figma.getNodeByIdAsync(pageId) : figma.currentPage;
+  if (!page || page.type !== "PAGE") {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+
+  await page.loadAsync();
+  const copy = page.clone();
+  if (name) {
+    copy.name = name;
+  }
+
+  return { id: copy.id, name: copy.name, sourceId: page.id };
 }
 
 async function createSection(params) {
