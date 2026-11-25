@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { Server, ServerWebSocket } from "bun";
+import { escapeForLog, isValidChannelName } from "./channel";
 
 // Store clients by channel
 const channels = new Map<string, Set<ServerWebSocket<any>>>();
@@ -78,7 +79,7 @@ const server = Bun.serve({
       try {
         const data = JSON.parse(message as string);
         console.log(`\n=== Received message from client ===`);
-        console.log(`Type: ${data.type}, Channel: ${data.channel || 'N/A'}`);
+        console.log(`Type: ${data.type}, Channel: ${escapeForLog(String(data.channel || 'N/A'))}`);
         if (data.message?.command) {
           console.log(`Command: ${data.message.command}, ID: ${data.id}`);
         } else if (data.message?.result) {
@@ -92,6 +93,14 @@ const server = Bun.serve({
             ws.send(JSON.stringify({
               type: "error",
               message: "Channel name is required"
+            }));
+            return;
+          }
+
+          if (!isValidChannelName(channelName)) {
+            ws.send(JSON.stringify({
+              type: "error",
+              message: "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
             }));
             return;
           }

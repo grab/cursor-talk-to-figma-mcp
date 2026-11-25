@@ -6,6 +6,7 @@ import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { readFile } from "fs/promises";
+import { escapeForLog, isValidChannelName } from "../channel";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -53,13 +54,15 @@ interface setInstanceOverridesResult {
   }>;
 }
 
-// Custom logging functions that write to stderr instead of stdout to avoid being captured
+// Custom logging functions that write to stderr instead of stdout to avoid being captured.
+// Messages are escaped so a caller-controlled value (e.g. a channel name) can
+// never inject CR/LF and forge additional log lines (CWE-117).
 const logger = {
-  info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
-  debug: (message: string) => process.stderr.write(`[DEBUG] ${message}\n`),
-  warn: (message: string) => process.stderr.write(`[WARN] ${message}\n`),
-  error: (message: string) => process.stderr.write(`[ERROR] ${message}\n`),
-  log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
+  info: (message: string) => process.stderr.write(`[INFO] ${escapeForLog(message)}\n`),
+  debug: (message: string) => process.stderr.write(`[DEBUG] ${escapeForLog(message)}\n`),
+  warn: (message: string) => process.stderr.write(`[WARN] ${escapeForLog(message)}\n`),
+  error: (message: string) => process.stderr.write(`[ERROR] ${escapeForLog(message)}\n`),
+  log: (message: string) => process.stderr.write(`[LOG] ${escapeForLog(message)}\n`)
 };
 
 // WebSocket connection and request tracking
@@ -2985,6 +2988,12 @@ function connectToFigma(port: number = 3055) {
 
 // Function to join a channel
 async function joinChannel(channelName: string): Promise<void> {
+  if (!isValidChannelName(channelName)) {
+    throw new Error(
+      "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+    );
+  }
+
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error("Not connected to Figma");
   }
@@ -3308,6 +3317,17 @@ server.tool(
             tool: "join_channel",
             description: "Join the specified channel",
           },
+        };
+      }
+
+      if (!isValidChannelName(channel)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'.",
+            },
+          ],
         };
       }
 
