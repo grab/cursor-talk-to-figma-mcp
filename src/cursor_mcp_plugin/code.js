@@ -873,6 +873,42 @@ async function createFrame(params) {
     itemSpacing = 0,
   } = params || {};
 
+  // Resolve the parent and validate sizing BEFORE creating anything, so a bad
+  // request fails with a clear message and never leaves a stray frame behind.
+  // A page (the default parent) has no layoutMode, so it counts as non-auto-layout.
+  let parentNode = figma.currentPage;
+  if (parentId) {
+    parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+  }
+  const parentIsAutoLayout =
+    "layoutMode" in parentNode && parentNode.layoutMode !== "NONE";
+  if (layoutSizingHorizontal === "FILL" && !parentIsAutoLayout) {
+    throw new Error(
+      "layoutSizingHorizontal: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingVertical === "FILL" && !parentIsAutoLayout) {
+    throw new Error(
+      "layoutSizingVertical: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingHorizontal === "HUG" && layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingHorizontal: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+  if (layoutSizingVertical === "HUG" && layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingVertical: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+
   const frame = figma.createFrame();
   frame.x = x;
   frame.y = y;
@@ -883,19 +919,9 @@ async function createFrame(params) {
   // `layoutSizingVertical` = "FILL" is only legal once the node has an auto-layout
   // parent (Figma reads frame.parent.layoutMode to validate it), so setting it while
   // the frame is still unparented always throws.
-  if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parentNode.appendChild(frame);
-  } else {
-    figma.currentPage.appendChild(frame);
-  }
+  parentNode.appendChild(frame);
 
+  try {
   // Set layout mode if provided
   if (layoutMode !== "NONE") {
     frame.layoutMode = layoutMode;
@@ -915,30 +941,7 @@ async function createFrame(params) {
     frame.itemSpacing = itemSpacing;
   }
 
-  // Layout sizing is independent of layoutMode on `frame` itself: FILL requires an
-  // auto-layout *parent* (now guaranteed above), HUG requires `frame` to be a FRAME
-  // (always true here). Validate up front so a bad request fails with a clear message
-  // instead of Figma's generic API error.
-  if (layoutSizingHorizontal === "FILL" && frame.parent.layoutMode === "NONE") {
-    throw new Error(
-      "layoutSizingHorizontal: FILL is only valid when parentId points to an auto-layout frame"
-    );
-  }
-  if (layoutSizingVertical === "FILL" && frame.parent.layoutMode === "NONE") {
-    throw new Error(
-      "layoutSizingVertical: FILL is only valid when parentId points to an auto-layout frame"
-    );
-  }
-  if (layoutSizingHorizontal === "HUG" && frame.layoutMode === "NONE") {
-    throw new Error(
-      "layoutSizingHorizontal: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
-    );
-  }
-  if (layoutSizingVertical === "HUG" && frame.layoutMode === "NONE") {
-    throw new Error(
-      "layoutSizingVertical: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
-    );
-  }
+  // Sizing was validated before the frame was created (see above).
   frame.layoutSizingHorizontal = layoutSizingHorizontal;
   frame.layoutSizingVertical = layoutSizingVertical;
 
@@ -973,6 +976,11 @@ async function createFrame(params) {
   // Set stroke weight if provided
   if (strokeWeight !== undefined) {
     frame.strokeWeight = strokeWeight;
+  }
+  } catch (error) {
+    // Don't leave a half-configured frame in the file when Figma rejects a property.
+    frame.remove();
+    throw error;
   }
 
   return {
