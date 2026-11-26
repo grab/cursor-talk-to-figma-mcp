@@ -254,6 +254,12 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    case "select_nodes":
+      return await selectNodes(params);
+    case "start_bulk_export":
+      return await startBulkExport(params);
+    case "cancel_bulk_export":
+      return cancelBulkExport(params);
     case "set_image_fill":
       return await setImageFill(params);
     case "rename_node":
@@ -4342,4 +4348,350 @@ async function setSelections(params) {
     notFoundIds: notFoundIds,
     message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Multi-select by ID (page-aware) and background bulk export
+// ---------------------------------------------------------------------------
+
+// Find the PAGE that contains a node.
+function getPageOf(node) {
+  let current = node;
+  while (current && current.type !== "PAGE") {
+    current = current.parent;
+  }
+  return current || null;
+}
+
+// Resolve node IDs and group them by page.
+async function resolveNodesByPage(nodeIds) {
+  const found = [];
+  const notFound = [];
+  const byPage = new Map();
+  for (const nodeId of nodeIds) {
+    let node = null;
+    try {
+      node = await figma.getNodeByIdAsync(nodeId);
+    } catch (e) {
+      node = null;
+    }
+    if (!node || node.type === "DOCUMENT" || node.type === "PAGE") {
+      notFound.push(nodeId);
+      continue;
+    }
+    const page = getPageOf(node);
+    found.push({ id: nodeId, node, page });
+    if (page) {
+      if (!byPage.has(page.id)) byPage.set(page.id, { page, items: [] });
+      byPage.get(page.id).items.push({ id: nodeId, node });
+    }
+  }
+  return { found, notFound, byPage };
+}
+
+// Select the given nodes, switching to the page that holds most of them.
+async function selectResolvedNodes(byPage, scrollIntoView) {
+  let best = null;
+  for (const entry of byPage.values()) {
+    if (!best || entry.items.length > best.items.length) best = entry;
+  }
+  if (!best) {
+    return { selectedCount: 0, page: null, onOtherPages: [] };
+  }
+  if (figma.currentPage.id !== best.page.id) {
+    if (typeof figma.setCurrentPageAsync === "function") {
+      await figma.setCurrentPageAsync(best.page);
+    } else {
+      figma.currentPage = best.page;
+    }
+  }
+  const nodes = best.items.map((item) => item.node);
+  figma.currentPage.selection = nodes;
+  if (scrollIntoView !== false) {
+    figma.viewport.scrollAndZoomIntoView(nodes);
+  }
+  const onOtherPages = [];
+  for (const entry of byPage.values()) {
+    if (entry !== best) {
+      for (const item of entry.items) onOtherPages.push(item.id);
+    }
+  }
+  return {
+    selectedCount: nodes.length,
+    page: { id: best.page.id, name: best.page.name },
+    onOtherPages,
+  };
+}
+
+async function selectNodes(params) {
+  const nodeIds = params && params.nodeIds;
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    throw new Error("nodeIds must be a non-empty array");
+  }
+  const { notFound, byPage } = await resolveNodesByPage(nodeIds);
+  if (byPage.size === 0) {
+    throw new Error(`No valid nodes found for the provided IDs: ${nodeIds.join(", ")}`);
+  }
+  const selection = await selectResolvedNodes(byPage, params.scrollIntoView);
+  return Object.assign({ success: true, notFound }, selection);
+}
+
+// Active bulk export jobs, keyed by jobId.
+const bulkExportJobs = new Map();
+
+function postBulkEvent(job, event, extra) {
+  const message = Object.assign(
+    {
+      type: "bulk_export_event",
+      jobId: job.jobId,
+      event,
+      // Counts for the plugin UI progress display.
+      progress: {
+        total: job.total,
+        done: job.done,
+        failed: job.failed,
+        current: job.currentName || null,
+      },
+    },
+    extra || {}
+  );
+  figma.ui.postMessage(message);
+}
+
+function exportSettingsFor(format, scale) {
+  if (format === "SVG" || format === "PDF") {
+    return { format };
+  }
+  return { format, constraint: { type: "SCALE", value: scale } };
+}
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function startBulkExport(params) {
+  const {
+    jobId,
+    nodeIds,
+    format = "PNG",
+    scale = 1,
+    concurrency = 3,
+    nodeTimeoutMs = 120000,
+    select = true,
+  } = params || {};
+
+  if (!jobId) throw new Error("Missing jobId parameter");
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    throw new Error("nodeIds must be a non-empty array");
+  }
+  if (bulkExportJobs.has(jobId)) {
+    throw new Error(`Bulk export job ${jobId} already exists`);
+  }
+  if (!["PNG", "JPG", "SVG", "PDF"].includes(format)) {
+    throw new Error(`Unsupported format: ${format}`);
+  }
+
+  const { found, notFound, byPage } = await resolveNodesByPage(nodeIds);
+
+  // Nodes that can't be exported count as failed, not as a fatal error.
+  const exportable = [];
+  const notExportable = [];
+  for (const item of found) {
+    if (typeof item.node.exportAsync === "function") exportable.push(item);
+    else notExportable.push(item.id);
+  }
+
+  // Pages other than the current one must be loaded before exporting.
+  for (const entry of byPage.values()) {
+    if (typeof entry.page.loadAsync === "function") {
+      try {
+        await entry.page.loadAsync();
+      } catch (e) {
+        console.warn("Could not load page", entry.page.name, e);
+      }
+    }
+  }
+
+  let selection = { selectedCount: 0, page: null, onOtherPages: [] };
+  if (select) {
+    try {
+      selection = await selectResolvedNodes(byPage, true);
+    } catch (e) {
+      // Selection is a convenience; never block the export on it.
+      console.warn("Bulk export: selection failed", e);
+    }
+  }
+
+  const job = {
+    jobId,
+    format,
+    scale,
+    nodeTimeoutMs,
+    concurrency: Math.max(1, Math.min(8, Math.floor(concurrency) || 1)),
+    total: nodeIds.length,
+    done: 0,
+    failed: 0,
+    currentName: null,
+    cancelled: false,
+    inFlight: 0,
+    // Serializes fallback retries so they never run in parallel.
+    retryChain: Promise.resolve(),
+    queue: exportable.slice(),
+    startedAt: Date.now(),
+  };
+  bulkExportJobs.set(jobId, job);
+
+  // Run in the background; the command returns right away with the jobId.
+  setTimeout(() => {
+    runBulkExport(job, notFound.concat(notExportable)).catch((e) => {
+      console.error("Bulk export crashed", e);
+      postBulkEvent(job, "job_finished", {
+        status: "failed",
+        error: (e && e.message) || String(e),
+      });
+      bulkExportJobs.delete(jobId);
+    });
+  }, 0);
+
+  return {
+    jobId,
+    total: nodeIds.length,
+    found: exportable.length,
+    notFound: notFound.concat(notExportable),
+    selectedCount: selection.selectedCount,
+    page: selection.page,
+    onOtherPages: selection.onOtherPages,
+  };
+}
+
+async function runBulkExport(job, missingIds) {
+  job.failed += missingIds.length;
+  postBulkEvent(job, "job_started", {
+    total: job.total,
+    concurrency: job.concurrency,
+    notFound: missingIds,
+  });
+  figma.notify(`Exporting ${job.total} node${job.total === 1 ? "" : "s"}...`);
+
+  async function runExport(node, settings) {
+    job.inFlight++;
+    try {
+      return await withTimeout(node.exportAsync(settings), job.nodeTimeoutMs, "Export");
+    } finally {
+      job.inFlight--;
+    }
+  }
+
+  async function waitUntilIdle() {
+    while (job.inFlight > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  function reportFailure(item, name, error) {
+    job.failed++;
+    postBulkEvent(job, "node_failed", {
+      nodeId: item.id,
+      name,
+      error: (error && error.message) || String(error),
+    });
+  }
+
+  async function exportOne(item) {
+    const name = item.node.name;
+    job.currentName = name;
+    postBulkEvent(job, "node_started", { nodeId: item.id, name });
+    const settings = exportSettingsFor(job.format, job.scale);
+    const startedInParallel = job.concurrency > 1;
+    let bytes;
+    try {
+      bytes = await runExport(item.node, settings);
+    } catch (firstError) {
+      const isTimeout = /timed out/.test(String(firstError && firstError.message));
+      if (!startedInParallel || isTimeout || job.cancelled) {
+        reportFailure(item, name, firstError);
+        return;
+      }
+      // Figma may not like parallel exports: drop to one at a time and
+      // retry this node alone once nothing else is exporting.
+      if (job.concurrency > 1) {
+        job.concurrency = 1;
+        postBulkEvent(job, "concurrency_changed", {
+          concurrency: 1,
+          error: (firstError && firstError.message) || String(firstError),
+        });
+      }
+      const retry = job.retryChain.then(async () => {
+        await waitUntilIdle();
+        return runExport(item.node, settings);
+      });
+      job.retryChain = retry.then(
+        () => undefined,
+        () => undefined
+      );
+      try {
+        bytes = await retry;
+      } catch (retryError) {
+        reportFailure(item, name, retryError);
+        return;
+      }
+    }
+    job.done++;
+    // The UI base64-encodes and streams these bytes to the server.
+    postBulkEvent(job, "node_done", { nodeId: item.id, name, bytes });
+  }
+
+  async function worker(index) {
+    while (!job.cancelled && index < job.concurrency) {
+      // Never start a new export while a fallback retry is pending.
+      await job.retryChain;
+      if (job.cancelled || index >= job.concurrency) return;
+      const item = job.queue.shift();
+      if (!item) return;
+      await exportOne(item);
+      // Let Figma breathe and the UI flush messages.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < job.concurrency; i++) workers.push(worker(i));
+  await Promise.all(workers);
+  // If concurrency dropped mid-run, worker 0 may still have work queued.
+  while (!job.cancelled && job.queue.length > 0) {
+    await worker(0);
+  }
+
+  const status = job.cancelled ? "cancelled" : job.done > 0 || job.total === 0 ? "done" : "failed";
+  job.currentName = null;
+  postBulkEvent(job, "job_finished", { status });
+  bulkExportJobs.delete(job.jobId);
+
+  const seconds = Math.round((Date.now() - job.startedAt) / 1000);
+  if (status === "cancelled") {
+    figma.notify(`Export cancelled: ${job.done}/${job.total} done`);
+  } else {
+    figma.notify(
+      `Export ${status}: ${job.done}/${job.total} exported` +
+        (job.failed ? `, ${job.failed} failed` : "") +
+        ` in ${seconds}s`,
+      { error: status === "failed" }
+    );
+  }
+}
+
+function cancelBulkExport(params) {
+  const jobId = params && params.jobId;
+  const job = bulkExportJobs.get(jobId);
+  if (!job) {
+    return { jobId, cancelled: false, message: "No running job with that ID in this plugin" };
+  }
+  job.cancelled = true;
+  job.queue.length = 0;
+  return { jobId, cancelled: true, done: job.done, failed: job.failed, total: job.total };
 }

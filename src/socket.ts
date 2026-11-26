@@ -39,7 +39,7 @@ function handleConnection(ws: ServerWebSocket<any>) {
 }
 
 const server = Bun.serve({
-  port: 3055,
+  port: Number(process.env.PORT) || 3055,
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
   fetch(req: Request, server: Server) {
@@ -77,6 +77,29 @@ const server = Bun.serve({
     message(ws: ServerWebSocket<any>, message: string | Buffer) {
       try {
         const data = JSON.parse(message as string);
+
+        // Bulk export events carry image data: relay them without logging the body.
+        if (data.type === "message" && data.message?.type === "bulk_export_event") {
+          const channelClients = channels.get(data.channel);
+          if (!channelClients || !channelClients.has(ws)) {
+            ws.send(JSON.stringify({ type: "error", message: "You must join the channel first" }));
+            return;
+          }
+          if (data.message.event !== "node_chunk") {
+            console.log(`Bulk export ${data.message.jobId}: ${data.message.event}`);
+          }
+          const out = JSON.stringify({
+            type: "broadcast",
+            message: data.message,
+            sender: "peer",
+            channel: data.channel,
+          });
+          channelClients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) client.send(out);
+          });
+          return;
+        }
+
         console.log(`\n=== Received message from client ===`);
         console.log(`Type: ${data.type}, Channel: ${data.channel || 'N/A'}`);
         if (data.message?.command) {

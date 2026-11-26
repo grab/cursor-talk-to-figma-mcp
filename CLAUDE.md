@@ -19,9 +19,11 @@ bun run dev              # Build in watch mode
 bun socket               # Start WebSocket relay server (port 3055)
 bun run start            # Run built MCP server
 bun setup                # Full setup (install + write .cursor/mcp.json + .mcp.json)
+bun run typecheck        # tsc --noEmit
+bun run test             # build, then unit + end-to-end tests (tests/)
 ```
 
-There is no test suite or linter configured.
+There is no linter configured. Bulk export job state lives in `src/talk_to_figma_mcp/bulk_export.ts`.
 
 ## Architecture
 
