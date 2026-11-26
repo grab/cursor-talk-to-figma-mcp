@@ -102,7 +102,7 @@ const bulkExports = new BulkExportManager({
 // Document Info Tool
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
+  "[Current-page scoped, with a document-wide page index] Get top-level details for the current Figma page plus an honest index of every page in the document. Non-current page child counts are explicitly marked as not requested.",
   {},
   async () => {
     try {
@@ -122,6 +122,76 @@ server.tool(
             type: "text",
             text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Pages Tool
+server.tool(
+  "get_pages",
+  "[Document-wide] Enumerate every page in the Figma document. Top-level child counts are opt-in because dynamic-page access must load each page.",
+  {
+    includeChildCount: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Load every page and include its top-level child count (default: false)"
+      ),
+  },
+  async ({ includeChildCount }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_pages", {
+        includeChildCount,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Current Page Tool
+server.tool(
+  "set_current_page",
+  "Switch the active Figma page so subsequent page-scoped reads and writes operate there",
+  {
+    pageId: z.string().describe("The PAGE node ID returned by get_pages"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_current_page", { pageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting current page: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -2853,6 +2923,8 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
+  | "get_pages"
+  | "set_current_page"
   | "get_selection"
   | "get_node_info"
   | "get_nodes_info"
@@ -2902,6 +2974,8 @@ type FigmaCommand =
 
 type CommandParams = {
   get_document_info: Record<string, never>;
+  get_pages: { includeChildCount?: boolean };
+  set_current_page: { pageId: string };
   get_selection: Record<string, never>;
   get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };

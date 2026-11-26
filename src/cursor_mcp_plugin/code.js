@@ -128,6 +128,10 @@ async function handleCommand(command, params) {
   switch (command) {
     case "get_document_info":
       return await getDocumentInfo();
+    case "get_pages":
+      return await getPages(params);
+    case "set_current_page":
+      return await setCurrentPage(params);
     case "get_selection":
       return await getSelection();
     case "get_node_info":
@@ -278,7 +282,23 @@ async function handleCommand(command, params) {
 async function getDocumentInfo() {
   await figma.currentPage.loadAsync();
   const page = figma.currentPage;
+  const pages = figma.root.children.map((documentPage) => {
+    const isCurrentPage = documentPage.id === page.id;
+    return {
+      id: documentPage.id,
+      name: documentPage.name,
+      childCount: isCurrentPage ? documentPage.children.length : null,
+      childCountStatus: isCurrentPage ? "available" : "not_requested",
+    };
+  });
+
   return {
+    scope: "current_page_with_document_page_index",
+    document: {
+      id: figma.root.id,
+      name: figma.root.name,
+      type: figma.root.type,
+    },
     name: page.name,
     id: page.id,
     type: page.type,
@@ -292,13 +312,139 @@ async function getDocumentInfo() {
       name: page.name,
       childCount: page.children.length,
     },
-    pages: [
-      {
-        id: page.id,
-        name: page.name,
-        childCount: page.children.length,
-      },
-    ],
+    pageCount: pages.length,
+    pages,
+  };
+}
+
+function startProgressHeartbeat(
+  commandId,
+  commandType,
+  progress,
+  totalItems,
+  processedItems,
+  message
+) {
+  const timer = setInterval(() => {
+    sendProgressUpdate(
+      commandId,
+      commandType,
+      "in_progress",
+      progress,
+      totalItems,
+      processedItems,
+      message
+    ).catch((error) => {
+      console.error(`Failed to send ${commandType} heartbeat:`, error);
+    });
+  }, 15000);
+
+  return () => clearInterval(timer);
+}
+
+async function getPages(params) {
+  const includeChildCount = Boolean(params && params.includeChildCount);
+  const commandId = (params && params.commandId) || generateCommandId();
+  const documentPages = figma.root.children;
+  const pages = [];
+
+  if (includeChildCount) {
+    await sendProgressUpdate(
+      commandId,
+      "get_pages",
+      "started",
+      0,
+      documentPages.length,
+      0,
+      "Loading pages to count top-level children"
+    );
+  }
+
+  for (let index = 0; index < documentPages.length; index++) {
+    const page = documentPages[index];
+    const pageInfo = {
+      id: page.id,
+      name: page.name,
+    };
+
+    if (includeChildCount) {
+      const stopHeartbeat = startProgressHeartbeat(
+        commandId,
+        "get_pages",
+        Math.round((index / documentPages.length) * 100),
+        documentPages.length,
+        index,
+        `Still loading page ${page.name}`
+      );
+      try {
+        await page.loadAsync();
+      } finally {
+        stopHeartbeat();
+      }
+      pageInfo.childCount = page.children.length;
+      await sendProgressUpdate(
+        commandId,
+        "get_pages",
+        "in_progress",
+        Math.round(((index + 1) / documentPages.length) * 100),
+        documentPages.length,
+        index + 1,
+        `Loaded page ${index + 1}/${documentPages.length}: ${page.name}`
+      );
+    }
+
+    pages.push(pageInfo);
+  }
+
+  if (includeChildCount) {
+    await sendProgressUpdate(
+      commandId,
+      "get_pages",
+      "completed",
+      100,
+      documentPages.length,
+      documentPages.length,
+      `Loaded ${documentPages.length} pages`
+    );
+  }
+
+  return {
+    scope: "document",
+    document: {
+      id: figma.root.id,
+      name: figma.root.name,
+    },
+    currentPageId: figma.currentPage.id,
+    pageCount: pages.length,
+    childCountIncluded: includeChildCount,
+    pages,
+  };
+}
+
+async function setCurrentPage(params) {
+  const { pageId } = params || {};
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = await figma.getNodeByIdAsync(pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+  if (page.type !== "PAGE") {
+    throw new Error(`Node ${pageId} is ${page.type}, not a PAGE`);
+  }
+
+  await figma.setCurrentPageAsync(page);
+  await page.loadAsync();
+
+  return {
+    success: true,
+    currentPage: {
+      id: page.id,
+      name: page.name,
+      childCount: page.children.length,
+    },
   };
 }
 

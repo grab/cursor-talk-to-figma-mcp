@@ -131,7 +131,9 @@ The MCP server provides the following tools for interacting with Figma:
 
 ### Document & Selection
 
-- `get_document_info` - Get information about the current Figma document
+- `get_document_info` - Get current-page details plus a document-wide page index
+- `get_pages` - Enumerate every page; top-level child counts are opt-in
+- `set_current_page` - Switch the active page for subsequent page-scoped operations
 - `get_selection` - Get information about the current selection
 - `read_my_design` - Get detailed node information about the current selection without parameters
 - `get_node_info` - Get detailed information about a specific node
@@ -283,7 +285,7 @@ against it, and runs the real `code.js` and `ui.html` script with a fake Figma A
 When working with the Figma MCP:
 
 1. Always join a channel before sending commands
-2. Get document overview using `get_document_info` first
+2. Get the document page index using `get_pages`, then use `get_document_info` for the current page
 3. Check current selection with `get_selection` before modifications
 4. Use appropriate creation tools based on needs:
    - `create_frame` for containers
