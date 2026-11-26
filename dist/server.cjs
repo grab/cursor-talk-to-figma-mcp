@@ -28,16 +28,333 @@ var import_stdio = require("@modelcontextprotocol/sdk/server/stdio.js");
 var import_zod = require("zod");
 var import_ws = __toESM(require("ws"), 1);
 var import_uuid = require("uuid");
+var import_promises2 = require("fs/promises");
+
+// src/talk_to_figma_mcp/bulk_export.ts
+var import_promises = require("fs/promises");
+var import_path = __toESM(require("path"), 1);
+var EXTENSIONS = {
+  PNG: "png",
+  JPG: "jpg",
+  SVG: "svg",
+  PDF: "pdf"
+};
+function sanitizeFileName(name) {
+  const cleaned = String(name).replace(/[\/\\:*?"<>|\x00-\x1f]/g, "-").replace(/^\.+/, "").trim();
+  return cleaned.length > 0 ? cleaned.slice(0, 200) : "node";
+}
+function stripKnownExtension(name, ext) {
+  const lower = name.toLowerCase();
+  return lower.endsWith("." + ext) ? name.slice(0, -(ext.length + 1)) : name;
+}
+function formatDuration(ms) {
+  if (!isFinite(ms) || ms < 0) return "?";
+  const s = Math.round(ms / 1e3);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  if (m < 60) return rem ? `${m}m ${rem}s` : `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+var BulkExportManager = class {
+  constructor(options = {}) {
+    this.options = options;
+  }
+  jobs = /* @__PURE__ */ new Map();
+  stallTimer = null;
+  now() {
+    return this.options.now ? this.options.now() : Date.now();
+  }
+  log(msg) {
+    this.options.log?.(msg);
+  }
+  createJob(params) {
+    const ext = EXTENSIONS[params.format];
+    const fileNames = /* @__PURE__ */ new Map();
+    const usedNames = /* @__PURE__ */ new Set();
+    params.nodeIds.forEach((nodeId, i) => {
+      let requested;
+      if (Array.isArray(params.fileNames)) requested = params.fileNames[i];
+      else if (params.fileNames) requested = params.fileNames[nodeId];
+      let base = sanitizeFileName(
+        stripKnownExtension(requested && requested.trim() ? requested : nodeId, ext)
+      );
+      let candidate = base;
+      let n = 2;
+      while (usedNames.has(candidate.toLowerCase())) candidate = `${base}_${n++}`;
+      usedNames.add(candidate.toLowerCase());
+      if (!fileNames.has(nodeId)) fileNames.set(nodeId, `${candidate}.${ext}`);
+    });
+    const now = this.now();
+    const job = {
+      jobId: params.jobId,
+      status: "running",
+      format: params.format,
+      scale: params.scale,
+      outputDir: import_path.default.resolve(params.outputDir),
+      total: params.nodeIds.length,
+      done: 0,
+      failed: [],
+      currentNode: null,
+      startedAt: now,
+      finishedAt: null,
+      lastEventAt: now,
+      cancelRequested: false,
+      stallTimeoutMs: params.stallTimeoutMs ?? null,
+      concurrency: null,
+      error: null,
+      files: [],
+      fileNames,
+      usedNames,
+      chunks: /* @__PURE__ */ new Map(),
+      pendingWrites: /* @__PURE__ */ new Set(),
+      settledNodes: /* @__PURE__ */ new Set(),
+      finishRequested: null
+    };
+    this.jobs.set(job.jobId, job);
+    this.ensureStallWatch();
+    return job;
+  }
+  getJob(jobId) {
+    return this.jobs.get(jobId);
+  }
+  listJobs() {
+    return [...this.jobs.values()];
+  }
+  fileNameFor(job, nodeId) {
+    return job.fileNames.get(nodeId) || `${sanitizeFileName(nodeId)}.${EXTENSIONS[job.format]}`;
+  }
+  /** Mark a node as failed (idempotent per node). */
+  markFailed(job, nodeId, error) {
+    if (job.settledNodes.has(nodeId)) return;
+    job.settledNodes.add(nodeId);
+    job.failed.push({ nodeId, error });
+    job.chunks.delete(nodeId);
+  }
+  /** Route an event from the plugin. Returns true if it belonged to a known job. */
+  handleEvent(evt) {
+    const job = evt && this.jobs.get(evt.jobId);
+    if (!job) return false;
+    job.lastEventAt = this.now();
+    if (job.finishedAt !== null) return true;
+    switch (evt.event) {
+      case "job_started":
+        if (typeof evt.concurrency === "number") job.concurrency = evt.concurrency;
+        for (const id of evt.notFound || []) {
+          this.markFailed(job, id, "Node not found");
+        }
+        break;
+      case "concurrency_changed":
+        if (typeof evt.concurrency === "number") job.concurrency = evt.concurrency;
+        break;
+      case "node_started":
+        if (evt.nodeId) job.currentNode = { id: evt.nodeId, name: evt.name };
+        break;
+      case "node_failed":
+        if (evt.nodeId) this.markFailed(job, evt.nodeId, evt.error || "Unknown error");
+        break;
+      case "node_chunk":
+        this.handleChunk(job, evt);
+        break;
+      case "job_finished":
+        job.finishRequested = { status: evt.status || "done", error: evt.error };
+        void this.maybeFinalize(job);
+        break;
+    }
+    return true;
+  }
+  handleChunk(job, evt) {
+    const nodeId = evt.nodeId;
+    if (!nodeId || job.settledNodes.has(nodeId)) return;
+    const count = Math.max(1, evt.chunkCount || 1);
+    const index = evt.chunkIndex || 0;
+    let entry = job.chunks.get(nodeId);
+    if (!entry || entry.count !== count) {
+      entry = { parts: new Array(count), received: 0, count };
+      job.chunks.set(nodeId, entry);
+    }
+    if (entry.parts[index] === void 0) {
+      entry.parts[index] = evt.data || "";
+      entry.received++;
+    }
+    if (entry.received < entry.count) return;
+    job.chunks.delete(nodeId);
+    job.settledNodes.add(nodeId);
+    const bytes = Buffer.from(entry.parts.join(""), "base64");
+    const fileName = this.fileNameFor(job, nodeId);
+    const filePath = import_path.default.join(job.outputDir, fileName);
+    const write = (async () => {
+      try {
+        await (0, import_promises.mkdir)(job.outputDir, { recursive: true });
+        await (0, import_promises.writeFile)(filePath, bytes);
+        job.done++;
+        job.files.push(filePath);
+      } catch (e) {
+        job.failed.push({
+          nodeId,
+          error: `Write failed: ${e instanceof Error ? e.message : String(e)}`
+        });
+      }
+    })();
+    job.pendingWrites.add(write);
+    write.finally(() => {
+      job.pendingWrites.delete(write);
+      void this.maybeFinalize(job);
+    });
+  }
+  async maybeFinalize(job) {
+    if (!job.finishRequested || job.finishedAt !== null) return;
+    if (job.pendingWrites.size > 0) return;
+    if (job.finishRequested.status === "done") {
+      for (const nodeId of job.fileNames.keys()) {
+        if (!job.settledNodes.has(nodeId)) {
+          this.markFailed(job, nodeId, "No image received from Figma");
+        }
+      }
+    }
+    let status = job.finishRequested.status;
+    if (job.cancelRequested && status !== "done") status = "cancelled";
+    if (status === "done" && job.total > 0 && job.done === 0) status = "failed";
+    this.finish(job, status, job.finishRequested.error);
+  }
+  finish(job, status, error) {
+    if (job.finishedAt !== null) return;
+    job.status = status;
+    job.finishedAt = this.now();
+    job.currentNode = null;
+    job.chunks.clear();
+    if (error) job.error = error;
+    else if (status === "failed" && !job.error && job.done === 0 && job.total > 0) {
+      job.error = "No nodes were exported";
+    }
+    this.log(`Bulk export ${job.jobId} finished: ${this.summarize(job)}`);
+    void this.writeManifest(job);
+  }
+  async writeManifest(job) {
+    try {
+      await (0, import_promises.mkdir)(job.outputDir, { recursive: true });
+      const snapshot = this.snapshot(job);
+      await (0, import_promises.writeFile)(
+        import_path.default.join(job.outputDir, `bulk-export-${job.jobId}.json`),
+        JSON.stringify({ ...snapshot, files: job.files }, null, 2)
+      );
+    } catch (e) {
+      this.log(`Could not write manifest for ${job.jobId}: ${e}`);
+    }
+  }
+  /** Mark a job as failed from the server side (start error, disconnect, stall). */
+  failJob(jobId, error) {
+    const job = this.jobs.get(jobId);
+    if (!job || job.finishedAt !== null) return;
+    this.finish(job, job.cancelRequested ? "cancelled" : "failed", error);
+  }
+  /** Request cancel. If finalize=true (plugin unreachable) the job is closed now. */
+  cancel(jobId, finalize) {
+    const job = this.jobs.get(jobId);
+    if (!job) return void 0;
+    if (job.finishedAt !== null) return job;
+    job.cancelRequested = true;
+    if (finalize) this.finish(job, "cancelled", "Cancelled (Figma plugin did not confirm)");
+    return job;
+  }
+  /** Fail every running job, e.g. when the websocket connection drops. */
+  failAllRunning(error) {
+    for (const job of this.jobs.values()) {
+      if (job.finishedAt === null) this.failJob(job.jobId, error);
+    }
+  }
+  ensureStallWatch() {
+    const stallMs = this.options.stallTimeoutMs;
+    if (!stallMs || this.stallTimer) return;
+    this.stallTimer = setInterval(() => this.checkStalls(), Math.min(5e3, stallMs));
+    this.stallTimer.unref?.();
+  }
+  /** Fail jobs that have not produced any event for stallTimeoutMs. */
+  checkStalls() {
+    const now = this.now();
+    for (const job of this.jobs.values()) {
+      const stallMs = job.stallTimeoutMs ?? this.options.stallTimeoutMs;
+      if (!stallMs) continue;
+      if (job.finishedAt === null && job.pendingWrites.size === 0 && now - job.lastEventAt > stallMs) {
+        this.failJob(
+          job.jobId,
+          `Stalled: no progress from Figma for ${formatDuration(now - job.lastEventAt)}`
+        );
+      }
+    }
+  }
+  snapshot(job) {
+    const end = job.finishedAt ?? this.now();
+    const elapsedMs = Math.max(0, end - job.startedAt);
+    const failedCount = job.failed.length;
+    const processed = job.done + failedCount;
+    const left = Math.max(0, job.total - processed);
+    const percent = job.total > 0 ? Math.round(processed / job.total * 1e3) / 10 : 100;
+    const avgMsPerNode = processed > 0 ? elapsedMs / processed : null;
+    const etaMs = job.status === "running" && avgMsPerNode !== null ? Math.round(avgMsPerNode * left) : null;
+    return {
+      jobId: job.jobId,
+      status: job.status,
+      total: job.total,
+      done: job.done,
+      failedCount,
+      left,
+      percent,
+      currentNode: job.currentNode,
+      startedAt: new Date(job.startedAt).toISOString(),
+      finishedAt: job.finishedAt !== null ? new Date(job.finishedAt).toISOString() : null,
+      elapsedMs,
+      avgMsPerNode: avgMsPerNode !== null ? Math.round(avgMsPerNode) : null,
+      etaMs,
+      concurrency: job.concurrency,
+      outputDir: job.outputDir,
+      format: job.format,
+      scale: job.scale,
+      failed: job.failed.slice(),
+      error: job.error,
+      summary: this.summarize(job)
+    };
+  }
+  summarize(job) {
+    const failedCount = job.failed.length;
+    const processed = job.done + failedCount;
+    const left = Math.max(0, job.total - processed);
+    const pct = job.total > 0 ? (processed / job.total * 100).toFixed(1) : "100.0";
+    const end = job.finishedAt ?? this.now();
+    const elapsed = end - job.startedAt;
+    let text = `${job.done}/${job.total} done (${pct}%), ${left} left, ${failedCount} failed`;
+    if (job.status === "running") {
+      if (processed > 0) text += `, ETA ~${formatDuration(elapsed / processed * left)}`;
+      else text += ", ETA unknown";
+      if (job.cancelRequested) text += " [cancelling]";
+    } else {
+      text += ` [${job.status} in ${formatDuration(elapsed)}]`;
+    }
+    return text;
+  }
+};
+
+// src/channel.ts
+var CHANNEL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+function isValidChannelName(name) {
+  return typeof name === "string" && CHANNEL_NAME_PATTERN.test(name);
+}
+function escapeForLog(value) {
+  return value.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+}
+
+// src/talk_to_figma_mcp/server.ts
 var logger = {
-  info: (message) => process.stderr.write(`[INFO] ${message}
+  info: (message) => process.stderr.write(`[INFO] ${escapeForLog(message)}
 `),
-  debug: (message) => process.stderr.write(`[DEBUG] ${message}
+  debug: (message) => process.stderr.write(`[DEBUG] ${escapeForLog(message)}
 `),
-  warn: (message) => process.stderr.write(`[WARN] ${message}
+  warn: (message) => process.stderr.write(`[WARN] ${escapeForLog(message)}
 `),
-  error: (message) => process.stderr.write(`[ERROR] ${message}
+  error: (message) => process.stderr.write(`[ERROR] ${escapeForLog(message)}
 `),
-  log: (message) => process.stderr.write(`[LOG] ${message}
+  log: (message) => process.stderr.write(`[LOG] ${escapeForLog(message)}
 `)
 };
 var ws = null;
@@ -51,9 +368,18 @@ var args = process.argv.slice(2);
 var serverArg = args.find((arg) => arg.startsWith("--server="));
 var serverUrl = serverArg ? serverArg.split("=")[1] : "localhost";
 var WS_URL = serverUrl === "localhost" ? `ws://${serverUrl}` : `wss://${serverUrl}`;
+var portArg = args.find((arg) => arg.startsWith("--port="));
+var relayPort = portArg ? parseInt(portArg.split("=")[1], 10) || 3055 : 3055;
+var BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS = 12e4;
+var bulkExports = new BulkExportManager({
+  // A running job with no event at all for this long is marked failed.
+  // Per-node timeouts are enforced in the plugin; this catches a dead plugin.
+  stallTimeoutMs: BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS + 6e4,
+  log: (msg) => logger.info(msg)
+});
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
+  "[Current-page scoped, with a document-wide page index] Get top-level details for the current Figma page plus an honest index of every page in the document. Non-current page child counts are explicitly marked as not requested.",
   {},
   async () => {
     try {
@@ -72,6 +398,68 @@ server.tool(
           {
             type: "text",
             text: `Error getting document info: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "get_pages",
+  "[Document-wide] Enumerate every page in the Figma document. Top-level child counts are opt-in because dynamic-page access must load each page.",
+  {
+    includeChildCount: import_zod.z.boolean().optional().default(false).describe(
+      "Load every page and include its top-level child count (default: false)"
+    )
+  },
+  async ({ includeChildCount }) => {
+    try {
+      const result = await sendCommandToFigma("get_pages", {
+        includeChildCount
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "set_current_page",
+  "Switch the active Figma page so subsequent page-scoped reads and writes operate there",
+  {
+    pageId: import_zod.z.string().describe("The PAGE node ID returned by get_pages")
+  },
+  async ({ pageId }) => {
+    try {
+      const result = await sendCommandToFigma("set_current_page", { pageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting current page: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
       };
@@ -211,6 +599,16 @@ function filterFigmaNode(node) {
       return processedStroke;
     });
   }
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect) => {
+      const processedEffect = { ...effect };
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
+    });
+  }
   if (node.cornerRadius !== void 0) {
     filtered.cornerRadius = node.cornerRadius;
   }
@@ -342,8 +740,8 @@ server.tool(
     paddingLeft: import_zod.z.number().optional().describe("Left padding for auto-layout frame"),
     primaryAxisAlignItems: import_zod.z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: import_zod.z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
-    layoutSizingHorizontal: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-    layoutSizingVertical: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    layoutSizingHorizontal: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
+    layoutSizingVertical: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
     itemSpacing: import_zod.z.number().optional().describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
   },
   async ({
@@ -477,14 +875,14 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_fill_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 }
+        color: { r, g, b, a: a ?? 1 }
       });
       const typedResult = result;
       return {
         content: [
           {
             type: "text",
-            text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1})`
+            text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1})`
           }
         ]
       };
@@ -515,7 +913,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_stroke_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
         weight: weight || 1
       });
       const typedResult = result;
@@ -523,7 +921,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`
+            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1}) with weight ${weight || 1}`
           }
         ]
       };
@@ -2144,6 +2542,193 @@ server.tool(
     }
   }
 );
+server.tool(
+  "select_nodes",
+  "Multi-select nodes in Figma by ID. Unlike set_selections, this switches to the page that holds the nodes if needed. If the IDs span several pages, the page holding the most of them is used and the rest are reported as on another page.",
+  {
+    nodeIds: import_zod.z.array(import_zod.z.string()).min(1).describe("Array of node IDs to select"),
+    scrollIntoView: import_zod.z.boolean().optional().describe("Scroll and zoom the viewport to the selection (default true)")
+  },
+  async ({ nodeIds, scrollIntoView }) => {
+    try {
+      const result = await sendCommandToFigma("select_nodes", {
+        nodeIds,
+        scrollIntoView: scrollIntoView !== false
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error selecting nodes: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "start_bulk_export",
+  "Start a background job that selects the given nodes in Figma and exports them all to image files on disk (the machine running this MCP server). Returns a jobId immediately; poll get_bulk_export_status for progress (done/left/percent/ETA). Image data is written to files and never returned to the agent. Use this instead of calling export_node_as_image in a loop.",
+  {
+    nodeIds: import_zod.z.array(import_zod.z.string()).min(1).describe("Node IDs to export (duplicates are ignored)"),
+    format: import_zod.z.enum(["PNG", "JPG", "SVG", "PDF"]).optional().describe("Export format (default PNG)"),
+    scale: import_zod.z.number().positive().max(4).optional().describe("Export scale for PNG/JPG (default 1)"),
+    outputDir: import_zod.z.string().min(1).describe("Directory to write files into (created if missing)"),
+    fileNames: import_zod.z.union([import_zod.z.array(import_zod.z.string()), import_zod.z.record(import_zod.z.string())]).optional().describe("Optional file names: an array in the same order as nodeIds, or a map nodeId -> name. Extension is added automatically. Default: the node ID with ':' replaced by '-'"),
+    concurrency: import_zod.z.number().int().min(1).max(8).optional().describe("Nodes exported in parallel inside Figma (default 3; drops to 1 automatically if Figma errors)"),
+    nodeTimeoutMs: import_zod.z.number().int().min(5e3).optional().describe("Per-node export timeout in ms (default 120000). A node that times out is marked failed and the job continues"),
+    select: import_zod.z.boolean().optional().describe("Select the nodes in Figma before exporting (default true)")
+  },
+  async ({ nodeIds, format, scale, outputDir, fileNames, concurrency, nodeTimeoutMs, select }) => {
+    const uniqueIds = [...new Set(nodeIds)];
+    const jobId = `bulk-${Date.now().toString(36)}-${(0, import_uuid.v4)().slice(0, 8)}`;
+    const fmt = format || "PNG";
+    let names = fileNames;
+    if (Array.isArray(fileNames) && uniqueIds.length !== nodeIds.length) {
+      const byId = {};
+      nodeIds.forEach((id, i) => {
+        if (fileNames[i] && !(id in byId)) byId[id] = fileNames[i];
+      });
+      names = byId;
+    }
+    const job = bulkExports.createJob({
+      jobId,
+      nodeIds: uniqueIds,
+      format: fmt,
+      scale: scale || 1,
+      outputDir,
+      fileNames: names,
+      // One slow node must not trip the stall watchdog.
+      stallTimeoutMs: Math.max(
+        BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS,
+        nodeTimeoutMs || BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS
+      ) + 6e4
+    });
+    try {
+      const result = await sendCommandToFigma("start_bulk_export", {
+        jobId,
+        nodeIds: uniqueIds,
+        format: fmt,
+        scale: scale || 1,
+        concurrency: concurrency || 3,
+        nodeTimeoutMs: nodeTimeoutMs || BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS,
+        select: select !== false
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              jobId,
+              status: "running",
+              total: uniqueIds.length,
+              found: result.found,
+              notFound: result.notFound,
+              selectedCount: result.selectedCount,
+              page: result.page,
+              onOtherPages: result.onOtherPages,
+              outputDir: job.outputDir,
+              format: fmt,
+              scale: scale || 1,
+              next: `Call get_bulk_export_status with jobId "${jobId}" to see progress.`
+            })
+          }
+        ]
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      bulkExports.failJob(jobId, `Could not start export in Figma: ${message}`);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error starting bulk export: ${message}. If your Figma plugin is older than this server, reinstall the plugin from this repo's src/cursor_mcp_plugin/manifest.json.`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "get_bulk_export_status",
+  "Get progress of a bulk export job: done, left, failed (with node IDs and errors), percent, current node, ETA and status (running, done, failed, cancelled). Omit jobId to list all jobs from this session.",
+  {
+    jobId: import_zod.z.string().optional().describe("Job ID returned by start_bulk_export")
+  },
+  async ({ jobId }) => {
+    if (!jobId) {
+      const jobs = bulkExports.listJobs().map((j) => ({
+        jobId: j.jobId,
+        status: j.status,
+        summary: bulkExports.summarize(j)
+      }));
+      return {
+        content: [
+          { type: "text", text: jobs.length ? JSON.stringify(jobs) : "No bulk export jobs in this session." }
+        ]
+      };
+    }
+    const job = bulkExports.getJob(jobId);
+    if (!job) {
+      return { content: [{ type: "text", text: `Unknown bulk export job: ${jobId}` }] };
+    }
+    const snap = bulkExports.snapshot(job);
+    const failedShown = snap.failed.slice(0, 50);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `${snap.summary}
+${JSON.stringify({ ...snap, failed: failedShown, failedTruncated: snap.failed.length > failedShown.length })}`
+        }
+      ]
+    };
+  }
+);
+server.tool(
+  "cancel_bulk_export",
+  "Cancel a running bulk export job. Nodes already exported stay on disk; nodes in flight finish, then the job stops.",
+  {
+    jobId: import_zod.z.string().describe("Job ID returned by start_bulk_export")
+  },
+  async ({ jobId }) => {
+    const job = bulkExports.getJob(jobId);
+    if (!job) {
+      return { content: [{ type: "text", text: `Unknown bulk export job: ${jobId}` }] };
+    }
+    if (job.finishedAt !== null) {
+      return {
+        content: [{ type: "text", text: `Job already finished: ${bulkExports.summarize(job)}` }]
+      };
+    }
+    bulkExports.cancel(jobId, false);
+    try {
+      await sendCommandToFigma("cancel_bulk_export", { jobId }, 15e3);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cancel requested; in-flight nodes will finish, then the job stops. ${bulkExports.summarize(job)}`
+          }
+        ]
+      };
+    } catch (error) {
+      bulkExports.cancel(jobId, true);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Figma did not confirm the cancel (${error instanceof Error ? error.message : String(error)}); job marked cancelled. ${bulkExports.summarize(job)}`
+          }
+        ]
+      };
+    }
+  }
+);
 server.prompt(
   "reaction_to_connector_strategy",
   "Strategy for converting Figma prototype reactions to connector lines using the output of 'get_reactions'",
@@ -2226,7 +2811,7 @@ This detailed process ensures you correctly interpret the reaction data, prepare
     };
   }
 );
-function connectToFigma(port = 3055) {
+function connectToFigma(port = relayPort) {
   if (ws && ws.readyState === import_ws.default.OPEN) {
     logger.info("Already connected to Figma");
     return;
@@ -2241,6 +2826,10 @@ function connectToFigma(port = 3055) {
   ws.on("message", (data) => {
     try {
       const json = JSON.parse(data);
+      if (json.message && json.message.type === "bulk_export_event") {
+        bulkExports.handleEvent(json.message);
+        return;
+      }
       if (json.type === "progress_update") {
         const progressData = json.message.data;
         const requestId = json.id || "";
@@ -2290,6 +2879,7 @@ function connectToFigma(port = 3055) {
   ws.on("close", () => {
     logger.info("Disconnected from Figma socket server");
     ws = null;
+    bulkExports.failAllRunning("Lost connection to the Figma socket server");
     for (const [id, request] of pendingRequests.entries()) {
       clearTimeout(request.timeout);
       request.reject(new Error("Connection closed"));
@@ -2300,6 +2890,11 @@ function connectToFigma(port = 3055) {
   });
 }
 async function joinChannel(channelName) {
+  if (!isValidChannelName(channelName)) {
+    throw new Error(
+      "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+    );
+  }
   if (!ws || ws.readyState !== import_ws.default.OPEN) {
     throw new Error("Not connected to Figma");
   }
@@ -2358,6 +2953,185 @@ function sendCommandToFigma(command, params = {}, timeoutMs = 3e4) {
   });
 }
 server.tool(
+  "set_image_fill",
+  "Fill a node in Figma with an image from a local file path, a URL, or base64 data (replaces the node's existing fills)",
+  {
+    nodeId: import_zod.z.string().describe("The ID of the node to fill"),
+    imagePath: import_zod.z.string().optional().describe(
+      "Absolute path to a local image file, read by the MCP server (preferred: keeps image bytes out of the model context)"
+    ),
+    imageUrl: import_zod.z.string().optional().describe(
+      "Image URL, fetched by the MCP server (the Figma plugin cannot fetch arbitrary domains itself)"
+    ),
+    imageBase64: import_zod.z.string().optional().describe(
+      "Base64-encoded image data, with or without a data: URI prefix (only when the image exists nowhere else)"
+    ),
+    scaleMode: import_zod.z.enum(["FILL", "FIT", "CROP", "TILE"]).optional().describe("How the image fills the node (default: FILL)")
+  },
+  async ({ nodeId, imagePath, imageUrl, imageBase64, scaleMode }) => {
+    try {
+      const sources = [imagePath, imageUrl, imageBase64].filter(
+        (source) => source !== void 0 && source !== ""
+      );
+      if (sources.length !== 1) {
+        throw new Error("Provide exactly one of imagePath, imageUrl or imageBase64");
+      }
+      let base64Data;
+      if (imagePath) {
+        base64Data = (await (0, import_promises2.readFile)(imagePath)).toString("base64");
+      } else if (imageUrl) {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image URL (HTTP ${response.status})`);
+        }
+        base64Data = Buffer.from(await response.arrayBuffer()).toString("base64");
+      } else {
+        base64Data = imageBase64.replace(/^data:[^;,]+;base64,/, "");
+      }
+      if (base64Data.length > 12 * 1024 * 1024) {
+        throw new Error(
+          "Image is too large to send over the relay (~9MB binary max); downscale it first"
+        );
+      }
+      const result = await sendCommandToFigma("set_image_fill", {
+        nodeId,
+        imageBase64: base64Data,
+        scaleMode: scaleMode || "FILL"
+      });
+      const typedResult = result;
+      const sizeInfo = typedResult.imageWidth ? ` (${typedResult.imageWidth}x${typedResult.imageHeight})` : "";
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Set image fill of node "${typedResult.name}"${sizeInfo} with scale mode ${scaleMode || "FILL"}, imageHash: ${typedResult.imageHash}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting image fill: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "rename_node",
+  "Rename a node in Figma",
+  {
+    nodeId: import_zod.z.string().describe("The ID of the node to rename"),
+    name: import_zod.z.string().describe("The new name for the node")
+  },
+  async ({ nodeId, name }) => {
+    try {
+      const result = await sendCommandToFigma("rename_node", { nodeId, name });
+      const typedResult = result;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Renamed node from "${typedResult.previousName}" to "${typedResult.name}"`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error renaming node: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "create_section",
+  "Create a section in Figma to group related content on the canvas",
+  {
+    x: import_zod.z.number().describe("X position"),
+    y: import_zod.z.number().describe("Y position"),
+    width: import_zod.z.number().describe("Width of the section"),
+    height: import_zod.z.number().describe("Height of the section"),
+    name: import_zod.z.string().optional().describe("Optional name for the section")
+  },
+  async ({ x, y, width, height, name }) => {
+    try {
+      const result = await sendCommandToFigma("create_section", {
+        x,
+        y,
+        width,
+        height,
+        name: name || "Section"
+      });
+      const typedResult = result;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Created section "${typedResult.name}" with ID: ${typedResult.id}`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error creating section: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "set_parent",
+  "Move a node into a new parent node (e.g. a section, frame or group). Preserves the node's absolute position unless x/y are provided",
+  {
+    nodeId: import_zod.z.string().describe("The ID of the node to move"),
+    parentId: import_zod.z.string().describe("The ID of the new parent node (must support children, e.g. a section, frame or group)"),
+    x: import_zod.z.number().optional().describe("Optional X position relative to the new parent"),
+    y: import_zod.z.number().optional().describe("Optional Y position relative to the new parent"),
+    index: import_zod.z.number().optional().describe("Optional child index to insert at (default: appended as last child)")
+  },
+  async ({ nodeId, parentId, x, y, index }) => {
+    try {
+      const result = await sendCommandToFigma("set_parent", {
+        nodeId,
+        parentId,
+        x,
+        y,
+        index
+      });
+      const typedResult = result;
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Moved node "${typedResult.name}" into "${typedResult.parentName}" at (${typedResult.x}, ${typedResult.y})`
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting parent: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
   "join_channel",
   "Join a specific channel to communicate with Figma",
   {
@@ -2377,6 +3151,16 @@ server.tool(
             tool: "join_channel",
             description: "Join the specified channel"
           }
+        };
+      }
+      if (!isValidChannelName(channel)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+            }
+          ]
         };
       }
       await joinChannel(channel);

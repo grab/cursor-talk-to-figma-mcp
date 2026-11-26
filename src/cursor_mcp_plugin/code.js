@@ -128,6 +128,10 @@ async function handleCommand(command, params) {
   switch (command) {
     case "get_document_info":
       return await getDocumentInfo();
+    case "get_pages":
+      return await getPages(params);
+    case "set_current_page":
+      return await setCurrentPage(params);
     case "get_selection":
       return await getSelection();
     case "get_node_info":
@@ -254,6 +258,12 @@ async function handleCommand(command, params) {
       return await setFocus(params);
     case "set_selections":
       return await setSelections(params);
+    case "select_nodes":
+      return await selectNodes(params);
+    case "start_bulk_export":
+      return await startBulkExport(params);
+    case "cancel_bulk_export":
+      return cancelBulkExport(params);
     case "set_image_fill":
       return await setImageFill(params);
     case "rename_node":
@@ -272,7 +282,23 @@ async function handleCommand(command, params) {
 async function getDocumentInfo() {
   await figma.currentPage.loadAsync();
   const page = figma.currentPage;
+  const pages = figma.root.children.map((documentPage) => {
+    const isCurrentPage = documentPage.id === page.id;
+    return {
+      id: documentPage.id,
+      name: documentPage.name,
+      childCount: isCurrentPage ? documentPage.children.length : null,
+      childCountStatus: isCurrentPage ? "available" : "not_requested",
+    };
+  });
+
   return {
+    scope: "current_page_with_document_page_index",
+    document: {
+      id: figma.root.id,
+      name: figma.root.name,
+      type: figma.root.type,
+    },
     name: page.name,
     id: page.id,
     type: page.type,
@@ -286,13 +312,139 @@ async function getDocumentInfo() {
       name: page.name,
       childCount: page.children.length,
     },
-    pages: [
-      {
-        id: page.id,
-        name: page.name,
-        childCount: page.children.length,
-      },
-    ],
+    pageCount: pages.length,
+    pages,
+  };
+}
+
+function startProgressHeartbeat(
+  commandId,
+  commandType,
+  progress,
+  totalItems,
+  processedItems,
+  message
+) {
+  const timer = setInterval(() => {
+    sendProgressUpdate(
+      commandId,
+      commandType,
+      "in_progress",
+      progress,
+      totalItems,
+      processedItems,
+      message
+    ).catch((error) => {
+      console.error(`Failed to send ${commandType} heartbeat:`, error);
+    });
+  }, 15000);
+
+  return () => clearInterval(timer);
+}
+
+async function getPages(params) {
+  const includeChildCount = Boolean(params && params.includeChildCount);
+  const commandId = (params && params.commandId) || generateCommandId();
+  const documentPages = figma.root.children;
+  const pages = [];
+
+  if (includeChildCount) {
+    await sendProgressUpdate(
+      commandId,
+      "get_pages",
+      "started",
+      0,
+      documentPages.length,
+      0,
+      "Loading pages to count top-level children"
+    );
+  }
+
+  for (let index = 0; index < documentPages.length; index++) {
+    const page = documentPages[index];
+    const pageInfo = {
+      id: page.id,
+      name: page.name,
+    };
+
+    if (includeChildCount) {
+      const stopHeartbeat = startProgressHeartbeat(
+        commandId,
+        "get_pages",
+        Math.round((index / documentPages.length) * 100),
+        documentPages.length,
+        index,
+        `Still loading page ${page.name}`
+      );
+      try {
+        await page.loadAsync();
+      } finally {
+        stopHeartbeat();
+      }
+      pageInfo.childCount = page.children.length;
+      await sendProgressUpdate(
+        commandId,
+        "get_pages",
+        "in_progress",
+        Math.round(((index + 1) / documentPages.length) * 100),
+        documentPages.length,
+        index + 1,
+        `Loaded page ${index + 1}/${documentPages.length}: ${page.name}`
+      );
+    }
+
+    pages.push(pageInfo);
+  }
+
+  if (includeChildCount) {
+    await sendProgressUpdate(
+      commandId,
+      "get_pages",
+      "completed",
+      100,
+      documentPages.length,
+      documentPages.length,
+      `Loaded ${documentPages.length} pages`
+    );
+  }
+
+  return {
+    scope: "document",
+    document: {
+      id: figma.root.id,
+      name: figma.root.name,
+    },
+    currentPageId: figma.currentPage.id,
+    pageCount: pages.length,
+    childCountIncluded: includeChildCount,
+    pages,
+  };
+}
+
+async function setCurrentPage(params) {
+  const { pageId } = params || {};
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = await figma.getNodeByIdAsync(pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+  if (page.type !== "PAGE") {
+    throw new Error(`Node ${pageId} is ${page.type}, not a PAGE`);
+  }
+
+  await figma.setCurrentPageAsync(page);
+  await page.loadAsync();
+
+  return {
+    success: true,
+    currentPage: {
+      id: page.id,
+      name: page.name,
+      childCount: page.children.length,
+    },
   };
 }
 
@@ -381,6 +533,17 @@ function filterFigmaNode(node) {
         processedStroke.color = rgbaToHex(processedStroke.color);
       }
       return processedStroke;
+    });
+  }
+
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect) => {
+      var processedEffect = Object.assign({}, effect);
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
     });
   }
 
@@ -502,7 +665,7 @@ async function getReactions(nodeIds) {
       }
       const hasFilteredReactions = filteredReactions.length > 0;
       
-      // If the node has filtered reactions, add it to results and apply highlight effect
+      // If the node has filtered reactions, add it to results
       if (hasFilteredReactions) {
         results.push({
           id: node.id,
@@ -513,51 +676,18 @@ async function getReactions(nodeIds) {
           reactions: filteredReactions,
           path: getNodePath(node)
         });
-        // Apply highlight effect (orange border)
-        await highlightNodeWithAnimation(node);
       }
-      
+
       // If node has children, recursively search them
       if (node.children) {
         for (const child of node.children) {
           await findNodesWithReactions(child, processedNodes, depth + 1, results);
         }
       }
-      
+
       return results;
     }
-    
-    // Function to apply animated highlight effect to a node
-    async function highlightNodeWithAnimation(node) {
-      // Save original stroke properties
-      const originalStrokeWeight = node.strokeWeight;
-      const originalStrokes = node.strokes ? [...node.strokes] : [];
-      
-      try {
-        // Apply orange border stroke
-        node.strokeWeight = 4;
-        node.strokes = [{
-          type: 'SOLID',
-          color: { r: 1, g: 0.5, b: 0 }, // Orange color
-          opacity: 0.8
-        }];
-        
-        // Set timeout for animation effect (restore to original after 1.5 seconds)
-        setTimeout(() => {
-          try {
-            // Restore original stroke properties
-            node.strokeWeight = originalStrokeWeight;
-            node.strokes = originalStrokes;
-          } catch (restoreError) {
-            console.error(`Error restoring node stroke: ${restoreError.message}`);
-          }
-        }, 1500);
-      } catch (highlightError) {
-        console.error(`Error highlighting node: ${highlightError.message}`);
-        // Continue even if highlighting fails
-      }
-    }
-    
+
     // Get node hierarchy path as a string
     function getNodePath(node) {
       const path = [];
@@ -743,12 +873,55 @@ async function createFrame(params) {
     itemSpacing = 0,
   } = params || {};
 
+  // Resolve the parent and validate sizing BEFORE creating anything, so a bad
+  // request fails with a clear message and never leaves a stray frame behind.
+  // A page (the default parent) has no layoutMode, so it counts as non-auto-layout.
+  let parentNode = figma.currentPage;
+  if (parentId) {
+    parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+  }
+  const parentIsAutoLayout =
+    "layoutMode" in parentNode && parentNode.layoutMode !== "NONE";
+  if (layoutSizingHorizontal === "FILL" && !parentIsAutoLayout) {
+    throw new Error(
+      "layoutSizingHorizontal: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingVertical === "FILL" && !parentIsAutoLayout) {
+    throw new Error(
+      "layoutSizingVertical: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingHorizontal === "HUG" && layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingHorizontal: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+  if (layoutSizingVertical === "HUG" && layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingVertical: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+
   const frame = figma.createFrame();
   frame.x = x;
   frame.y = y;
   frame.resize(width, height);
   frame.name = name;
 
+  // Append to its parent BEFORE touching layout sizing. `layoutSizingHorizontal`/
+  // `layoutSizingVertical` = "FILL" is only legal once the node has an auto-layout
+  // parent (Figma reads frame.parent.layoutMode to validate it), so setting it while
+  // the frame is still unparented always throws.
+  parentNode.appendChild(frame);
+
+  try {
   // Set layout mode if provided
   if (layoutMode !== "NONE") {
     frame.layoutMode = layoutMode;
@@ -764,13 +937,13 @@ async function createFrame(params) {
     frame.primaryAxisAlignItems = primaryAxisAlignItems;
     frame.counterAxisAlignItems = counterAxisAlignItems;
 
-    // Set layout sizing only when layoutMode is not NONE
-    frame.layoutSizingHorizontal = layoutSizingHorizontal;
-    frame.layoutSizingVertical = layoutSizingVertical;
-
     // Set item spacing only when layoutMode is not NONE
     frame.itemSpacing = itemSpacing;
   }
+
+  // Sizing was validated before the frame was created (see above).
+  frame.layoutSizingHorizontal = layoutSizingHorizontal;
+  frame.layoutSizingVertical = layoutSizingVertical;
 
   // Set fill color if provided
   if (fillColor) {
@@ -781,7 +954,7 @@ async function createFrame(params) {
         g: parseFloat(fillColor.g) || 0,
         b: parseFloat(fillColor.b) || 0,
       },
-      opacity: parseFloat(fillColor.a) || 1,
+      opacity: fillColor.a !== undefined ? fillColor.a : 1,
     };
     frame.fills = [paintStyle];
   }
@@ -795,7 +968,7 @@ async function createFrame(params) {
         g: parseFloat(strokeColor.g) || 0,
         b: parseFloat(strokeColor.b) || 0,
       },
-      opacity: parseFloat(strokeColor.a) || 1,
+      opacity: strokeColor.a !== undefined ? strokeColor.a : 1,
     };
     frame.strokes = [strokeStyle];
   }
@@ -804,19 +977,10 @@ async function createFrame(params) {
   if (strokeWeight !== undefined) {
     frame.strokeWeight = strokeWeight;
   }
-
-  // If parentId is provided, append to that node, otherwise append to current page
-  if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parentNode.appendChild(frame);
-  } else {
-    figma.currentPage.appendChild(frame);
+  } catch (error) {
+    // Don't leave a half-configured frame in the file when Figma rejects a property.
+    frame.remove();
+    throw error;
   }
 
   return {
@@ -897,7 +1061,7 @@ async function createText(params) {
       g: parseFloat(fontColor.g) || 0,
       b: parseFloat(fontColor.b) || 0,
     },
-    opacity: parseFloat(fontColor.a) || 1,
+    opacity: fontColor.a !== undefined ? fontColor.a : 1,
   };
   textNode.fills = [paintStyle];
 
@@ -957,7 +1121,7 @@ async function setFillColor(params) {
     r: parseFloat(r) || 0,
     g: parseFloat(g) || 0,
     b: parseFloat(b) || 0,
-    a: parseFloat(a) || 1,
+    a: a !== undefined ? a : 1,
   };
 
   // Set fill
@@ -1513,7 +1677,7 @@ async function createComponentInstance(params) {
 async function exportNodeAsImage(params) {
   const { nodeId, scale = 1 } = params || {};
 
-  const format = "PNG";
+  const format = (params && params.format || "PNG").toUpperCase();
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -2284,30 +2448,6 @@ async function processTextNode(node, parentPath, depth) {
       depth: depth,
     };
 
-    // Highlight the node briefly (optional visual feedback)
-    try {
-      const originalFills = JSON.parse(JSON.stringify(node.fills));
-      node.fills = [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 0.5, b: 0 },
-          opacity: 0.3,
-        },
-      ];
-
-      // Brief delay for the highlight to be visible
-      await delay(100);
-
-      try {
-        node.fills = originalFills;
-      } catch (err) {
-        console.error("Error resetting fills:", err);
-      }
-    } catch (highlightErr) {
-      console.error("Error highlighting text node:", highlightErr);
-      // Continue anyway, highlighting is just visual feedback
-    }
-
     return safeTextNode;
   } catch (nodeErr) {
     console.error("Error processing text node:", nodeErr);
@@ -2357,31 +2497,6 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
         path: nodePath.join(" > "),
         depth: depth,
       };
-
-      // Only highlight the node if it's not being done via API
-      try {
-        // Safe way to create a temporary highlight without causing serialization issues
-        const originalFills = JSON.parse(JSON.stringify(node.fills));
-        node.fills = [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 0.5, b: 0 },
-            opacity: 0.3,
-          },
-        ];
-
-        // Promise-based delay instead of setTimeout
-        await delay(500);
-
-        try {
-          node.fills = originalFills;
-        } catch (err) {
-          console.error("Error resetting fills:", err);
-        }
-      } catch (highlightErr) {
-        console.error("Error highlighting text node:", highlightErr);
-        // Continue anyway, highlighting is just visual feedback
-      }
 
       textNodes.push(safeTextNode);
     } catch (nodeErr) {
@@ -2537,42 +2652,11 @@ async function setMultipleTextContents(params) {
         console.log(`Original text: "${originalText}"`);
         console.log(`Will translate to: "${replacement.text}"`);
 
-        // Highlight the node before changing text
-        let originalFills;
-        try {
-          // Save original fills for restoration later
-          originalFills = JSON.parse(JSON.stringify(textNode.fills));
-          // Apply highlight color (orange with 30% opacity)
-          textNode.fills = [
-            {
-              type: "SOLID",
-              color: { r: 1, g: 0.5, b: 0 },
-              opacity: 0.3,
-            },
-          ];
-        } catch (highlightErr) {
-          console.error(
-            `Error highlighting text node: ${highlightErr.message}`
-          );
-          // Continue anyway, highlighting is just visual feedback
-        }
-
         // Use the existing setTextContent function to handle font loading and text setting
         await setTextContent({
           nodeId: replacement.nodeId,
           text: replacement.text,
         });
-
-        // Keep highlight for a moment after text change, then restore original fills
-        if (originalFills) {
-          try {
-            // Use delay function for consistent timing
-            await delay(500);
-            textNode.fills = originalFills;
-          } catch (restoreErr) {
-            console.error(`Error restoring fills: ${restoreErr.message}`);
-          }
-        }
 
         console.log(
           `Successfully replaced text in node: ${replacement.nodeId}`
@@ -4342,4 +4426,350 @@ async function setSelections(params) {
     notFoundIds: notFoundIds,
     message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Multi-select by ID (page-aware) and background bulk export
+// ---------------------------------------------------------------------------
+
+// Find the PAGE that contains a node.
+function getPageOf(node) {
+  let current = node;
+  while (current && current.type !== "PAGE") {
+    current = current.parent;
+  }
+  return current || null;
+}
+
+// Resolve node IDs and group them by page.
+async function resolveNodesByPage(nodeIds) {
+  const found = [];
+  const notFound = [];
+  const byPage = new Map();
+  for (const nodeId of nodeIds) {
+    let node = null;
+    try {
+      node = await figma.getNodeByIdAsync(nodeId);
+    } catch (e) {
+      node = null;
+    }
+    if (!node || node.type === "DOCUMENT" || node.type === "PAGE") {
+      notFound.push(nodeId);
+      continue;
+    }
+    const page = getPageOf(node);
+    found.push({ id: nodeId, node, page });
+    if (page) {
+      if (!byPage.has(page.id)) byPage.set(page.id, { page, items: [] });
+      byPage.get(page.id).items.push({ id: nodeId, node });
+    }
+  }
+  return { found, notFound, byPage };
+}
+
+// Select the given nodes, switching to the page that holds most of them.
+async function selectResolvedNodes(byPage, scrollIntoView) {
+  let best = null;
+  for (const entry of byPage.values()) {
+    if (!best || entry.items.length > best.items.length) best = entry;
+  }
+  if (!best) {
+    return { selectedCount: 0, page: null, onOtherPages: [] };
+  }
+  if (figma.currentPage.id !== best.page.id) {
+    if (typeof figma.setCurrentPageAsync === "function") {
+      await figma.setCurrentPageAsync(best.page);
+    } else {
+      figma.currentPage = best.page;
+    }
+  }
+  const nodes = best.items.map((item) => item.node);
+  figma.currentPage.selection = nodes;
+  if (scrollIntoView !== false) {
+    figma.viewport.scrollAndZoomIntoView(nodes);
+  }
+  const onOtherPages = [];
+  for (const entry of byPage.values()) {
+    if (entry !== best) {
+      for (const item of entry.items) onOtherPages.push(item.id);
+    }
+  }
+  return {
+    selectedCount: nodes.length,
+    page: { id: best.page.id, name: best.page.name },
+    onOtherPages,
+  };
+}
+
+async function selectNodes(params) {
+  const nodeIds = params && params.nodeIds;
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    throw new Error("nodeIds must be a non-empty array");
+  }
+  const { notFound, byPage } = await resolveNodesByPage(nodeIds);
+  if (byPage.size === 0) {
+    throw new Error(`No valid nodes found for the provided IDs: ${nodeIds.join(", ")}`);
+  }
+  const selection = await selectResolvedNodes(byPage, params.scrollIntoView);
+  return Object.assign({ success: true, notFound }, selection);
+}
+
+// Active bulk export jobs, keyed by jobId.
+const bulkExportJobs = new Map();
+
+function postBulkEvent(job, event, extra) {
+  const message = Object.assign(
+    {
+      type: "bulk_export_event",
+      jobId: job.jobId,
+      event,
+      // Counts for the plugin UI progress display.
+      progress: {
+        total: job.total,
+        done: job.done,
+        failed: job.failed,
+        current: job.currentName || null,
+      },
+    },
+    extra || {}
+  );
+  figma.ui.postMessage(message);
+}
+
+function exportSettingsFor(format, scale) {
+  if (format === "SVG" || format === "PDF") {
+    return { format };
+  }
+  return { format, constraint: { type: "SCALE", value: scale } };
+}
+
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function startBulkExport(params) {
+  const {
+    jobId,
+    nodeIds,
+    format = "PNG",
+    scale = 1,
+    concurrency = 3,
+    nodeTimeoutMs = 120000,
+    select = true,
+  } = params || {};
+
+  if (!jobId) throw new Error("Missing jobId parameter");
+  if (!Array.isArray(nodeIds) || nodeIds.length === 0) {
+    throw new Error("nodeIds must be a non-empty array");
+  }
+  if (bulkExportJobs.has(jobId)) {
+    throw new Error(`Bulk export job ${jobId} already exists`);
+  }
+  if (!["PNG", "JPG", "SVG", "PDF"].includes(format)) {
+    throw new Error(`Unsupported format: ${format}`);
+  }
+
+  const { found, notFound, byPage } = await resolveNodesByPage(nodeIds);
+
+  // Nodes that can't be exported count as failed, not as a fatal error.
+  const exportable = [];
+  const notExportable = [];
+  for (const item of found) {
+    if (typeof item.node.exportAsync === "function") exportable.push(item);
+    else notExportable.push(item.id);
+  }
+
+  // Pages other than the current one must be loaded before exporting.
+  for (const entry of byPage.values()) {
+    if (typeof entry.page.loadAsync === "function") {
+      try {
+        await entry.page.loadAsync();
+      } catch (e) {
+        console.warn("Could not load page", entry.page.name, e);
+      }
+    }
+  }
+
+  let selection = { selectedCount: 0, page: null, onOtherPages: [] };
+  if (select) {
+    try {
+      selection = await selectResolvedNodes(byPage, true);
+    } catch (e) {
+      // Selection is a convenience; never block the export on it.
+      console.warn("Bulk export: selection failed", e);
+    }
+  }
+
+  const job = {
+    jobId,
+    format,
+    scale,
+    nodeTimeoutMs,
+    concurrency: Math.max(1, Math.min(8, Math.floor(concurrency) || 1)),
+    total: nodeIds.length,
+    done: 0,
+    failed: 0,
+    currentName: null,
+    cancelled: false,
+    inFlight: 0,
+    // Serializes fallback retries so they never run in parallel.
+    retryChain: Promise.resolve(),
+    queue: exportable.slice(),
+    startedAt: Date.now(),
+  };
+  bulkExportJobs.set(jobId, job);
+
+  // Run in the background; the command returns right away with the jobId.
+  setTimeout(() => {
+    runBulkExport(job, notFound.concat(notExportable)).catch((e) => {
+      console.error("Bulk export crashed", e);
+      postBulkEvent(job, "job_finished", {
+        status: "failed",
+        error: (e && e.message) || String(e),
+      });
+      bulkExportJobs.delete(jobId);
+    });
+  }, 0);
+
+  return {
+    jobId,
+    total: nodeIds.length,
+    found: exportable.length,
+    notFound: notFound.concat(notExportable),
+    selectedCount: selection.selectedCount,
+    page: selection.page,
+    onOtherPages: selection.onOtherPages,
+  };
+}
+
+async function runBulkExport(job, missingIds) {
+  job.failed += missingIds.length;
+  postBulkEvent(job, "job_started", {
+    total: job.total,
+    concurrency: job.concurrency,
+    notFound: missingIds,
+  });
+  figma.notify(`Exporting ${job.total} node${job.total === 1 ? "" : "s"}...`);
+
+  async function runExport(node, settings) {
+    job.inFlight++;
+    try {
+      return await withTimeout(node.exportAsync(settings), job.nodeTimeoutMs, "Export");
+    } finally {
+      job.inFlight--;
+    }
+  }
+
+  async function waitUntilIdle() {
+    while (job.inFlight > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  function reportFailure(item, name, error) {
+    job.failed++;
+    postBulkEvent(job, "node_failed", {
+      nodeId: item.id,
+      name,
+      error: (error && error.message) || String(error),
+    });
+  }
+
+  async function exportOne(item) {
+    const name = item.node.name;
+    job.currentName = name;
+    postBulkEvent(job, "node_started", { nodeId: item.id, name });
+    const settings = exportSettingsFor(job.format, job.scale);
+    const startedInParallel = job.concurrency > 1;
+    let bytes;
+    try {
+      bytes = await runExport(item.node, settings);
+    } catch (firstError) {
+      const isTimeout = /timed out/.test(String(firstError && firstError.message));
+      if (!startedInParallel || isTimeout || job.cancelled) {
+        reportFailure(item, name, firstError);
+        return;
+      }
+      // Figma may not like parallel exports: drop to one at a time and
+      // retry this node alone once nothing else is exporting.
+      if (job.concurrency > 1) {
+        job.concurrency = 1;
+        postBulkEvent(job, "concurrency_changed", {
+          concurrency: 1,
+          error: (firstError && firstError.message) || String(firstError),
+        });
+      }
+      const retry = job.retryChain.then(async () => {
+        await waitUntilIdle();
+        return runExport(item.node, settings);
+      });
+      job.retryChain = retry.then(
+        () => undefined,
+        () => undefined
+      );
+      try {
+        bytes = await retry;
+      } catch (retryError) {
+        reportFailure(item, name, retryError);
+        return;
+      }
+    }
+    job.done++;
+    // The UI base64-encodes and streams these bytes to the server.
+    postBulkEvent(job, "node_done", { nodeId: item.id, name, bytes });
+  }
+
+  async function worker(index) {
+    while (!job.cancelled && index < job.concurrency) {
+      // Never start a new export while a fallback retry is pending.
+      await job.retryChain;
+      if (job.cancelled || index >= job.concurrency) return;
+      const item = job.queue.shift();
+      if (!item) return;
+      await exportOne(item);
+      // Let Figma breathe and the UI flush messages.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < job.concurrency; i++) workers.push(worker(i));
+  await Promise.all(workers);
+  // If concurrency dropped mid-run, worker 0 may still have work queued.
+  while (!job.cancelled && job.queue.length > 0) {
+    await worker(0);
+  }
+
+  const status = job.cancelled ? "cancelled" : job.done > 0 || job.total === 0 ? "done" : "failed";
+  job.currentName = null;
+  postBulkEvent(job, "job_finished", { status });
+  bulkExportJobs.delete(job.jobId);
+
+  const seconds = Math.round((Date.now() - job.startedAt) / 1000);
+  if (status === "cancelled") {
+    figma.notify(`Export cancelled: ${job.done}/${job.total} done`);
+  } else {
+    figma.notify(
+      `Export ${status}: ${job.done}/${job.total} exported` +
+        (job.failed ? `, ${job.failed} failed` : "") +
+        ` in ${seconds}s`,
+      { error: status === "failed" }
+    );
+  }
+}
+
+function cancelBulkExport(params) {
+  const jobId = params && params.jobId;
+  const job = bulkExportJobs.get(jobId);
+  if (!job) {
+    return { jobId, cancelled: false, message: "No running job with that ID in this plugin" };
+  }
+  job.cancelled = true;
+  job.queue.length = 0;
+  return { jobId, cancelled: true, done: job.done, failed: job.failed, total: job.total };
 }

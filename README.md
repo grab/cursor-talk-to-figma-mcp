@@ -86,17 +86,14 @@ bun socket
 powershell -c "irm bun.sh/install.ps1|iex"
 ```
 
-2. Uncomment the hostname `0.0.0.0` in `src/socket.ts`
-
-```typescript
-// uncomment this to allow connections in windows wsl
-hostname: "0.0.0.0",
-```
-
-3. Start the websocket
+2. Start the websocket so it accepts connections from outside WSL (by default it only listens on `127.0.0.1`)
 
 ```bash
-bun socket
+# PowerShell
+$env:HOST="0.0.0.0"; bun socket
+
+# bash
+HOST=0.0.0.0 bun socket
 ```
 
 ## Usage
@@ -122,19 +119,25 @@ To develop, update your mcp config to direct to your local directory.
 }
 ```
 
+Options: `--server=<host>` (remote relay over wss) and `--port=<port>` (relay port, default 3055).
+The relay port can be changed with `PORT=3056 bun socket`.
+
 ## MCP Tools
 
 The MCP server provides the following tools for interacting with Figma:
 
 ### Document & Selection
 
-- `get_document_info` - Get information about the current Figma document
+- `get_document_info` - Get current-page details plus a document-wide page index
+- `get_pages` - Enumerate every page; top-level child counts are opt-in
+- `set_current_page` - Switch the active page for subsequent page-scoped operations
 - `get_selection` - Get information about the current selection
 - `read_my_design` - Get detailed node information about the current selection without parameters
 - `get_node_info` - Get detailed information about a specific node
 - `get_nodes_info` - Get detailed information about multiple nodes by providing an array of node IDs
 - `set_focus` - Set focus on a specific node by selecting it and scrolling viewport to it
 - `set_selections` - Set selection to multiple nodes and scroll viewport to show them
+- `select_nodes` - Multi-select nodes by ID; switches to the page that holds them (reports IDs that are missing or on other pages)
 
 ### Annotations
 
@@ -198,6 +201,44 @@ The MCP server provides the following tools for interacting with Figma:
 ### Export & Advanced
 
 - `export_node_as_image` - Export a node as an image (PNG, JPG, SVG, or PDF) - limited support on image currently returning base64 as text
+- `start_bulk_export` - Select many nodes by ID and export them all to files on disk as a background job; returns a `jobId` immediately
+- `get_bulk_export_status` - Progress of a bulk export: done / left / failed (with errors), percent, current node, ETA, status
+- `cancel_bulk_export` - Cancel a running bulk export (files already written are kept)
+
+### Bulk export
+
+Exporting many nodes with `export_node_as_image` in a loop is slow: every node is a separate
+round trip, and the image comes back as base64 into the agent's context. Bulk export runs the
+whole batch inside the plugin and writes files on the machine that runs the MCP server.
+
+```text
+start_bulk_export({
+  nodeIds: ["12:34", "12:35", ...],
+  outputDir: "/tmp/exports",        // created if missing
+  format: "PNG",                    // PNG (default) | JPG | SVG | PDF
+  scale: 2,                         // PNG/JPG only, default 1
+  fileNames: ["home", "settings"],  // optional: array in nodeIds order, or { "12:34": "home" }
+  concurrency: 3,                   // optional, default 3, falls back to 1 if Figma errors
+  nodeTimeoutMs: 120000,            // optional per-node timeout
+  select: true                      // optional, multi-select the nodes in Figma first
+})
+-> { "jobId": "bulk-...", "status": "running", "total": 323, "selectedCount": 323, ... }
+
+get_bulk_export_status({ jobId: "bulk-..." })
+-> 180/323 done (55.7%), 143 left, 2 failed, ETA ~4m
+   { "status": "running", "done": 180, "left": 143, "failed": [{ "nodeId": "...", "error": "..." }], ... }
+```
+
+- Files are named `<fileName or nodeId>.<ext>`; `:` and other unsafe characters become `-`
+  (node `12:34` -> `12-34.png`). Duplicate names get `_2`, `_3`, ...
+- A node that fails or times out is recorded in `failed` and the batch keeps going.
+- When the job ends, `bulk-export-<jobId>.json` (final status + file list) is written to `outputDir`.
+- The plugin window shows a progress bar with done / left / failed, and Figma shows a
+  notification when the export starts and ends.
+- Status is `running`, `done`, `failed` or `cancelled`. A job that gets no events from Figma
+  for 3 minutes, or loses the relay connection, is marked `failed`.
+- Bulk export needs the plugin from this repo (re-link `src/cursor_mcp_plugin/manifest.json`);
+  the relay can be the stock one, but the updated `src/socket.ts` avoids logging image data.
 
 ### Connection Management
 
@@ -226,12 +267,22 @@ The MCP server includes several helper prompts to guide you through complex desi
 
 2. Edit code.js and ui.html
 
+### Tests
+
+```bash
+bun run typecheck
+bun run test   # builds, then runs unit tests and an end-to-end test
+```
+
+The end-to-end test starts the relay on a random free port, runs the built MCP server
+against it, and runs the real `code.js` and `ui.html` script with a fake Figma API.
+
 ## Best Practices
 
 When working with the Figma MCP:
 
 1. Always join a channel before sending commands
-2. Get document overview using `get_document_info` first
+2. Get the document page index using `get_pages`, then use `get_document_info` for the current page
 3. Check current selection with `get_selection` before modifications
 4. Use appropriate creation tools based on needs:
    - `create_frame` for containers

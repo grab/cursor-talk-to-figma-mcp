@@ -6,6 +6,8 @@ import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { readFile } from "fs/promises";
+import { BulkExportManager, BulkExportEvent, BulkExportFormat } from "./bulk_export.js";
+import { escapeForLog, isValidChannelName } from "../channel";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -53,13 +55,15 @@ interface setInstanceOverridesResult {
   }>;
 }
 
-// Custom logging functions that write to stderr instead of stdout to avoid being captured
+// Custom logging functions that write to stderr instead of stdout to avoid being captured.
+// Messages are escaped so a caller-controlled value (e.g. a channel name) can
+// never inject CR/LF and forge additional log lines (CWE-117).
 const logger = {
-  info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
-  debug: (message: string) => process.stderr.write(`[DEBUG] ${message}\n`),
-  warn: (message: string) => process.stderr.write(`[WARN] ${message}\n`),
-  error: (message: string) => process.stderr.write(`[ERROR] ${message}\n`),
-  log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
+  info: (message: string) => process.stderr.write(`[INFO] ${escapeForLog(message)}\n`),
+  debug: (message: string) => process.stderr.write(`[DEBUG] ${escapeForLog(message)}\n`),
+  warn: (message: string) => process.stderr.write(`[WARN] ${escapeForLog(message)}\n`),
+  error: (message: string) => process.stderr.write(`[ERROR] ${escapeForLog(message)}\n`),
+  log: (message: string) => process.stderr.write(`[LOG] ${escapeForLog(message)}\n`)
 };
 
 // WebSocket connection and request tracking
@@ -85,11 +89,23 @@ const args = process.argv.slice(2);
 const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
 const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
+// Optional relay port override (default 3055), e.g. --port=3056
+const portArg = args.find(arg => arg.startsWith('--port='));
+const relayPort = portArg ? parseInt(portArg.split('=')[1], 10) || 3055 : 3055;
+
+// Background bulk export jobs (see bulk_export.ts)
+const BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS = 120000;
+const bulkExports = new BulkExportManager({
+  // A running job with no event at all for this long is marked failed.
+  // Per-node timeouts are enforced in the plugin; this catches a dead plugin.
+  stallTimeoutMs: BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS + 60000,
+  log: (msg) => logger.info(msg),
+});
 
 // Document Info Tool
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
+  "[Current-page scoped, with a document-wide page index] Get top-level details for the current Figma page plus an honest index of every page in the document. Non-current page child counts are explicitly marked as not requested.",
   {},
   async () => {
     try {
@@ -109,6 +125,76 @@ server.tool(
             type: "text",
             text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Pages Tool
+server.tool(
+  "get_pages",
+  "[Document-wide] Enumerate every page in the Figma document. Top-level child counts are opt-in because dynamic-page access must load each page.",
+  {
+    includeChildCount: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Load every page and include its top-level child count (default: false)"
+      ),
+  },
+  async ({ includeChildCount }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_pages", {
+        includeChildCount,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Current Page Tool
+server.tool(
+  "set_current_page",
+  "Switch the active Figma page so subsequent page-scoped reads and writes operate there",
+  {
+    pageId: z.string().describe("The PAGE node ID returned by get_pages"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_current_page", { pageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting current page: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -275,6 +361,17 @@ function filterFigmaNode(node: any) {
         processedStroke.color = rgbaToHex(processedStroke.color);
       }
       return processedStroke;
+    });
+  }
+
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect: any) => {
+      const processedEffect = { ...effect };
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
     });
   }
 
@@ -450,8 +547,8 @@ server.tool(
       .optional()
       .describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
-    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
+    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
     itemSpacing: z
       .number()
       .optional()
@@ -611,7 +708,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_fill_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
       });
       const typedResult = result as { name: string };
       return {
@@ -619,7 +716,7 @@ server.tool(
           {
             type: "text",
             text: `Set fill color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+              }" to RGBA(${r}, ${g}, ${b}, ${a ?? 1})`,
           },
         ],
       };
@@ -653,7 +750,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_stroke_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
         weight: weight || 1,
       });
       const typedResult = result as { name: string };
@@ -662,7 +759,7 @@ server.tool(
           {
             type: "text",
             text: `Set stroke color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
+              }" to RGBA(${r}, ${g}, ${b}, ${a ?? 1}) with weight ${weight || 1}`,
           },
         ],
       };
@@ -2527,6 +2624,220 @@ server.tool(
   }
 );
 
+// Select Nodes Tool (page-aware multi-select by ID)
+server.tool(
+  "select_nodes",
+  "Multi-select nodes in Figma by ID. Unlike set_selections, this switches to the page that holds the nodes if needed. If the IDs span several pages, the page holding the most of them is used and the rest are reported as on another page.",
+  {
+    nodeIds: z.array(z.string()).min(1).describe("Array of node IDs to select"),
+    scrollIntoView: z.boolean().optional().describe("Scroll and zoom the viewport to the selection (default true)"),
+  },
+  async ({ nodeIds, scrollIntoView }: any) => {
+    try {
+      const result = (await sendCommandToFigma("select_nodes", {
+        nodeIds,
+        scrollIntoView: scrollIntoView !== false,
+      })) as {
+        selectedCount: number;
+        page: { id: string; name: string } | null;
+        notFound: string[];
+        onOtherPages: string[];
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error selecting nodes: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Start Bulk Export Tool (background job)
+server.tool(
+  "start_bulk_export",
+  "Start a background job that selects the given nodes in Figma and exports them all to image files on disk (the machine running this MCP server). Returns a jobId immediately; poll get_bulk_export_status for progress (done/left/percent/ETA). Image data is written to files and never returned to the agent. Use this instead of calling export_node_as_image in a loop.",
+  {
+    nodeIds: z.array(z.string()).min(1).describe("Node IDs to export (duplicates are ignored)"),
+    format: z.enum(["PNG", "JPG", "SVG", "PDF"]).optional().describe("Export format (default PNG)"),
+    scale: z.number().positive().max(4).optional().describe("Export scale for PNG/JPG (default 1)"),
+    outputDir: z.string().min(1).describe("Directory to write files into (created if missing)"),
+    fileNames: z
+      .union([z.array(z.string()), z.record(z.string())])
+      .optional()
+      .describe("Optional file names: an array in the same order as nodeIds, or a map nodeId -> name. Extension is added automatically. Default: the node ID with ':' replaced by '-'"),
+    concurrency: z.number().int().min(1).max(8).optional().describe("Nodes exported in parallel inside Figma (default 3; drops to 1 automatically if Figma errors)"),
+    nodeTimeoutMs: z.number().int().min(5000).optional().describe("Per-node export timeout in ms (default 120000). A node that times out is marked failed and the job continues"),
+    select: z.boolean().optional().describe("Select the nodes in Figma before exporting (default true)"),
+  },
+  async ({ nodeIds, format, scale, outputDir, fileNames, concurrency, nodeTimeoutMs, select }: any) => {
+    const uniqueIds: string[] = [...new Set<string>(nodeIds)];
+    const jobId = `bulk-${Date.now().toString(36)}-${uuidv4().slice(0, 8)}`;
+    const fmt: BulkExportFormat = format || "PNG";
+    let names = fileNames;
+    if (Array.isArray(fileNames) && uniqueIds.length !== nodeIds.length) {
+      // Re-map array names onto the de-duplicated id list.
+      const byId: Record<string, string> = {};
+      nodeIds.forEach((id: string, i: number) => {
+        if (fileNames[i] && !(id in byId)) byId[id] = fileNames[i];
+      });
+      names = byId;
+    }
+    // Create job state before the plugin can send its first event.
+    const job = bulkExports.createJob({
+      jobId,
+      nodeIds: uniqueIds,
+      format: fmt,
+      scale: scale || 1,
+      outputDir,
+      fileNames: names,
+      // One slow node must not trip the stall watchdog.
+      stallTimeoutMs: Math.max(
+        BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS,
+        nodeTimeoutMs || BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS
+      ) + 60000,
+    });
+    try {
+      const result = (await sendCommandToFigma("start_bulk_export", {
+        jobId,
+        nodeIds: uniqueIds,
+        format: fmt,
+        scale: scale || 1,
+        concurrency: concurrency || 3,
+        nodeTimeoutMs: nodeTimeoutMs || BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS,
+        select: select !== false,
+      })) as {
+        jobId: string;
+        total: number;
+        found: number;
+        notFound: string[];
+        selectedCount: number;
+        page: { id: string; name: string } | null;
+        onOtherPages: string[];
+      };
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              jobId,
+              status: "running",
+              total: uniqueIds.length,
+              found: result.found,
+              notFound: result.notFound,
+              selectedCount: result.selectedCount,
+              page: result.page,
+              onOtherPages: result.onOtherPages,
+              outputDir: job.outputDir,
+              format: fmt,
+              scale: scale || 1,
+              next: `Call get_bulk_export_status with jobId "${jobId}" to see progress.`,
+            }),
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      bulkExports.failJob(jobId, `Could not start export in Figma: ${message}`);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error starting bulk export: ${message}. If your Figma plugin is older than this server, reinstall the plugin from this repo's src/cursor_mcp_plugin/manifest.json.`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Bulk Export Status Tool
+server.tool(
+  "get_bulk_export_status",
+  "Get progress of a bulk export job: done, left, failed (with node IDs and errors), percent, current node, ETA and status (running, done, failed, cancelled). Omit jobId to list all jobs from this session.",
+  {
+    jobId: z.string().optional().describe("Job ID returned by start_bulk_export"),
+  },
+  async ({ jobId }: any) => {
+    if (!jobId) {
+      const jobs = bulkExports.listJobs().map((j) => ({
+        jobId: j.jobId,
+        status: j.status,
+        summary: bulkExports.summarize(j),
+      }));
+      return {
+        content: [
+          { type: "text", text: jobs.length ? JSON.stringify(jobs) : "No bulk export jobs in this session." },
+        ],
+      };
+    }
+    const job = bulkExports.getJob(jobId);
+    if (!job) {
+      return { content: [{ type: "text", text: `Unknown bulk export job: ${jobId}` }] };
+    }
+    const snap = bulkExports.snapshot(job);
+    // Keep the response small: cap the failure list.
+    const failedShown = snap.failed.slice(0, 50);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `${snap.summary}\n${JSON.stringify({ ...snap, failed: failedShown, failedTruncated: snap.failed.length > failedShown.length })}`,
+        },
+      ],
+    };
+  }
+);
+
+// Cancel Bulk Export Tool
+server.tool(
+  "cancel_bulk_export",
+  "Cancel a running bulk export job. Nodes already exported stay on disk; nodes in flight finish, then the job stops.",
+  {
+    jobId: z.string().describe("Job ID returned by start_bulk_export"),
+  },
+  async ({ jobId }: any) => {
+    const job = bulkExports.getJob(jobId);
+    if (!job) {
+      return { content: [{ type: "text", text: `Unknown bulk export job: ${jobId}` }] };
+    }
+    if (job.finishedAt !== null) {
+      return {
+        content: [{ type: "text", text: `Job already finished: ${bulkExports.summarize(job)}` }],
+      };
+    }
+    bulkExports.cancel(jobId, false);
+    try {
+      await sendCommandToFigma("cancel_bulk_export", { jobId }, 15000);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cancel requested; in-flight nodes will finish, then the job stops. ${bulkExports.summarize(job)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      // Plugin unreachable: close the job locally so the agent is not left waiting.
+      bulkExports.cancel(jobId, true);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Figma did not confirm the cancel (${error instanceof Error ? error.message : String(error)}); job marked cancelled. ${bulkExports.summarize(job)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Strategy for converting Figma prototype reactions to connector lines
 server.prompt(
   "reaction_to_connector_strategy",
@@ -2615,6 +2926,8 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
+  | "get_pages"
+  | "set_current_page"
   | "get_selection"
   | "get_node_info"
   | "get_nodes_info"
@@ -2654,6 +2967,9 @@ type FigmaCommand =
   | "create_connections"
   | "set_focus"
   | "set_selections"
+  | "select_nodes"
+  | "start_bulk_export"
+  | "cancel_bulk_export"
   | "set_image_fill"
   | "rename_node"
   | "create_section"
@@ -2661,6 +2977,8 @@ type FigmaCommand =
 
 type CommandParams = {
   get_document_info: Record<string, never>;
+  get_pages: { includeChildCount?: boolean };
+  set_current_page: { pageId: string };
   get_selection: Record<string, never>;
   get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };
@@ -2861,7 +3179,7 @@ function processFigmaNodeResponse(result: unknown): any {
 }
 
 // Update the connectToFigma function
-function connectToFigma(port: number = 3055) {
+function connectToFigma(port: number = relayPort) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
     logger.info('Already connected to Figma');
@@ -2889,6 +3207,13 @@ function connectToFigma(port: number = 3055) {
       }
 
       const json = JSON.parse(data) as ProgressMessage;
+
+      // Bulk export events stream from the plugin as regular channel messages.
+      // They carry image bytes, so route them before any logging.
+      if (json.message && json.message.type === 'bulk_export_event') {
+        bulkExports.handleEvent(json.message as BulkExportEvent);
+        return;
+      }
 
       // Handle progress updates
       if (json.type === 'progress_update') {
@@ -2970,6 +3295,9 @@ function connectToFigma(port: number = 3055) {
     logger.info('Disconnected from Figma socket server');
     ws = null;
 
+    // Events for running bulk exports can no longer reach us.
+    bulkExports.failAllRunning('Lost connection to the Figma socket server');
+
     // Reject all pending requests
     for (const [id, request] of pendingRequests.entries()) {
       clearTimeout(request.timeout);
@@ -2985,6 +3313,12 @@ function connectToFigma(port: number = 3055) {
 
 // Function to join a channel
 async function joinChannel(channelName: string): Promise<void> {
+  if (!isValidChannelName(channelName)) {
+    throw new Error(
+      "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+    );
+  }
+
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error("Not connected to Figma");
   }
@@ -3308,6 +3642,17 @@ server.tool(
             tool: "join_channel",
             description: "Join the specified channel",
           },
+        };
+      }
+
+      if (!isValidChannelName(channel)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'.",
+            },
+          ],
         };
       }
 
