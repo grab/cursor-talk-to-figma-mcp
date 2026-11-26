@@ -8,7 +8,9 @@ import WebSocket from "ws";
 // relay must refuse the join instead of accepting the name.
 
 const repoRoot = join(import.meta.dir, "..");
-const RELAY_URL = "ws://127.0.0.1:3055";
+// Use a private port so the test never touches a relay already running on 3055.
+const RELAY_PORT = 20000 + Math.floor(Math.random() * 20000);
+const RELAY_URL = `ws://127.0.0.1:${RELAY_PORT}`;
 const FORGED_CHANNEL = "tofu\r\n[ERROR] FAKE-LOG-ENTRY";
 const FAKE_LINE = "[ERROR] FAKE-LOG-ENTRY";
 
@@ -31,6 +33,7 @@ beforeAll(async () => {
   relay = spawn({
     cmd: ["bun", "run", "src/socket.ts"],
     cwd: repoRoot,
+    env: { ...process.env, PORT: String(RELAY_PORT), HOST: "127.0.0.1" },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -38,7 +41,7 @@ beforeAll(async () => {
   drain(relay.stderr as ReadableStream<Uint8Array>);
 
   const deadline = Date.now() + 15000;
-  while (!relayOutput.includes("WebSocket server running on port")) {
+  while (!relayOutput.includes("WebSocket server running on")) {
     if (Date.now() > deadline) {
       throw new Error(`Relay did not start. Output so far:\n${relayOutput}`);
     }

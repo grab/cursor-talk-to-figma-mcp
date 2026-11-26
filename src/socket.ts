@@ -39,6 +39,25 @@ function handleConnection(ws: ServerWebSocket<any>) {
   };
 }
 
+// Summarize a message for logging without dumping large payloads (e.g. base64
+// imageData or whole node trees). From grab/cursor-talk-to-figma-mcp#189.
+function summarizeMessage(data: any, raw: string | Buffer): string {
+  const size = typeof raw === "string" ? Buffer.byteLength(raw) : raw.byteLength;
+  const parts = [
+    `type=${escapeForLog(String(data.type))}`,
+    `channel=${escapeForLog(String(data.channel ?? "-"))}`,
+    `size=${size}B`,
+  ];
+  if (data.message?.command) {
+    parts.push(`command=${escapeForLog(String(data.message.command))}`, `id=${escapeForLog(String(data.id))}`);
+  } else if (data.message?.result !== undefined) {
+    parts.push(`response id=${escapeForLog(String(data.id))}`);
+  } else if (data.message && typeof data.message === "object") {
+    parts.push(`keys=${escapeForLog(Object.keys(data.message).join(","))}`);
+  }
+  return parts.join(" ");
+}
+
 // Origins allowed to talk to this relay from a browser. The relay listens on
 // localhost, but browsers will happily open a WebSocket to localhost for any
 // web page the user visits, so the Origin header is the only thing that
@@ -166,14 +185,8 @@ export function startRelayServer(
             return;
           }
 
-          console.log(`\n=== Received message from client ===`);
-          console.log(`Type: ${data.type}, Channel: ${escapeForLog(String(data.channel || 'N/A'))}`);
-          if (data.message?.command) {
-            console.log(`Command: ${data.message.command}, ID: ${data.id}`);
-          } else if (data.message?.result) {
-            console.log(`Response: ID: ${data.id}, Has Result: ${!!data.message.result}`);
-          }
-          console.log(`Full message:`, JSON.stringify(data, null, 2));
+          const isHeartbeat = data.message?.heartbeat !== undefined;
+          if (!isHeartbeat) console.log(`recv ${summarizeMessage(data, message)}`);
 
           if (data.type === "join") {
             const channelName = data.channel;
@@ -265,16 +278,16 @@ export function startRelayServer(
                   sender: "peer",
                   channel: channelName
                 };
-                console.log(`\n=== Broadcasting to peer #${broadcastCount} ===`);
-                console.log(JSON.stringify(broadcastMessage, null, 2));
                 client.send(JSON.stringify(broadcastMessage));
               }
             });
           
-            if (broadcastCount === 0) {
-              console.log(`⚠️  No other clients in channel "${channelName}" to receive message!`);
-            } else {
-              console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
+            if (!isHeartbeat) {
+              if (broadcastCount === 0) {
+                console.log(`⚠️  No other clients in channel "${channelName}" to receive message!`);
+              } else {
+                console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
+              }
             }
           }
 
