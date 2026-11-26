@@ -6,6 +6,7 @@ import { z } from "zod";
 import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { readFile } from "fs/promises";
+import { BulkExportManager, BulkExportEvent, BulkExportFormat } from "./bulk_export.js";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -85,6 +86,18 @@ const args = process.argv.slice(2);
 const serverArg = args.find(arg => arg.startsWith('--server='));
 const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
 const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
+// Optional relay port override (default 3055), e.g. --port=3056
+const portArg = args.find(arg => arg.startsWith('--port='));
+const relayPort = portArg ? parseInt(portArg.split('=')[1], 10) || 3055 : 3055;
+
+// Background bulk export jobs (see bulk_export.ts)
+const BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS = 120000;
+const bulkExports = new BulkExportManager({
+  // A running job with no event at all for this long is marked failed.
+  // Per-node timeouts are enforced in the plugin; this catches a dead plugin.
+  stallTimeoutMs: BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS + 60000,
+  log: (msg) => logger.info(msg),
+});
 
 // Document Info Tool
 server.tool(
@@ -2527,6 +2540,220 @@ server.tool(
   }
 );
 
+// Select Nodes Tool (page-aware multi-select by ID)
+server.tool(
+  "select_nodes",
+  "Multi-select nodes in Figma by ID. Unlike set_selections, this switches to the page that holds the nodes if needed. If the IDs span several pages, the page holding the most of them is used and the rest are reported as on another page.",
+  {
+    nodeIds: z.array(z.string()).min(1).describe("Array of node IDs to select"),
+    scrollIntoView: z.boolean().optional().describe("Scroll and zoom the viewport to the selection (default true)"),
+  },
+  async ({ nodeIds, scrollIntoView }: any) => {
+    try {
+      const result = (await sendCommandToFigma("select_nodes", {
+        nodeIds,
+        scrollIntoView: scrollIntoView !== false,
+      })) as {
+        selectedCount: number;
+        page: { id: string; name: string } | null;
+        notFound: string[];
+        onOtherPages: string[];
+      };
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error selecting nodes: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Start Bulk Export Tool (background job)
+server.tool(
+  "start_bulk_export",
+  "Start a background job that selects the given nodes in Figma and exports them all to image files on disk (the machine running this MCP server). Returns a jobId immediately; poll get_bulk_export_status for progress (done/left/percent/ETA). Image data is written to files and never returned to the agent. Use this instead of calling export_node_as_image in a loop.",
+  {
+    nodeIds: z.array(z.string()).min(1).describe("Node IDs to export (duplicates are ignored)"),
+    format: z.enum(["PNG", "JPG", "SVG", "PDF"]).optional().describe("Export format (default PNG)"),
+    scale: z.number().positive().max(4).optional().describe("Export scale for PNG/JPG (default 1)"),
+    outputDir: z.string().min(1).describe("Directory to write files into (created if missing)"),
+    fileNames: z
+      .union([z.array(z.string()), z.record(z.string())])
+      .optional()
+      .describe("Optional file names: an array in the same order as nodeIds, or a map nodeId -> name. Extension is added automatically. Default: the node ID with ':' replaced by '-'"),
+    concurrency: z.number().int().min(1).max(8).optional().describe("Nodes exported in parallel inside Figma (default 3; drops to 1 automatically if Figma errors)"),
+    nodeTimeoutMs: z.number().int().min(5000).optional().describe("Per-node export timeout in ms (default 120000). A node that times out is marked failed and the job continues"),
+    select: z.boolean().optional().describe("Select the nodes in Figma before exporting (default true)"),
+  },
+  async ({ nodeIds, format, scale, outputDir, fileNames, concurrency, nodeTimeoutMs, select }: any) => {
+    const uniqueIds: string[] = [...new Set<string>(nodeIds)];
+    const jobId = `bulk-${Date.now().toString(36)}-${uuidv4().slice(0, 8)}`;
+    const fmt: BulkExportFormat = format || "PNG";
+    let names = fileNames;
+    if (Array.isArray(fileNames) && uniqueIds.length !== nodeIds.length) {
+      // Re-map array names onto the de-duplicated id list.
+      const byId: Record<string, string> = {};
+      nodeIds.forEach((id: string, i: number) => {
+        if (fileNames[i] && !(id in byId)) byId[id] = fileNames[i];
+      });
+      names = byId;
+    }
+    // Create job state before the plugin can send its first event.
+    const job = bulkExports.createJob({
+      jobId,
+      nodeIds: uniqueIds,
+      format: fmt,
+      scale: scale || 1,
+      outputDir,
+      fileNames: names,
+      // One slow node must not trip the stall watchdog.
+      stallTimeoutMs: Math.max(
+        BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS,
+        nodeTimeoutMs || BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS
+      ) + 60000,
+    });
+    try {
+      const result = (await sendCommandToFigma("start_bulk_export", {
+        jobId,
+        nodeIds: uniqueIds,
+        format: fmt,
+        scale: scale || 1,
+        concurrency: concurrency || 3,
+        nodeTimeoutMs: nodeTimeoutMs || BULK_EXPORT_DEFAULT_NODE_TIMEOUT_MS,
+        select: select !== false,
+      })) as {
+        jobId: string;
+        total: number;
+        found: number;
+        notFound: string[];
+        selectedCount: number;
+        page: { id: string; name: string } | null;
+        onOtherPages: string[];
+      };
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              jobId,
+              status: "running",
+              total: uniqueIds.length,
+              found: result.found,
+              notFound: result.notFound,
+              selectedCount: result.selectedCount,
+              page: result.page,
+              onOtherPages: result.onOtherPages,
+              outputDir: job.outputDir,
+              format: fmt,
+              scale: scale || 1,
+              next: `Call get_bulk_export_status with jobId "${jobId}" to see progress.`,
+            }),
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      bulkExports.failJob(jobId, `Could not start export in Figma: ${message}`);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error starting bulk export: ${message}. If your Figma plugin is older than this server, reinstall the plugin from this repo's src/cursor_mcp_plugin/manifest.json.`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Bulk Export Status Tool
+server.tool(
+  "get_bulk_export_status",
+  "Get progress of a bulk export job: done, left, failed (with node IDs and errors), percent, current node, ETA and status (running, done, failed, cancelled). Omit jobId to list all jobs from this session.",
+  {
+    jobId: z.string().optional().describe("Job ID returned by start_bulk_export"),
+  },
+  async ({ jobId }: any) => {
+    if (!jobId) {
+      const jobs = bulkExports.listJobs().map((j) => ({
+        jobId: j.jobId,
+        status: j.status,
+        summary: bulkExports.summarize(j),
+      }));
+      return {
+        content: [
+          { type: "text", text: jobs.length ? JSON.stringify(jobs) : "No bulk export jobs in this session." },
+        ],
+      };
+    }
+    const job = bulkExports.getJob(jobId);
+    if (!job) {
+      return { content: [{ type: "text", text: `Unknown bulk export job: ${jobId}` }] };
+    }
+    const snap = bulkExports.snapshot(job);
+    // Keep the response small: cap the failure list.
+    const failedShown = snap.failed.slice(0, 50);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `${snap.summary}\n${JSON.stringify({ ...snap, failed: failedShown, failedTruncated: snap.failed.length > failedShown.length })}`,
+        },
+      ],
+    };
+  }
+);
+
+// Cancel Bulk Export Tool
+server.tool(
+  "cancel_bulk_export",
+  "Cancel a running bulk export job. Nodes already exported stay on disk; nodes in flight finish, then the job stops.",
+  {
+    jobId: z.string().describe("Job ID returned by start_bulk_export"),
+  },
+  async ({ jobId }: any) => {
+    const job = bulkExports.getJob(jobId);
+    if (!job) {
+      return { content: [{ type: "text", text: `Unknown bulk export job: ${jobId}` }] };
+    }
+    if (job.finishedAt !== null) {
+      return {
+        content: [{ type: "text", text: `Job already finished: ${bulkExports.summarize(job)}` }],
+      };
+    }
+    bulkExports.cancel(jobId, false);
+    try {
+      await sendCommandToFigma("cancel_bulk_export", { jobId }, 15000);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Cancel requested; in-flight nodes will finish, then the job stops. ${bulkExports.summarize(job)}`,
+          },
+        ],
+      };
+    } catch (error) {
+      // Plugin unreachable: close the job locally so the agent is not left waiting.
+      bulkExports.cancel(jobId, true);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Figma did not confirm the cancel (${error instanceof Error ? error.message : String(error)}); job marked cancelled. ${bulkExports.summarize(job)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
 // Strategy for converting Figma prototype reactions to connector lines
 server.prompt(
   "reaction_to_connector_strategy",
@@ -2654,6 +2881,9 @@ type FigmaCommand =
   | "create_connections"
   | "set_focus"
   | "set_selections"
+  | "select_nodes"
+  | "start_bulk_export"
+  | "cancel_bulk_export"
   | "set_image_fill"
   | "rename_node"
   | "create_section"
@@ -2861,7 +3091,7 @@ function processFigmaNodeResponse(result: unknown): any {
 }
 
 // Update the connectToFigma function
-function connectToFigma(port: number = 3055) {
+function connectToFigma(port: number = relayPort) {
   // If already connected, do nothing
   if (ws && ws.readyState === WebSocket.OPEN) {
     logger.info('Already connected to Figma');
@@ -2889,6 +3119,13 @@ function connectToFigma(port: number = 3055) {
       }
 
       const json = JSON.parse(data) as ProgressMessage;
+
+      // Bulk export events stream from the plugin as regular channel messages.
+      // They carry image bytes, so route them before any logging.
+      if (json.message && json.message.type === 'bulk_export_event') {
+        bulkExports.handleEvent(json.message as BulkExportEvent);
+        return;
+      }
 
       // Handle progress updates
       if (json.type === 'progress_update') {
@@ -2969,6 +3206,9 @@ function connectToFigma(port: number = 3055) {
   ws.on('close', () => {
     logger.info('Disconnected from Figma socket server');
     ws = null;
+
+    // Events for running bulk exports can no longer reach us.
+    bulkExports.failAllRunning('Lost connection to the Figma socket server');
 
     // Reject all pending requests
     for (const [id, request] of pendingRequests.entries()) {

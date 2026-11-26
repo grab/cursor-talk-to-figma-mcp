@@ -350,6 +350,7 @@
             <div id="progress-status">Not started</div>
             <div id="progress-percentage">0%</div>
           </div>
+          <div id="progress-detail" style="margin-top: 4px; font-size: 12px; opacity: 0.8"></div>
         </div>
       </div>
 
@@ -858,6 +859,103 @@
         );
       }
 
+      // --- Bulk export streaming ---
+      // The plugin posts one event per node with raw bytes. We base64-encode
+      // here (fast in the browser), split into chunks below the relay's frame
+      // limit, and send them in order. A single promise chain keeps events
+      // ordered and applies backpressure when the socket buffer is full.
+      const BULK_CHUNK_CHARS = 4 * 1024 * 1024; // base64 chars per frame
+      const BULK_MAX_BUFFERED = 32 * 1024 * 1024;
+      const progressDetail = document.getElementById("progress-detail");
+      let bulkSendChain = Promise.resolve();
+
+      function bytesToBase64(bytes) {
+        let binary = "";
+        const step = 0x8000;
+        for (let i = 0; i < bytes.length; i += step) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+        }
+        return btoa(binary);
+      }
+
+      function waitForSocketDrain() {
+        return new Promise((resolve) => {
+          const check = () => {
+            if (!state.socket || state.socket.bufferedAmount < BULK_MAX_BUFFERED) {
+              resolve();
+            } else {
+              setTimeout(check, 20);
+            }
+          };
+          check();
+        });
+      }
+
+      function sendBulkMessage(message) {
+        if (!state.connected || !state.socket) {
+          console.error("Bulk export: socket not connected, event dropped", message.event);
+          return;
+        }
+        state.socket.send(
+          JSON.stringify({
+            id: generateId(),
+            type: "message",
+            channel: state.channel,
+            message,
+          })
+        );
+      }
+
+      function forwardBulkEvent(evt) {
+        const { bytes, progress, ...rest } = evt;
+        bulkSendChain = bulkSendChain
+          .then(async () => {
+            if (evt.event !== "node_done") {
+              sendBulkMessage(rest);
+              return;
+            }
+            const data = bytesToBase64(bytes);
+            const chunkCount = Math.max(1, Math.ceil(data.length / BULK_CHUNK_CHARS));
+            for (let i = 0; i < chunkCount; i++) {
+              await waitForSocketDrain();
+              sendBulkMessage({
+                type: "bulk_export_event",
+                jobId: evt.jobId,
+                event: "node_chunk",
+                nodeId: evt.nodeId,
+                name: evt.name,
+                chunkIndex: i,
+                chunkCount,
+                data: data.slice(i * BULK_CHUNK_CHARS, (i + 1) * BULK_CHUNK_CHARS),
+              });
+            }
+          })
+          .catch((e) => console.error("Bulk export send failed", e));
+      }
+
+      function updateBulkProgressUI(evt) {
+        const p = evt.progress || { total: 0, done: 0, failed: 0 };
+        const processed = p.done + p.failed;
+        const left = Math.max(0, p.total - processed);
+        const pct = p.total > 0 ? Math.round((processed / p.total) * 1000) / 10 : 100;
+        progressContainer.classList.remove("hidden");
+        progressBar.style.width = `${pct}%`;
+        progressPercentage.textContent = `${pct}%`;
+        progressMessage.textContent =
+          `Bulk export: ${p.done}/${p.total} done, ${left} left` +
+          (p.failed ? `, ${p.failed} failed` : "");
+        progressDetail.textContent = p.current ? `Current: ${p.current}` : "";
+        if (evt.event === "job_finished") {
+          const label = { done: "Completed", cancelled: "Cancelled", failed: "Failed" }[evt.status] || evt.status;
+          progressStatus.textContent = label;
+          progressStatus.className = evt.status === "done" ? "operation-complete" : "operation-error";
+          progressDetail.textContent = "";
+        } else {
+          progressStatus.textContent = "In Progress";
+          progressStatus.className = "";
+        }
+      }
+
       // Reset progress UI
       function resetProgressUI() {
         progressContainer.classList.add("hidden");
@@ -900,6 +998,10 @@
             updateProgressUI(message);
             // Forward progress update to server
             sendProgressUpdateToServer(message);
+            break;
+          case "bulk_export_event":
+            updateBulkProgressUI(message);
+            forwardBulkEvent(message);
             break;
           case "analytics-client-id":
             analytics.setClientId(message.clientId);
