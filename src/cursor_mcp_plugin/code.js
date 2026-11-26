@@ -787,7 +787,7 @@ async function createFrame(params) {
         g: parseFloat(fillColor.g) || 0,
         b: parseFloat(fillColor.b) || 0,
       },
-      opacity: parseFloat(fillColor.a) || 1,
+      opacity: fillColor.a !== undefined ? fillColor.a : 1,
     };
     frame.fills = [paintStyle];
   }
@@ -801,7 +801,7 @@ async function createFrame(params) {
         g: parseFloat(strokeColor.g) || 0,
         b: parseFloat(strokeColor.b) || 0,
       },
-      opacity: parseFloat(strokeColor.a) || 1,
+      opacity: strokeColor.a !== undefined ? strokeColor.a : 1,
     };
     frame.strokes = [strokeStyle];
   }
@@ -903,7 +903,7 @@ async function createText(params) {
       g: parseFloat(fontColor.g) || 0,
       b: parseFloat(fontColor.b) || 0,
     },
-    opacity: parseFloat(fontColor.a) || 1,
+    opacity: fontColor.a !== undefined ? fontColor.a : 1,
   };
   textNode.fills = [paintStyle];
 
@@ -963,7 +963,7 @@ async function setFillColor(params) {
     r: parseFloat(r) || 0,
     g: parseFloat(g) || 0,
     b: parseFloat(b) || 0,
-    a: parseFloat(a) || 1,
+    a: a !== undefined ? a : 1,
   };
 
   // Set fill
