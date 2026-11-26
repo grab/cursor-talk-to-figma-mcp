@@ -474,8 +474,8 @@ server.tool(
       .optional()
       .describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
-    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
+    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
     itemSpacing: z
       .number()
       .optional()

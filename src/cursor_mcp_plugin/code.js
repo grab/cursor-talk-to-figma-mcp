@@ -733,6 +733,23 @@ async function createFrame(params) {
   frame.resize(width, height);
   frame.name = name;
 
+  // Append to its parent BEFORE touching layout sizing. `layoutSizingHorizontal`/
+  // `layoutSizingVertical` = "FILL" is only legal once the node has an auto-layout
+  // parent (Figma reads frame.parent.layoutMode to validate it), so setting it while
+  // the frame is still unparented always throws.
+  if (parentId) {
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(frame);
+  } else {
+    figma.currentPage.appendChild(frame);
+  }
+
   // Set layout mode if provided
   if (layoutMode !== "NONE") {
     frame.layoutMode = layoutMode;
@@ -748,13 +765,36 @@ async function createFrame(params) {
     frame.primaryAxisAlignItems = primaryAxisAlignItems;
     frame.counterAxisAlignItems = counterAxisAlignItems;
 
-    // Set layout sizing only when layoutMode is not NONE
-    frame.layoutSizingHorizontal = layoutSizingHorizontal;
-    frame.layoutSizingVertical = layoutSizingVertical;
-
     // Set item spacing only when layoutMode is not NONE
     frame.itemSpacing = itemSpacing;
   }
+
+  // Layout sizing is independent of layoutMode on `frame` itself: FILL requires an
+  // auto-layout *parent* (now guaranteed above), HUG requires `frame` to be a FRAME
+  // (always true here). Validate up front so a bad request fails with a clear message
+  // instead of Figma's generic API error.
+  if (layoutSizingHorizontal === "FILL" && frame.parent.layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingHorizontal: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingVertical === "FILL" && frame.parent.layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingVertical: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingHorizontal === "HUG" && frame.layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingHorizontal: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+  if (layoutSizingVertical === "HUG" && frame.layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingVertical: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+  frame.layoutSizingHorizontal = layoutSizingHorizontal;
+  frame.layoutSizingVertical = layoutSizingVertical;
 
   // Set fill color if provided
   if (fillColor) {
@@ -787,20 +827,6 @@ async function createFrame(params) {
   // Set stroke weight if provided
   if (strokeWeight !== undefined) {
     frame.strokeWeight = strokeWeight;
-  }
-
-  // If parentId is provided, append to that node, otherwise append to current page
-  if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parentNode.appendChild(frame);
-  } else {
-    figma.currentPage.appendChild(frame);
   }
 
   return {
