@@ -128,6 +128,10 @@ async function handleCommand(command, params) {
   switch (command) {
     case "get_document_info":
       return await getDocumentInfo();
+    case "get_pages":
+      return await getPages(params);
+    case "set_current_page":
+      return await setCurrentPage(params);
     case "get_selection":
       return await getSelection();
     case "get_node_info":
@@ -278,7 +282,23 @@ async function handleCommand(command, params) {
 async function getDocumentInfo() {
   await figma.currentPage.loadAsync();
   const page = figma.currentPage;
+  const pages = figma.root.children.map((documentPage) => {
+    const isCurrentPage = documentPage.id === page.id;
+    return {
+      id: documentPage.id,
+      name: documentPage.name,
+      childCount: isCurrentPage ? documentPage.children.length : null,
+      childCountStatus: isCurrentPage ? "available" : "not_requested",
+    };
+  });
+
   return {
+    scope: "current_page_with_document_page_index",
+    document: {
+      id: figma.root.id,
+      name: figma.root.name,
+      type: figma.root.type,
+    },
     name: page.name,
     id: page.id,
     type: page.type,
@@ -292,13 +312,139 @@ async function getDocumentInfo() {
       name: page.name,
       childCount: page.children.length,
     },
-    pages: [
-      {
-        id: page.id,
-        name: page.name,
-        childCount: page.children.length,
-      },
-    ],
+    pageCount: pages.length,
+    pages,
+  };
+}
+
+function startProgressHeartbeat(
+  commandId,
+  commandType,
+  progress,
+  totalItems,
+  processedItems,
+  message
+) {
+  const timer = setInterval(() => {
+    sendProgressUpdate(
+      commandId,
+      commandType,
+      "in_progress",
+      progress,
+      totalItems,
+      processedItems,
+      message
+    ).catch((error) => {
+      console.error(`Failed to send ${commandType} heartbeat:`, error);
+    });
+  }, 15000);
+
+  return () => clearInterval(timer);
+}
+
+async function getPages(params) {
+  const includeChildCount = Boolean(params && params.includeChildCount);
+  const commandId = (params && params.commandId) || generateCommandId();
+  const documentPages = figma.root.children;
+  const pages = [];
+
+  if (includeChildCount) {
+    await sendProgressUpdate(
+      commandId,
+      "get_pages",
+      "started",
+      0,
+      documentPages.length,
+      0,
+      "Loading pages to count top-level children"
+    );
+  }
+
+  for (let index = 0; index < documentPages.length; index++) {
+    const page = documentPages[index];
+    const pageInfo = {
+      id: page.id,
+      name: page.name,
+    };
+
+    if (includeChildCount) {
+      const stopHeartbeat = startProgressHeartbeat(
+        commandId,
+        "get_pages",
+        Math.round((index / documentPages.length) * 100),
+        documentPages.length,
+        index,
+        `Still loading page ${page.name}`
+      );
+      try {
+        await page.loadAsync();
+      } finally {
+        stopHeartbeat();
+      }
+      pageInfo.childCount = page.children.length;
+      await sendProgressUpdate(
+        commandId,
+        "get_pages",
+        "in_progress",
+        Math.round(((index + 1) / documentPages.length) * 100),
+        documentPages.length,
+        index + 1,
+        `Loaded page ${index + 1}/${documentPages.length}: ${page.name}`
+      );
+    }
+
+    pages.push(pageInfo);
+  }
+
+  if (includeChildCount) {
+    await sendProgressUpdate(
+      commandId,
+      "get_pages",
+      "completed",
+      100,
+      documentPages.length,
+      documentPages.length,
+      `Loaded ${documentPages.length} pages`
+    );
+  }
+
+  return {
+    scope: "document",
+    document: {
+      id: figma.root.id,
+      name: figma.root.name,
+    },
+    currentPageId: figma.currentPage.id,
+    pageCount: pages.length,
+    childCountIncluded: includeChildCount,
+    pages,
+  };
+}
+
+async function setCurrentPage(params) {
+  const { pageId } = params || {};
+  if (!pageId) {
+    throw new Error("Missing pageId parameter");
+  }
+
+  const page = await figma.getNodeByIdAsync(pageId);
+  if (!page) {
+    throw new Error(`Page not found with ID: ${pageId}`);
+  }
+  if (page.type !== "PAGE") {
+    throw new Error(`Node ${pageId} is ${page.type}, not a PAGE`);
+  }
+
+  await figma.setCurrentPageAsync(page);
+  await page.loadAsync();
+
+  return {
+    success: true,
+    currentPage: {
+      id: page.id,
+      name: page.name,
+      childCount: page.children.length,
+    },
   };
 }
 
@@ -387,6 +533,17 @@ function filterFigmaNode(node) {
         processedStroke.color = rgbaToHex(processedStroke.color);
       }
       return processedStroke;
+    });
+  }
+
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect) => {
+      var processedEffect = Object.assign({}, effect);
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
     });
   }
 
@@ -508,7 +665,7 @@ async function getReactions(nodeIds) {
       }
       const hasFilteredReactions = filteredReactions.length > 0;
       
-      // If the node has filtered reactions, add it to results and apply highlight effect
+      // If the node has filtered reactions, add it to results
       if (hasFilteredReactions) {
         results.push({
           id: node.id,
@@ -519,51 +676,18 @@ async function getReactions(nodeIds) {
           reactions: filteredReactions,
           path: getNodePath(node)
         });
-        // Apply highlight effect (orange border)
-        await highlightNodeWithAnimation(node);
       }
-      
+
       // If node has children, recursively search them
       if (node.children) {
         for (const child of node.children) {
           await findNodesWithReactions(child, processedNodes, depth + 1, results);
         }
       }
-      
+
       return results;
     }
-    
-    // Function to apply animated highlight effect to a node
-    async function highlightNodeWithAnimation(node) {
-      // Save original stroke properties
-      const originalStrokeWeight = node.strokeWeight;
-      const originalStrokes = node.strokes ? [...node.strokes] : [];
-      
-      try {
-        // Apply orange border stroke
-        node.strokeWeight = 4;
-        node.strokes = [{
-          type: 'SOLID',
-          color: { r: 1, g: 0.5, b: 0 }, // Orange color
-          opacity: 0.8
-        }];
-        
-        // Set timeout for animation effect (restore to original after 1.5 seconds)
-        setTimeout(() => {
-          try {
-            // Restore original stroke properties
-            node.strokeWeight = originalStrokeWeight;
-            node.strokes = originalStrokes;
-          } catch (restoreError) {
-            console.error(`Error restoring node stroke: ${restoreError.message}`);
-          }
-        }, 1500);
-      } catch (highlightError) {
-        console.error(`Error highlighting node: ${highlightError.message}`);
-        // Continue even if highlighting fails
-      }
-    }
-    
+
     // Get node hierarchy path as a string
     function getNodePath(node) {
       const path = [];
@@ -749,12 +873,55 @@ async function createFrame(params) {
     itemSpacing = 0,
   } = params || {};
 
+  // Resolve the parent and validate sizing BEFORE creating anything, so a bad
+  // request fails with a clear message and never leaves a stray frame behind.
+  // A page (the default parent) has no layoutMode, so it counts as non-auto-layout.
+  let parentNode = figma.currentPage;
+  if (parentId) {
+    parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+  }
+  const parentIsAutoLayout =
+    "layoutMode" in parentNode && parentNode.layoutMode !== "NONE";
+  if (layoutSizingHorizontal === "FILL" && !parentIsAutoLayout) {
+    throw new Error(
+      "layoutSizingHorizontal: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingVertical === "FILL" && !parentIsAutoLayout) {
+    throw new Error(
+      "layoutSizingVertical: FILL is only valid when parentId points to an auto-layout frame"
+    );
+  }
+  if (layoutSizingHorizontal === "HUG" && layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingHorizontal: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+  if (layoutSizingVertical === "HUG" && layoutMode === "NONE") {
+    throw new Error(
+      "layoutSizingVertical: HUG requires this frame's own layoutMode to be set (e.g. HORIZONTAL/VERTICAL), not NONE"
+    );
+  }
+
   const frame = figma.createFrame();
   frame.x = x;
   frame.y = y;
   frame.resize(width, height);
   frame.name = name;
 
+  // Append to its parent BEFORE touching layout sizing. `layoutSizingHorizontal`/
+  // `layoutSizingVertical` = "FILL" is only legal once the node has an auto-layout
+  // parent (Figma reads frame.parent.layoutMode to validate it), so setting it while
+  // the frame is still unparented always throws.
+  parentNode.appendChild(frame);
+
+  try {
   // Set layout mode if provided
   if (layoutMode !== "NONE") {
     frame.layoutMode = layoutMode;
@@ -770,13 +937,13 @@ async function createFrame(params) {
     frame.primaryAxisAlignItems = primaryAxisAlignItems;
     frame.counterAxisAlignItems = counterAxisAlignItems;
 
-    // Set layout sizing only when layoutMode is not NONE
-    frame.layoutSizingHorizontal = layoutSizingHorizontal;
-    frame.layoutSizingVertical = layoutSizingVertical;
-
     // Set item spacing only when layoutMode is not NONE
     frame.itemSpacing = itemSpacing;
   }
+
+  // Sizing was validated before the frame was created (see above).
+  frame.layoutSizingHorizontal = layoutSizingHorizontal;
+  frame.layoutSizingVertical = layoutSizingVertical;
 
   // Set fill color if provided
   if (fillColor) {
@@ -787,7 +954,7 @@ async function createFrame(params) {
         g: parseFloat(fillColor.g) || 0,
         b: parseFloat(fillColor.b) || 0,
       },
-      opacity: parseFloat(fillColor.a) || 1,
+      opacity: fillColor.a !== undefined ? fillColor.a : 1,
     };
     frame.fills = [paintStyle];
   }
@@ -801,7 +968,7 @@ async function createFrame(params) {
         g: parseFloat(strokeColor.g) || 0,
         b: parseFloat(strokeColor.b) || 0,
       },
-      opacity: parseFloat(strokeColor.a) || 1,
+      opacity: strokeColor.a !== undefined ? strokeColor.a : 1,
     };
     frame.strokes = [strokeStyle];
   }
@@ -810,19 +977,10 @@ async function createFrame(params) {
   if (strokeWeight !== undefined) {
     frame.strokeWeight = strokeWeight;
   }
-
-  // If parentId is provided, append to that node, otherwise append to current page
-  if (parentId) {
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parentNode.appendChild(frame);
-  } else {
-    figma.currentPage.appendChild(frame);
+  } catch (error) {
+    // Don't leave a half-configured frame in the file when Figma rejects a property.
+    frame.remove();
+    throw error;
   }
 
   return {
@@ -903,7 +1061,7 @@ async function createText(params) {
       g: parseFloat(fontColor.g) || 0,
       b: parseFloat(fontColor.b) || 0,
     },
-    opacity: parseFloat(fontColor.a) || 1,
+    opacity: fontColor.a !== undefined ? fontColor.a : 1,
   };
   textNode.fills = [paintStyle];
 
@@ -963,7 +1121,7 @@ async function setFillColor(params) {
     r: parseFloat(r) || 0,
     g: parseFloat(g) || 0,
     b: parseFloat(b) || 0,
-    a: parseFloat(a) || 1,
+    a: a !== undefined ? a : 1,
   };
 
   // Set fill
@@ -1519,7 +1677,7 @@ async function createComponentInstance(params) {
 async function exportNodeAsImage(params) {
   const { nodeId, scale = 1 } = params || {};
 
-  const format = "PNG";
+  const format = (params && params.format || "PNG").toUpperCase();
 
   if (!nodeId) {
     throw new Error("Missing nodeId parameter");
@@ -2290,30 +2448,6 @@ async function processTextNode(node, parentPath, depth) {
       depth: depth,
     };
 
-    // Highlight the node briefly (optional visual feedback)
-    try {
-      const originalFills = JSON.parse(JSON.stringify(node.fills));
-      node.fills = [
-        {
-          type: "SOLID",
-          color: { r: 1, g: 0.5, b: 0 },
-          opacity: 0.3,
-        },
-      ];
-
-      // Brief delay for the highlight to be visible
-      await delay(100);
-
-      try {
-        node.fills = originalFills;
-      } catch (err) {
-        console.error("Error resetting fills:", err);
-      }
-    } catch (highlightErr) {
-      console.error("Error highlighting text node:", highlightErr);
-      // Continue anyway, highlighting is just visual feedback
-    }
-
     return safeTextNode;
   } catch (nodeErr) {
     console.error("Error processing text node:", nodeErr);
@@ -2363,31 +2497,6 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
         path: nodePath.join(" > "),
         depth: depth,
       };
-
-      // Only highlight the node if it's not being done via API
-      try {
-        // Safe way to create a temporary highlight without causing serialization issues
-        const originalFills = JSON.parse(JSON.stringify(node.fills));
-        node.fills = [
-          {
-            type: "SOLID",
-            color: { r: 1, g: 0.5, b: 0 },
-            opacity: 0.3,
-          },
-        ];
-
-        // Promise-based delay instead of setTimeout
-        await delay(500);
-
-        try {
-          node.fills = originalFills;
-        } catch (err) {
-          console.error("Error resetting fills:", err);
-        }
-      } catch (highlightErr) {
-        console.error("Error highlighting text node:", highlightErr);
-        // Continue anyway, highlighting is just visual feedback
-      }
 
       textNodes.push(safeTextNode);
     } catch (nodeErr) {
@@ -2543,42 +2652,11 @@ async function setMultipleTextContents(params) {
         console.log(`Original text: "${originalText}"`);
         console.log(`Will translate to: "${replacement.text}"`);
 
-        // Highlight the node before changing text
-        let originalFills;
-        try {
-          // Save original fills for restoration later
-          originalFills = JSON.parse(JSON.stringify(textNode.fills));
-          // Apply highlight color (orange with 30% opacity)
-          textNode.fills = [
-            {
-              type: "SOLID",
-              color: { r: 1, g: 0.5, b: 0 },
-              opacity: 0.3,
-            },
-          ];
-        } catch (highlightErr) {
-          console.error(
-            `Error highlighting text node: ${highlightErr.message}`
-          );
-          // Continue anyway, highlighting is just visual feedback
-        }
-
         // Use the existing setTextContent function to handle font loading and text setting
         await setTextContent({
           nodeId: replacement.nodeId,
           text: replacement.text,
         });
-
-        // Keep highlight for a moment after text change, then restore original fills
-        if (originalFills) {
-          try {
-            // Use delay function for consistent timing
-            await delay(500);
-            textNode.fills = originalFills;
-          } catch (restoreErr) {
-            console.error(`Error restoring fills: ${restoreErr.message}`);
-          }
-        }
 
         console.log(
           `Successfully replaced text in node: ${replacement.nodeId}`

@@ -7,6 +7,7 @@ import WebSocket from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { readFile } from "fs/promises";
 import { BulkExportManager, BulkExportEvent, BulkExportFormat } from "./bulk_export.js";
+import { escapeForLog, isValidChannelName } from "../channel";
 
 // Define TypeScript interfaces for Figma responses
 interface FigmaResponse {
@@ -54,13 +55,15 @@ interface setInstanceOverridesResult {
   }>;
 }
 
-// Custom logging functions that write to stderr instead of stdout to avoid being captured
+// Custom logging functions that write to stderr instead of stdout to avoid being captured.
+// Messages are escaped so a caller-controlled value (e.g. a channel name) can
+// never inject CR/LF and forge additional log lines (CWE-117).
 const logger = {
-  info: (message: string) => process.stderr.write(`[INFO] ${message}\n`),
-  debug: (message: string) => process.stderr.write(`[DEBUG] ${message}\n`),
-  warn: (message: string) => process.stderr.write(`[WARN] ${message}\n`),
-  error: (message: string) => process.stderr.write(`[ERROR] ${message}\n`),
-  log: (message: string) => process.stderr.write(`[LOG] ${message}\n`)
+  info: (message: string) => process.stderr.write(`[INFO] ${escapeForLog(message)}\n`),
+  debug: (message: string) => process.stderr.write(`[DEBUG] ${escapeForLog(message)}\n`),
+  warn: (message: string) => process.stderr.write(`[WARN] ${escapeForLog(message)}\n`),
+  error: (message: string) => process.stderr.write(`[ERROR] ${escapeForLog(message)}\n`),
+  log: (message: string) => process.stderr.write(`[LOG] ${escapeForLog(message)}\n`)
 };
 
 // WebSocket connection and request tracking
@@ -102,7 +105,7 @@ const bulkExports = new BulkExportManager({
 // Document Info Tool
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
+  "[Current-page scoped, with a document-wide page index] Get top-level details for the current Figma page plus an honest index of every page in the document. Non-current page child counts are explicitly marked as not requested.",
   {},
   async () => {
     try {
@@ -122,6 +125,76 @@ server.tool(
             type: "text",
             text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
               }`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Pages Tool
+server.tool(
+  "get_pages",
+  "[Document-wide] Enumerate every page in the Figma document. Top-level child counts are opt-in because dynamic-page access must load each page.",
+  {
+    includeChildCount: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Load every page and include its top-level child count (default: false)"
+      ),
+  },
+  async ({ includeChildCount }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_pages", {
+        includeChildCount,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+      };
+    }
+  }
+);
+
+// Current Page Tool
+server.tool(
+  "set_current_page",
+  "Switch the active Figma page so subsequent page-scoped reads and writes operate there",
+  {
+    pageId: z.string().describe("The PAGE node ID returned by get_pages"),
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("set_current_page", { pageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting current page: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };
@@ -288,6 +361,17 @@ function filterFigmaNode(node: any) {
         processedStroke.color = rgbaToHex(processedStroke.color);
       }
       return processedStroke;
+    });
+  }
+
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect: any) => {
+      const processedEffect = { ...effect };
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
     });
   }
 
@@ -463,8 +547,8 @@ server.tool(
       .optional()
       .describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
-    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    layoutSizingHorizontal: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
+    layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
     itemSpacing: z
       .number()
       .optional()
@@ -624,7 +708,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_fill_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
       });
       const typedResult = result as { name: string };
       return {
@@ -632,7 +716,7 @@ server.tool(
           {
             type: "text",
             text: `Set fill color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1})`,
+              }" to RGBA(${r}, ${g}, ${b}, ${a ?? 1})`,
           },
         ],
       };
@@ -666,7 +750,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_stroke_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
         weight: weight || 1,
       });
       const typedResult = result as { name: string };
@@ -675,7 +759,7 @@ server.tool(
           {
             type: "text",
             text: `Set stroke color of node "${typedResult.name
-              }" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`,
+              }" to RGBA(${r}, ${g}, ${b}, ${a ?? 1}) with weight ${weight || 1}`,
           },
         ],
       };
@@ -2842,6 +2926,8 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
+  | "get_pages"
+  | "set_current_page"
   | "get_selection"
   | "get_node_info"
   | "get_nodes_info"
@@ -2891,6 +2977,8 @@ type FigmaCommand =
 
 type CommandParams = {
   get_document_info: Record<string, never>;
+  get_pages: { includeChildCount?: boolean };
+  set_current_page: { pageId: string };
   get_selection: Record<string, never>;
   get_node_info: { nodeId: string };
   get_nodes_info: { nodeIds: string[] };
@@ -3225,6 +3313,12 @@ function connectToFigma(port: number = relayPort) {
 
 // Function to join a channel
 async function joinChannel(channelName: string): Promise<void> {
+  if (!isValidChannelName(channelName)) {
+    throw new Error(
+      "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+    );
+  }
+
   if (!ws || ws.readyState !== WebSocket.OPEN) {
     throw new Error("Not connected to Figma");
   }
@@ -3548,6 +3642,17 @@ server.tool(
             tool: "join_channel",
             description: "Join the specified channel",
           },
+        };
+      }
+
+      if (!isValidChannelName(channel)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'.",
+            },
+          ],
         };
       }
 

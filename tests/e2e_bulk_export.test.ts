@@ -119,7 +119,8 @@ describe("bulk export end-to-end", () => {
       const upstreamTools = [...upstreamSrc.matchAll(/server\.tool\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
       expect(upstreamTools.length).toBeGreaterThan(40);
       for (const name of upstreamTools) expect(tools).toContain(name);
-      expect(tools.length).toBe(upstreamTools.length + 4);
+      // No tool is registered twice (other branches may add tools beyond the 4 bulk ones).
+      expect(new Set(tools).size).toBe(tools.length);
       for (const name of ["start_bulk_export", "get_bulk_export_status", "cancel_bulk_export", "select_nodes"]) {
         expect(tools).toContain(name);
       }

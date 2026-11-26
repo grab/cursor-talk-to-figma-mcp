@@ -335,17 +335,26 @@ var BulkExportManager = class {
   }
 };
 
+// src/channel.ts
+var CHANNEL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+function isValidChannelName(name) {
+  return typeof name === "string" && CHANNEL_NAME_PATTERN.test(name);
+}
+function escapeForLog(value) {
+  return value.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+}
+
 // src/talk_to_figma_mcp/server.ts
 var logger = {
-  info: (message) => process.stderr.write(`[INFO] ${message}
+  info: (message) => process.stderr.write(`[INFO] ${escapeForLog(message)}
 `),
-  debug: (message) => process.stderr.write(`[DEBUG] ${message}
+  debug: (message) => process.stderr.write(`[DEBUG] ${escapeForLog(message)}
 `),
-  warn: (message) => process.stderr.write(`[WARN] ${message}
+  warn: (message) => process.stderr.write(`[WARN] ${escapeForLog(message)}
 `),
-  error: (message) => process.stderr.write(`[ERROR] ${message}
+  error: (message) => process.stderr.write(`[ERROR] ${escapeForLog(message)}
 `),
-  log: (message) => process.stderr.write(`[LOG] ${message}
+  log: (message) => process.stderr.write(`[LOG] ${escapeForLog(message)}
 `)
 };
 var ws = null;
@@ -370,7 +379,7 @@ var bulkExports = new BulkExportManager({
 });
 server.tool(
   "get_document_info",
-  "Get detailed information about the current Figma document",
+  "[Current-page scoped, with a document-wide page index] Get top-level details for the current Figma page plus an honest index of every page in the document. Non-current page child counts are explicitly marked as not requested.",
   {},
   async () => {
     try {
@@ -389,6 +398,68 @@ server.tool(
           {
             type: "text",
             text: `Error getting document info: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "get_pages",
+  "[Document-wide] Enumerate every page in the Figma document. Top-level child counts are opt-in because dynamic-page access must load each page.",
+  {
+    includeChildCount: import_zod.z.boolean().optional().default(false).describe(
+      "Load every page and include its top-level child count (default: false)"
+    )
+  },
+  async ({ includeChildCount }) => {
+    try {
+      const result = await sendCommandToFigma("get_pages", {
+        includeChildCount
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting pages: ${error instanceof Error ? error.message : String(error)}`
+          }
+        ]
+      };
+    }
+  }
+);
+server.tool(
+  "set_current_page",
+  "Switch the active Figma page so subsequent page-scoped reads and writes operate there",
+  {
+    pageId: import_zod.z.string().describe("The PAGE node ID returned by get_pages")
+  },
+  async ({ pageId }) => {
+    try {
+      const result = await sendCommandToFigma("set_current_page", { pageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error setting current page: ${error instanceof Error ? error.message : String(error)}`
           }
         ]
       };
@@ -528,6 +599,16 @@ function filterFigmaNode(node) {
       return processedStroke;
     });
   }
+  if (node.effects && node.effects.length > 0) {
+    filtered.effects = node.effects.map((effect) => {
+      const processedEffect = { ...effect };
+      delete processedEffect.boundVariables;
+      if (processedEffect.color) {
+        processedEffect.color = rgbaToHex(processedEffect.color);
+      }
+      return processedEffect;
+    });
+  }
   if (node.cornerRadius !== void 0) {
     filtered.cornerRadius = node.cornerRadius;
   }
@@ -659,8 +740,8 @@ server.tool(
     paddingLeft: import_zod.z.number().optional().describe("Left padding for auto-layout frame"),
     primaryAxisAlignItems: import_zod.z.enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"]).optional().describe("Primary axis alignment for auto-layout frame. Note: When set to SPACE_BETWEEN, itemSpacing will be ignored as children will be evenly spaced."),
     counterAxisAlignItems: import_zod.z.enum(["MIN", "MAX", "CENTER", "BASELINE"]).optional().describe("Counter axis alignment for auto-layout frame"),
-    layoutSizingHorizontal: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode for auto-layout frame"),
-    layoutSizingVertical: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
+    layoutSizingHorizontal: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Horizontal sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
+    layoutSizingVertical: import_zod.z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode. FILL requires parentId to point to an auto-layout frame (layoutMode != NONE); HUG requires this frame's own layoutMode to also be set (not NONE)"),
     itemSpacing: import_zod.z.number().optional().describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN.")
   },
   async ({
@@ -794,14 +875,14 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_fill_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 }
+        color: { r, g, b, a: a ?? 1 }
       });
       const typedResult = result;
       return {
         content: [
           {
             type: "text",
-            text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1})`
+            text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1})`
           }
         ]
       };
@@ -832,7 +913,7 @@ server.tool(
     try {
       const result = await sendCommandToFigma("set_stroke_color", {
         nodeId,
-        color: { r, g, b, a: a || 1 },
+        color: { r, g, b, a: a ?? 1 },
         weight: weight || 1
       });
       const typedResult = result;
@@ -840,7 +921,7 @@ server.tool(
         content: [
           {
             type: "text",
-            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1}) with weight ${weight || 1}`
+            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1}) with weight ${weight || 1}`
           }
         ]
       };
@@ -2809,6 +2890,11 @@ function connectToFigma(port = relayPort) {
   });
 }
 async function joinChannel(channelName) {
+  if (!isValidChannelName(channelName)) {
+    throw new Error(
+      "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+    );
+  }
   if (!ws || ws.readyState !== import_ws.default.OPEN) {
     throw new Error("Not connected to Figma");
   }
@@ -3065,6 +3151,16 @@ server.tool(
             tool: "join_channel",
             description: "Join the specified channel"
           }
+        };
+      }
+      if (!isValidChannelName(channel)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Invalid channel name. Use 1-64 characters: letters, numbers, '-' or '_'."
+            }
+          ]
         };
       }
       await joinChannel(channel);
