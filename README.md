@@ -86,17 +86,14 @@ bun socket
 powershell -c "irm bun.sh/install.ps1|iex"
 ```
 
-2. Uncomment the hostname `0.0.0.0` in `src/socket.ts`
-
-```typescript
-// uncomment this to allow connections in windows wsl
-hostname: "0.0.0.0",
-```
-
-3. Start the websocket
+2. Start the websocket so it accepts connections from outside WSL (by default it only listens on `127.0.0.1`)
 
 ```bash
-bun socket
+# PowerShell
+$env:HOST="0.0.0.0"; bun socket
+
+# bash
+HOST=0.0.0.0 bun socket
 ```
 
 ## Usage
